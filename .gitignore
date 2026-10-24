@@ -36,3 +36,6 @@ harness/.results/
 *.pem
 secrets.json
 credentials.json
+
+# Progress screenshots show original artwork – kept local only
+/progress/

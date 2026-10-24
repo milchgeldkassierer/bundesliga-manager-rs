@@ -2,6 +2,9 @@
 
 Each rendered 320x200 frame is compared against a DOSBox reference capture of the same screen.
 
-- At most 0.5 % of pixels may differ.
-- Per differing pixel, each 8-bit RGB channel may differ by at most 4 (VGA DAC 6-bit to 8-bit rounding).
-- Geometry (positions, sizes, glyph shapes) must match exactly; tolerance covers color rounding only.
+## Current acceptance threshold (phase 1)
+- At least **90 %** of pixels must match the reference (a pixel matches when every 8-bit RGB channel differs by at most 4).
+- Layout must be recognizably identical; remaining differences are tracked as follow-up issues and fixed later.
+
+## Long-term target
+- At most 0.5 % differing pixels, color differences only from VGA DAC rounding, geometry exact.

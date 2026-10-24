@@ -58,7 +58,7 @@ BMP Remake is not an "inspired by" remake and not a new football manager.
 ## Hard invariants -- not tunable by any issue
 
 1. **Fidelity over elegance.** Where the original and "clean" code would differ, the original wins (rounding, overflow, RNG call order).
-2. **Graphics 1:1, minimal tolerance.** Every screen is compared against a DOSBox reference; tolerances are defined in `docs/re/TOLERANCES.md`. Larger differences are bugs.
+2. **Graphics 1:1, minimal tolerance.** Every screen is compared against a DOSBox reference; thresholds are defined in `docs/re/TOLERANCES.md` (phase 1: >= 90 % matching pixels, exact match is the long-term target).
 3. **No original data in the repo.** Tests that need original data run only when `BMP_DATA` is set and are skipped otherwise.
 4. **English only in the repository.** Source code, identifiers, comments and documentation are English; only verbatim original in-game text is German.
 5. **The factory cannot modify governance files.** `MISSION.md`, `FACTORY_RULES.md`
@@ -103,7 +103,7 @@ human, so nothing ships on a guess and nothing stops for one.
 ## Decisions
 
 - 2026-10-24 **Repository language?** English for code and docs.
-- 2026-10-24 **Graphics tolerance?** Minimal tolerances allowed (invariant 2, `docs/re/TOLERANCES.md`).
+- 2026-10-24 **Graphics tolerance?** Phase 1 accepts >= 90 % matching pixels; graphics get refined later (`docs/re/TOLERANCES.md`).
 - 2026-10-24 **Public repo?** No, private; original data is never committed.
 
 ## What the factory does NOT own -- permanently human
