@@ -11,7 +11,7 @@ use bmp_game::squad::{
     LineupRules, auto_lineup, board_auto_place_player, board_find_starter_at,
     lineup_renumber_starters, squad_count_listed,
 };
-use bmp_game::state::{BOARD_UNPLACED, GameState, SquadPlayer};
+use bmp_game::state::{BOARD_UNPLACED, GameState, SquadPlayer, TRANSFER_LIST};
 use bmp_game::stats::INJURY_NAMES;
 use bmp_game::transfer::player_value_of;
 
@@ -186,9 +186,9 @@ pub(super) struct Screen {
     held_from: (u8, u8),
 }
 
-/// The squad of `FAR:304a` (4 = the transfer market).
+/// The squad of `FAR:304a` (`TRANSFER_LIST` = the transfer market).
 pub(super) fn group(state: &GameState) -> usize {
-    (state.current_manager as usize).min(4)
+    (state.current_manager as usize).min(TRANSFER_LIST)
 }
 
 fn rec(state: &GameState, i: usize) -> &SquadPlayer {
@@ -263,6 +263,9 @@ pub(super) fn player_append_foot_text_of(buf: &mut Vec<u8>, state: &GameState, g
     buf.push(b')');
 }
 
+/// `squad_list_draw` mode: the own squad with the transfer-flag highlight.
+const LIST_MODE_TRANSFER_FLAGS: u8 = 4;
+
 /// Draws rows `first..=last` of the squad list of the current group with the
 /// columns in `mask`. Mode 0 = own squad, 1/2 = transfer market, 3 = offers,
 /// 4 = own squad with the transfer-flag highlight.
@@ -287,7 +290,7 @@ pub(super) fn squad_list_draw(
     mut mode: u8,
     suspended_allowed: bool,
 ) {
-    let highlight = mode == 4;
+    let highlight = mode == LIST_MODE_TRANSFER_FLAGS;
     if highlight {
         mode = 0;
     }

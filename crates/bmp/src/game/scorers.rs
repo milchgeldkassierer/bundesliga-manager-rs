@@ -4,7 +4,7 @@
 
 use bmp_game::rng::NumberFormat;
 use bmp_game::squad::squad_count_listed;
-use bmp_game::state::GameState;
+use bmp_game::state::{GameState, SQUAD_COUNT, TRANSFER_LIST};
 
 use super::squad_screen::ui_string;
 use super::stats_screens::format_long_or_blank;
@@ -103,7 +103,7 @@ pub fn screen_player_info(
     state: &GameState,
     slot: u8,
 ) -> Run<()> {
-    let g = (state.current_manager as usize).min(4);
+    let g = (state.current_manager as usize).min(TRANSFER_LIST);
     let r = state.squads[g][slot as usize].clone();
     let pl = state.players[r.player_id as usize].clone();
     let (id, _) = host
@@ -453,8 +453,8 @@ pub fn screen_top_scorers(
                     let k = ((my - 0x1e) / 7) as usize;
                     if k < 20 {
                         let pid = ids[k];
-                        for g in 0..5usize {
-                            if !(g < usize::from(state.manager_count) || g == 4) {
+                        for g in 0..SQUAD_COUNT {
+                            if !(g < usize::from(state.manager_count) || g == TRANSFER_LIST) {
                                 continue;
                             }
                             let n = usize::from(squad_count_listed(state, g));
