@@ -83,7 +83,8 @@ fn tore_read_anzahl(host: &Host) -> Option<Anzahl> {
 /// One showing of a goal scene. The first showing (`replay` 0) draws the file: a plain
 /// scene `2..=max_scene`, with chance 1/16 (goal) or 1/26 (miss) or when `force_e` is set
 /// a penalty ("E") scene, else with chance 1/401 a joke ("J") scene; a file that cannot be
-/// opened or read is drawn again. A replay shows the file of `name` again. The scene is
+/// opened or read is drawn again. A replay shows the file of `name` again (a new file is
+/// drawn when it cannot be read). The scene is
 /// mirrored for the away side (`scoring_side` 0) and played at `screen_y`. Returns the
 /// penalty-scene flag.
 ///
@@ -106,8 +107,11 @@ pub fn tore_scene_play(
     host.number_no_separators = true;
     let mut j_flag = false;
     let mut attempts = 0u32;
+    // A replay opens the file of `name` first; every failed open or read draws a new file,
+    // in a replay too (24a4:0748 and 24a4:07b3 jump back to the draw at 24a4:0624).
+    let mut draw = replay == 0;
     let scene = loop {
-        if replay == 0 {
+        if std::mem::replace(&mut draw, true) {
             let choice = tore::select_scene(counts, goal, force_e, &mut j_flag, &mut || rng.rand());
             force_e = choice.force_e;
             *name = choice.file_name();

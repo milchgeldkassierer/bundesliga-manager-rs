@@ -294,6 +294,10 @@ them: `tore_scene_play` = `24a4:05ec` (`2000:502c`), `tore_read_anzahl` = `24a4:
 * `tore_scene_play` starts with `mouse_pointer_hide(0)` (45ac:1a81) and sets `DS:07b2 = 1`
   (no thousands separators in `format_long_thousands` from then on); every exit path ends
   with `mouse_pointer_show()` (45ac:1ac7) and returns the E flag.
+* In a replay (`DS:549a != 0`) only the first attempt skips the draw and opens the file
+  named in `DS:a374` again; a failed `open` (24a4:0748) or a failed read after
+  `tore_report_read_error` (24a4:07b3) jumps back to the draw at 24a4:0624, so a replay
+  whose file cannot be read shows a newly drawn scene.
 * `match_screen_load_pictures` first frees the live view's `PIC\8.VGA` (`FAR:2e9e`) and
   `PIC\38.VGA` (`FAR:57c4`); the strip is `vga_load_picture(0, 0x140, 0x4d, 5)` (a blank
   bitmap). `match_screen_restore_pictures` frees the strip, `PIC\27`, `PIC\26` and `PIC\29`
