@@ -262,7 +262,7 @@ DAY_ADVANCE:                                            // 2a58:3397
     }
     for (FAR:304a = 0; FAR:304a < n; FAR:304a++) {
         random_weekly_events();                                 // 1cb5:13bd
-        if (lrem(day - (i32)(i8)DS:224c, 14) == 0) top_scorer_weekly_update(); // 24a4:2cb4()
+        if (lrem(day - (i32)(i8)DS:224c, 14) == 0) advertising_offers_generate(); // 24a4:2cb4() (stats.md §3.6)
     }
     if (day <= (i32)((i8)DS:224c + 0x142)) { FAR:016e++; goto TOP; }      // 2a58:458b
     // season end reached (2a58:36f9)
@@ -416,7 +416,7 @@ if ((i32)FAR:513c == FAR:a7a0) {                                // last season o
     game_end_screen(0);                                         // 2a58:000c
     fatal_error_exit(99);
 }
-for (FAR:304a = 0; FAR:304a < n; FAR:304a++) { highscore_insert_entry(2); top_scorer_weekly_update(); }
+for (FAR:304a = 0; FAR:304a < n; FAR:304a++) { highscore_insert_entry(2); advertising_offers_generate(); } // 24a4:2cb4() (stats.md §3.6)
 ui_fill_rect(FAR:2f28, 0, 0, 319, 239, 0);
 season_reset_tables();                                          // 1310:09c5()
 competition_reset();                                            // 27c2:0ef2()

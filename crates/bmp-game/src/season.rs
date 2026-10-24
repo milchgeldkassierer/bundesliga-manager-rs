@@ -1699,7 +1699,8 @@ enum At {
 /// `league_play_round` → [`league_postpone_matches_weather`], the title wrappers →
 /// [`matchday_play`], `euro_special_slot` → [`cups::matchday_relegation_match`],
 /// `extra_match_pending` / `extra_match_play` → [`has_rescheduled_match_today`] /
-/// [`matchday_play_rescheduled`], `top_scorer_weekly_update` → [`advertising_offers_generate`],
+/// [`matchday_play_rescheduled`], `top_scorer_weekly_update` (season.md's old, wrong
+/// name for 24a4:2cb4) → [`advertising_offers_generate`],
 /// `season_reset_tables` → [`cups::league_shuffle_teams`], `competition_reset` →
 /// [`cups::euro_cup_qualifiers_build`], `competition_count` → [`cups::cup_clear_match_goals`],
 /// `competition_init` → [`cups::cup_draw_first_round`], `office_random_event` →
