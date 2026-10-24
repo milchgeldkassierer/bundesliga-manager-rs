@@ -1,0 +1,17 @@
+# Original-Spieldaten (urheberrechtlich geschützt) – nie committen
+/BMP/
+/Editor/
+*.EXE
+*.VGA
+*.CP
+*.PAL
+*.MAN
+*.DAT
+*.CMF
+*.VOC
+# Build / Analyse
+/target/
+/ghidra_proj/
+/out/
+*.gpr
+*.rep/
