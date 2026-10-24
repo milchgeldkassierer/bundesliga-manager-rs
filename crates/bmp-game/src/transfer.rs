@@ -174,8 +174,8 @@ fn at_market<T>(state: &mut GameState, f: impl FnOnce(&mut GameState) -> T) -> T
 
 /// The human manager `FAR:304a` as an index.
 fn manager(state: &GameState) -> usize {
-    usize::try_from(state.current_manager)
-        .ok()
+    state
+        .current_index()
         .filter(|&m| m < TRANSFER_LIST)
         .expect("FAR:304a is not a human manager")
 }

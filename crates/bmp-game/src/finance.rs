@@ -58,7 +58,9 @@ pub enum CreditField {
 }
 
 fn current_index(state: &GameState) -> usize {
-    usize::try_from(state.current_manager).expect("FAR:304a holds a manager index")
+    state
+        .current_index()
+        .expect("FAR:304a holds a manager index")
 }
 
 /// Days of `month` (FAR:2e8e; the original indexes the table with its low word).

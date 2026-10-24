@@ -59,8 +59,8 @@ pub enum InsertRejected {
 /// # Panics
 /// When [`GameState::current_manager`] is not a group index (0..=4).
 pub(crate) fn group(state: &GameState) -> usize {
-    usize::try_from(state.current_manager)
-        .ok()
+    state
+        .current_index()
         .filter(|&g| g < SQUAD_COUNT)
         .expect("FAR:304a is not a squad group")
 }

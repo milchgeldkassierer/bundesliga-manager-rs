@@ -607,11 +607,11 @@ pub struct LineupTotals {
 ///
 /// Origin: BMMAIN.EXE 1f9d:1122 (squad_lineup_totals)
 pub fn squad_lineup_totals(state: &GameState) -> LineupTotals {
-    let squad = u8::try_from(state.current_manager).expect("no current manager");
+    let squad = state.current_index().expect("no current manager");
     let mut totals = LineupTotals::default();
     let mut starters: i16 = 0;
-    for i in 0..squad_count_listed(state, usize::from(squad)) {
-        let p = &state.squads[usize::from(squad)][usize::from(i)];
+    for i in 0..squad_count_listed(state, squad) {
+        let p = &state.squads[squad][usize::from(i)];
         if p.lineup_position == 0 || p.lineup_position >= 12 {
             continue;
         }

@@ -1056,11 +1056,15 @@ impl GameState {
         img
     }
 
+    /// FAR:304a as an index, or `None` when it is negative. Callers apply
+    /// their own upper bound (manager slot, squad group, ...).
+    pub fn current_index(&self) -> Option<usize> {
+        usize::try_from(self.current_manager).ok()
+    }
+
     /// The manager whose turn it is (FAR:304a), if the index is valid.
     pub fn current(&self) -> Option<&Manager> {
-        usize::try_from(self.current_manager)
-            .ok()
-            .and_then(|m| self.managers.get(m))
+        self.current_index().and_then(|m| self.managers.get(m))
     }
 
     /// The active human managers (`0..DS:07ab`, clamped to the 4 slots).

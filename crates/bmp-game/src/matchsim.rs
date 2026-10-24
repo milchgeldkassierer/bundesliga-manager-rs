@@ -553,10 +553,7 @@ pub fn match_minute_card_injury_events<H: MatchHooks + ?Sized>(
         if rt.manager_plays_now[mi] == 0 || (team != home && team != away) {
             continue;
         }
-        let current = usize::try_from(state.current_manager)
-            .ok()
-            .and_then(|c| state.managers.get(c))
-            .expect("FAR:304a is not a manager");
+        let current = state.current().expect("FAR:304a is not a manager");
         if current.aggression == 0x64 || squad_count_starters(state, mi) < 4 {
             return 0;
         }
