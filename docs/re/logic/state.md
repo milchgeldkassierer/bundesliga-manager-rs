@@ -338,7 +338,7 @@ xrefs/decompilations above and MEMORY_MAP.
 |---|---|---|---|
 | DS:0630 | `base_interest_rate` | `int` random walk (clamped 2..7, initial 5) from which DS:060e is derived. `GameState::base_interest_rate` | 212a:000a |
 | DS:0644[4] | `month_balance_sum` | `long` sum of each manager's daily balances in the current month. `GameState::month_balance_sum` | 212a:0a6d, 24a4:2636 |
-| DS:5256 | `quarter_flag` | Set at the end of months 0, 4, 8. `GameState::quarter_flag` | 212a:0a6d |
+| DS:5256 | `autosave_pending` | Autosave request; producer: month end 212a:0a6d sets it when month % 4 == 0 (months 0, 4, 8); consumer: `office_menu_dispatcher` 18bc:0b5f entry (call at 18bc:0b84) saves `"autosave.man"` via `screen_save_game` 422b:07fe and clears it. Formerly documented as `quarter_flag`. `GameState::autosave_pending` | 212a:0a6d, 18bc:0b84 |
 | DS:07a7[4] | `player_group_bounds` | Index bounds of the 4 player groups in FAR:57dd | 422b:035c |
 | DS:0286[5], DS:028c[4] | `training_defaults` | Initial values for `Manager::training_141/146` | 18bc:2184 |
 | DS:2271 | `points_per_win` | Points for a win (2 or 3). `< 3` means the 2-point display | 3a41:2d33 |

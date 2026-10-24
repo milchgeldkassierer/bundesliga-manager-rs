@@ -824,8 +824,11 @@ pub struct GameState {
     pub base_interest_rate: i16,
     /// DS:0644 sum of each manager's daily balances in the current month.
     pub month_balance_sum: [i32; 4],
-    /// DS:5256 set at the end of every fourth month (months 0, 4, 8).
-    pub quarter_flag: u8,
+    /// DS:5256 autosave request. Producer: month end 212a:0a6d sets it
+    /// when `month % 4 == 0` (months 0, 4, 8). Consumer: the entry of
+    /// `office_menu_dispatcher` 18bc:0b5f saves `"autosave.man"` via
+    /// `screen_save_game` 422b:07fe and clears it.
+    pub autosave_pending: u8,
 }
 
 /// DS:0630 in the data segment image.
@@ -960,7 +963,7 @@ macro_rules! decode_blocks {
                 far_2e94: u32::from_le_bytes(save.tail[8..12].try_into().unwrap()),
                 base_interest_rate: INITIAL_BASE_INTEREST_RATE,
                 month_balance_sum: [0; 4],
-                quarter_flag: 0,
+                autosave_pending: 0,
             })
         }
 
@@ -1003,7 +1006,7 @@ macro_rules! decode_blocks {
                 far_2e94: 0,
                 base_interest_rate: INITIAL_BASE_INTEREST_RATE,
                 month_balance_sum: [0; 4],
-                quarter_flag: 0,
+                autosave_pending: 0,
             }
         }
     };

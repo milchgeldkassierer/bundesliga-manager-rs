@@ -194,7 +194,7 @@ void finance_daily_processing(void) {
 
     int dim = (i8)DS_07b8[FAR_2e8e];                       /* FAR:2e8e month (long, low word used as index) */
     if ((i32)dim == FAR_2eba /* day, long */) {            /* --- last day of the month --- */
-        if (FAR_2e8e % 4 == 0) DS_5256 = 1;                /* _aFlrem(month, 4) */
+        if (FAR_2e8e % 4 == 0) DS_5256 = 1;                /* _aFlrem(month, 4); autosave_pending */
         if (FAR_0000[2*m] != 0 && --FAR_0000[2*m] == 0)
             DS_066c[m][0] /= 10;                           /* _aFldiv_assign(&.., 10L) */
         for (i = 0; i < 6; i++)
@@ -975,7 +975,7 @@ condition item `S+0x28` costs nothing. Ticket income is not computed here (see O
 | DS:225a, 225e, 2262, 226a, 2271 | i8 | league round counters, team counts, rounds, relegation flag, points per win | 34 / — |
 | DS:2280 | u8[] | per-week competition mask | 50 |
 | DS:4a28 | i8 | `difficulty` (5 − user level) | 42 |
-| DS:5256 | u8 | `quarter_flag` (set at month end when month % 4 == 0) | — |
+| DS:5256 | u8 | `autosave_pending` (autosave request; producer: month end 212a:0a6d sets it when month % 4 == 0 (months 0, 4, 8); consumer: `office_menu_dispatcher` 18bc:0b5f entry (call at 18bc:0b84) saves `"autosave.man"` via `screen_save_game` 422b:07fe and clears it; formerly documented as `quarter_flag`) | — |
 | DS:5258 | i32[8] | `camp_prices` | — |
 | DS:527e, 52a6, 5278, 29a4 | tables | camp quality, weights, colours, letters | — |
 | string tables | far ptr[] | DS:2818, 28d0, 2358, 28ac, 2868, 2878, 283c, 2858, 28d8, 255c, 256c, 257c, 2534, 2538, 2540, 2548, 2550, 258c, 4c80, 4ce0, 4d44, 4d58, 4d8c, 4dc0, 4e50, 4eb0, 4ec0, 4f64, 292c | — |

@@ -992,7 +992,7 @@ the turn (value of `office_handle_free_click`, 1). Local frame 0x18c bytes.
 
 ```c
 u8 reopen = 0 /*[bp-0x5a]*/, warned = 0 /*[bp-0x56]*/;
-if (DS:5256) { screen_save_game(DS:026b /* "autosave.man" */); DS:5256 = 0; }   // 422b:07fe
+if (DS:5256 /* autosave_pending, set by month end 212a:0a6d */) { screen_save_game(DS:026b /* "autosave.man" */); DS:5256 = 0; }   // 422b:07fe
 FAR:5358 = FAR:304a;
 s32 day_saved = DS:07dc;                         // [bp-0xc]
 screen_fade(0);
@@ -1358,7 +1358,7 @@ the RNG stream when the flag is 0.
 | 4a2a[3] | far ptrs | `"Spiel-Level"`, `""`, `""` |
 | 4a36[4] | far ptrs | `"Endlosspiel"`, `"1-Jahres-Spiel"`, `"3-Jahres-Spiel"`, `"Histor. Start"` |
 | 4d94..4dce | far ptrs | quit dialog `"M|CHTEN SIE"`, `"DAS SPIEL WIRKLICH"`, `"BEENDEN ?"`, `"LEIDER JA"`, `"KEIN GEDANKE"` |
-| 5256 | `00` | autosave request flag |
+| 5256 | `00` | `autosave_pending`, autosave request flag |
 | 9432..9436 | `00 02 08 0f 14` | MANA.DAT player-slot ranges per category (022e) |
 | 9438[4] | `02 05 08 05` | players per category for a new manager |
 | 943c[4] | `13 2c 2a 2d` | "remaining" counters used by `newgame_init_player_pool` |
@@ -1411,7 +1411,7 @@ the RNG stream when the flag is 0.
 | DS:225a[3] | u8 | tier_round | 34 |
 | DS:2280[95] | u8 | week_competition_mask | 50 |
 | DS:4a28 | s8 | difficulty (5 - level) | 42 |
-| DS:5256 | u8 | autosave_pending | — |
+| DS:5256 | u8 | autosave_pending (producer: month end 212a:0a6d sets it when month % 4 == 0 (months 0, 4, 8); consumer: `office_menu_dispatcher` 18bc:0b5f entry (call at 18bc:0b84) saves `"autosave.man"` via `screen_save_game` 422b:07fe and clears it) | — |
 | DS:943c[4] | u8 | pool_take_counter | — |
 | FAR:0008[4] | u8 | competition_round | 37 |
 | FAR:016e | u8 | week_index | 49 |

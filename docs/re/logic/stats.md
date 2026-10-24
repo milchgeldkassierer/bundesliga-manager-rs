@@ -1421,7 +1421,7 @@ savegame.md.
 
 * Save `void screen_save_game(char far *fixed_name)`: callers `fatal_error_exit` (name
   `"ERROR.MAN"`; not for exit code 99, the quit question), `office_menu_dispatcher` 18bc:0b84
-  (autosave `"autosave.man"` at DS:026b when the request DS:5256 is set) and 18bc:1bb2 (menu
+  (autosave `"autosave.man"` at DS:026b when the request DS:5256 `autosave_pending` is set by month end 212a:0a6d; cleared after the save) and 18bc:1bb2 (menu
   "save", empty name DS:0278, only while `DS:05ad == 0`). Port: `crates/bmp/src/game/disk.rs`.
 
   ```c

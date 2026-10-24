@@ -327,7 +327,7 @@ pub fn finance_daily_processing(
 /// Month-end part of [`finance_daily_processing`].
 fn month_end(state: &mut GameState, rng: &mut Rng, m: usize) {
     if lrem(state.month, 4) == 0 {
-        state.quarter_flag = 1;
+        state.autosave_pending = 1;
     }
     let contracts = &mut state.manager_contracts[m];
     if count_down(&mut state.far_0000[2 * m]) {
@@ -1004,7 +1004,7 @@ mod tests {
         assert_eq!(m.fatigue_sum, 47);
         assert_eq!(m.fans, 50 + grow);
         assert_eq!(s.month_balance_sum[0], 0);
-        assert_eq!(s.quarter_flag, 1);
+        assert_eq!(s.autosave_pending, 1);
         assert_eq!(s.far_0000[0], 0);
         assert_eq!(&s.far_4b9a[..4], &[2, 0, 0, 0]);
         assert_eq!(
@@ -1015,7 +1015,7 @@ mod tests {
 
     #[test]
     fn month_end_fans_draw_only_below_95() {
-        for (fans, month, quarter) in [(95u16, 1, 0u8), (u16::MAX, 4, 1)] {
+        for (fans, month, autosave) in [(95u16, 1, 0u8), (u16::MAX, 4, 1)] {
             let mut s = month_end_state();
             s.month = month;
             s.day_of_month = i32::from(DAYS_IN_MONTH[month as usize]);
@@ -1026,7 +1026,7 @@ mod tests {
             finance_daily_processing(&mut s, &mut rng, &mut NumberFormat::default());
             assert_eq!(rng, want);
             assert_eq!(s.managers[0].fans, fans);
-            assert_eq!(s.quarter_flag, quarter);
+            assert_eq!(s.autosave_pending, autosave);
         }
     }
 
