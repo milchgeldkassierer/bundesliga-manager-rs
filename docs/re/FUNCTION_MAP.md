@@ -292,7 +292,7 @@ Texts in quotes are the German in-game strings the function references, reproduc
 | 1000:243f | *credit_offer_text* | game-finance | "Kredit zu x% aufnehmen" text/DM per week display | medium | 750 | 10 |
 | 1000:272d | *sponsor_offer_dialog* | game-finance | sponsor subsidy offer ("NEHMEN SIE EINEN SPONSOR-ZUSCHUSS VON ... DM AN?") | medium | 360 | 1 |
 | 1000:2895 | *fixture_info_helper* | game-stats | helper for opponent/fixture info list | low | 47 | 2 |
-| 1000:28c4 | *screen_fixture_results* | game-stats | fixture list with Hin/Rueck results (GEGNER, PLATZ, DATUM, ERGEBNIS) | medium | 2117 | 1 |
+| 1000:28c4 | `screen_team_fixtures` | game-stats | "RESTPROGRAMM": one half of a club's league fixtures with results or dates (finance.md §3.10); port `tables::screen_team_fixtures` | high | 2117 | 1 |
 | 1310:000a | *matchday_header* | game-match | match-day header drawing | low | 240 | 2 |
 | 1310:00fa | `FUN_1310_00fa` | game-match | called by 1310:01f2, match_penalty_shootout, championship_winner_message; draws UI | low | 248 | 4 |
 | 1310:01f2 | `FUN_1310_01f2` | game-match | called by matchday_title_dfb_cup, matchday_title_european_cup, matchday_title_relegation; draws UI | low | 111 | 7 |
@@ -428,7 +428,7 @@ Texts in quotes are the German in-game strings the function references, reproduc
 | 24a4:23da | `FUN_24a4_23da` | game-stats | called by screen_transfer_market; uses RNG | low | 229 | 2 |
 | 24a4:24bf | `FUN_24a4_24bf` | game-stats | called by random_weekly_events, 24a4:1798; uses RNG | low | 201 | 4 |
 | 24a4:2588 | `FUN_24a4_2588` | game-stats | called by random_weekly_events | low | 130 | 1 |
-| 24a4:260a | `FUN_24a4_260a` | game-stats | called by season_end_messages; draws UI | low | 44 | 3 |
+| 24a4:260a | `office_redraw_with_header` | game-stats | marble background, copy-protection trap, manager header (season.md §4.8) | high | 44 | 3 |
 | 24a4:2636 | `FUN_24a4_2636` | game-stats | called by finance_weekly_processing, 24a4:2b15, screen_statistics | low | 492 | 3 |
 | 24a4:2822 | `FUN_24a4_2822` | game-stats | called by finance_weekly_processing, 24a4:2b15, screen_statistics | low | 755 | 3 |
 | 24a4:2b15 | `FUN_24a4_2b15` | game-stats | no direct callers found (reached via unrecovered switch case or pointer) | low | 165 | 0 |
@@ -451,7 +451,7 @@ Texts in quotes are the German in-game strings the function references, reproduc
 | 27c2:1bf0 | *match_pairing_text* | game-match | "X GEGEN Y" text | medium | 219 | 1 |
 | 27c2:1ccb | *screen_cup_matches* | game-match | Pokalspiele / Relegation results (n.V., n.E.) | medium | 2690 | 6 |
 | 27c2:274d | *championship_winner_message* | game-season | "Deutsche Meisterschaft ... gewinnt die/den" | medium | 542 | 3 |
-| 2a58:000c | `FUN_2a58_000c` | game-match | called by season_main_loop; draws UI; mouse input | low | 145 | 1 |
+| 2a58:000c | `game_end_screen` | game-season | "ENDE" on black, waits for a click (season.md §3.4) | high | 145 | 1 |
 | 2a58:009d | `FUN_2a58_009d` | game-match | called by match_penalty_shootout, match_engine_substitutions, 2a58:042f; draws UI | low | 433 | 3 |
 | 2a58:024e | `FUN_2a58_024e` | game-match | called by 2a58:042f, match_ticker_events; draws UI | low | 258 | 3 |
 | 2a58:0350 | `FUN_2a58_0350` | game-match | called by 2a58:042f; draws UI | low | 223 | 2 |
@@ -555,7 +555,7 @@ Texts in quotes are the German in-game strings the function references, reproduc
 | 4091:146c | *message_broadcast* | ui | "An Alle:" broadcast message to all managers | low | 694 | 7 |
 | 4091:1722 | *ui_wait_with_highlight* | ui | highlight rect until click/abort | medium | 149 | 18 |
 | 4091:17b7 | *find_player_by_id* | game-squad | search squads 0..4 for player id; returns record pointer | medium | 165 | 2 |
-| 4091:185c | *ui_draw_manager_header* | ui | draw current manager header (name/team) | low | 329 | 3 |
+| 4091:185c | `ui_draw_manager_header` | ui | portrait, name and crest of the current manager at the top right (season.md §4.8) | high | 329 | 3 |
 | 422b:0006 | *disk_error_dialog* | fileio | "Achtung! Fehler beim Diskettenzugriff! Vorgang abgebrochen." | medium | 65 | 4 |
 | 422b:0047 | *savegame_write_encrypted* | format-loader | write block XOR/add-encrypted with rolling key DS:57cf (key -= 0x29 per byte), checksum DS:56dc (MAN agent owns) | high | 248 | 64 |
 | 422b:013f | *savegame_read_decrypted* | format-loader | read block and decrypt (inverse of 422b:0047) (MAN agent owns) | high | 145 | 64 |

@@ -1,0 +1,43 @@
+# Fixture generator of the season_end scenario (bmp run --script syntax, milliseconds):
+# loads 2021-AUG.MAN (21 January 1968), switches automatic play on with a click on (1, 1),
+# lets the season run to its end and stops automatic play with the pointer on (0, 0) in the
+# office of the season end ("SAISONENDE", 19 May 1968), then saves the game as 00SAISON.MAN
+# (the name sorts first in the file selectors). Run with --time 1000. The stop time depends
+# on the port's timing: when the generator is changed, check that the save shows the office
+# of the season end, and capture fixtures and references again together.
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 98
+wait 500
+click 40 98
+wait 1000
+move 1 1
+wait 100
+click 1 1
+wait 100
+move 160 120
+wait 9810
+move 0 0
+wait 2000
+move 160 120
+wait 500
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 174
+wait 100
+click 107 174
+wait 1000
+move 100 178
+wait 100
+click 100 178
+wait 250
+type 00saison
+wait 250
+key enter
+wait 1000

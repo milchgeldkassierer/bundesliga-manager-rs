@@ -559,7 +559,13 @@ Caller: season_main_loop. No RNG.
 `void game_end_screen(u8 hang)`: `ui_fill_rect(rp,0,0,319,239,0)`, `ui_set_font(rp,3)`,
 `ui_draw_text_centered_shadow(rp, "ENDE" (DS:537e), 8, 319, 0x73, 1, 0xff)`,
 `input_wait_click(FAR:6dc0)`; then `while (hang) ;` (endless loop when the argument is nonzero).
-Caller: season_main_loop (with 0, then `fatal_error_exit(99)`).
+Caller: season_main_loop (with 0, then `fatal_error_exit(99)`). Port: `season_end::game_end_screen`;
+the game-over path writes the table to `HIGH.XY`, shows `highscore_screen(0)` and this screen
+(`ScreenSeason::game_end`). The candidate buffer `FAR:4cfe` keeps its bytes between the
+high-score calls (`highscore_build_entry` copies the names with `strcpy`, the sorts swap through
+it), so `HIGH.XY` carries the tails of earlier names after the NULs (verified: `HIGH.12` of the
+one-year game loaded after an endless game's season end holds `"ADI\0ER"` and
+`"1.FC N\x9aRNBERG\0NGEN"`). Port: `Runtime::highscore_candidate`.
 
 ### 3.5 `match_forfeit_penalty` 2a58:2051
 
@@ -1305,6 +1311,20 @@ the "Saisonende" report, the "Trennungen" ageing/transfer-back pass (manager 0 o
 retirement/regeneration pass. After that it resets the season counters, recomputes DS:05fe, runs the
 "Vertragsverhandlungen" contract negotiations and calls `season_rebalance_player_clubs`. Everything
 below was checked against the disassembly (`out/season/1cb5_0012.asm`).
+
+Screens (port `season_end::season_end_event`): `office_redraw_with_header(title)` 24a4:260a is
+`office_show_cached_background()`, `copy_protection_penalty(title, 0, 0, 0)` (the title is not
+drawn; one `random_range(0, 100)` only when the protection was not passed) and
+`ui_draw_manager_header()` 4091:185c: `ui_draw_button(rp, 0x109, 5, 0x2a, 0x2a, &tmp, 0, 8)`,
+`blit_bitmap(FAR:2f24, m*0x29, 0, rp, 0x10a, 6, 0x28, 0x28, 0xc0)` (portrait), font 1,
+`ui_draw_text_centered_shadow(rp, M[m].name, 0x113, 0x127, 0x39, 0, 1)`,
+`ui_draw_button(rp, 0x109, 0x3c, 0x2a, 0x29, &tmp, 0, 0)`,
+`blit_bitmap(FAR:5354, m*0x29, 0, rp, 0x10b, 0x3e, 0x28, 0x26, 0xc0)` (crest). The "Trennungen"
+screen is that header alone; it stays up for the retirement messages and the 70-tick delay.
+`contract_negotiation(sl, 1L, 0, 0)` is the single mode (transfer.md §4.10) with the late-season
+rule (`day_counter > 0x141`): "NEUER VERTRAG" with nothing entered counts as "ABBRUCH". In DOSBox
+`dialog_okay` puts the pointer back where it was, so a scripted click without host motion lands
+there (the scenario `season_end` moves the host pointer before every click).
 
 Locals: `hist` ([BP-0x88], i16) = `min((i16)DS:07e2, 0x31)` (signed compare); `any_tier[3]` ([BP-6], i8)
 and `tier_cnt[4]` ([BP-0xe], i8), all zeroed; `y` ([BP-0x6c], i16); `yp` ([BP-0x7e], i16, also holds

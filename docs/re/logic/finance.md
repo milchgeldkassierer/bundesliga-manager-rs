@@ -825,21 +825,74 @@ return w - 1;`. Callers 1000:28c4, `screen_fixtures` 3a41:120a.
 
 ### 3.10 1000:28c4 `screen_team_fixtures` (was FUN_1000_28c4)
 
-`u8 screen_team_fixtures(u8 team, u8 right, i8 offset)`; caller 3a41:000e (opponent info). Returns the
-clicked icon id (0..2: `REICHT MIR`, `INFO`, round toggle). Read-only except two side effects below.
-`T = league_of_rank(team) >> 1` (27c2:1bb5), `round = DS:225a[T] + offset`, `second = round >
-DS:2262[T] >> 1`. Frame x `SI = right ? 0x5b : 0x59`, `DI = 0x37`:
-`ui_fill_rect(SI+1, DI+1, SI+0xdf, DI+0xad, 8)`; title `("R}ck" or "Hin") + "spiele " + club_name(team)`
-(word order swapped when `cur_mul == 3`) centered SI..SI+0xe0 at y 0x3f colour 0xb; line y 0x41;
-icons `"REICHT MIR"` (SI+4, 0xd6, id 10), `"INFO"` (SI+0x54), `"HINRUNDE "`/`"R]CKRUNDE "` (SI+0xa4)
-(the other half); headers `GEGNER`, `PLATZ (ST[RKE)`, `DATUM` (centered), `ERGEBNIS` at y 0x48. For each
-round of the half, after `league_team_range(T, r)` (3a41:10e3), every pair `FAR:4b5e[20T + 2j]` /
-`+1` containing `team` prints `"(H) "`/`"(A) "` + opponent name, `3a41:1d18` rank/strength, and either the
-result `FAR:6dc8[20*(0x26T + r) + 2j (+1)]` (`a:b`) or, if not played (`== 0x1e`) or in the future, the
-date: the week comes from `fixture_week_of_nth_match(league_bit, r)` (or the cup table `FAR:5715`), then
-**`matchday_refresh(week)` (1310:1190) is called, which overwrites the date globals `FAR:2eba`/`FAR:2e8e`**,
-and `day + "." + (month+1) + "."` is printed. Clicking icon 3 toggles the half; clicking 0..2 clears the
-frame, calls `league_team_range(T, DS:225a[T])` and returns the id.
+`u8 screen_team_fixtures(u8 team, u8 right, i8 offset)`; caller `screen_opponent_info` 3a41:0ed3
+("RESTPROGRAMM", only when three icons are registered) with its own arguments `(t, from_list, arg)`.
+It returns the clicked icon: 1 `REICHT MIR` (the caller then leaves the info too), 2 `INFO`, or 0
+for a left click on no icon (the caller redraws the info for anything but 1). Checked against the
+disassembly. Port: `tables::screen_team_fixtures`.
+
+```c
+code = league_tier_of_team(team);                  // 27c2:1bb5: 1, 2 or 4 ([BP-0xde])
+T = code >> 1; cur = (u8)(DS:225a[T] + offset);    // [BP-2]
+second = (u16)cur > (i16)(DS:2262[T] >> 1);         // [BP-4]
+u8 week;                                            // [BP-0x70], never initialised
+REDRAW:
+SI = right ? 0x5b : 0x59; DI = 0x37;
+ui_fill_rect(rp, SI+1, DI+1, SI+0xdf, DI+0xad, 8);
+ui_set_font(rp, 1);
+buf = (second ? "R}ck" : "Hin") + "spiele " + club_name(team);   // DS:2934/2938, DS:293c;
+                                                    // DS:2252 == 3 && DS:2254 == 0 swaps the parts
+ui_draw_text_centered_shadow(rp, buf, SI, SI+0xe0, DI+8, 0xb, 0);
+ui_draw_line(rp, SI+1, DI+0xa, SI+0xdf, DI+0xa, 0xb);
+DS:07b3 = 0; ui_set_font(rp, 2);
+ui_register_icon_slot(SI+4,    DI+0x9f, "REICHT MIR", 0xa);
+ui_register_icon_slot(SI+0x54, DI+0x9f, "INFO", 0xa);
+ui_register_icon_slot(SI+0xa4, DI+0x9f, DS:292c[second] /* "R]CKRUNDE " / "HINRUNDE " */, 0xa);
+DS:079c = 1; DI += 0x11; SI += 5;
+ui_draw_text_at(rp, "GEGNER", SI+0xa, DI, 1);
+ui_draw_text_at(rp, "PLATZ (ST[RKE)", SI+0x60, DI, 1);
+ui_draw_text_centered_shadow(rp, "DATUM", SI+0xaa, SI+0xaa, DI, 1, 0xff);
+ui_draw_text_at(rp, "ERGEBNIS", SI+0xb7, DI, 1);
+ui_draw_line(rp, SI-4, DI+2, SI+0xda, DI+2, 1);
+DI += 9;
+half = DS:2262[T] >> 1;
+for (r = half*second + 1; r < half + half*second + 1; r++) {          // u8
+    fixtures_build_round_pairings(T, r);                               // 3a41:10e3
+    for (j = 0; j < DS:225e[T]; j += 2) {
+        h = FAR:4b5e[20T + j]; a = FAR:4b5e[20T + j + 1];
+        if (h == team)      { draw "(H) " + club_name(a) at (SI, DI) colour 1; opp = a; c = 1; }
+        else if (a == team) { draw "(A) " + club_name(h) at (SI, DI) colour 2; opp = h; c = 2; }
+        else continue;
+        ui_draw_text_at(rp, format_position_strength(opp, T, 0), SI+0x69, DI, c);   // 3a41:1d18
+        res = &FAR:6dc8[20*(0x26T + r) + j];
+        if (res[0] == 0x1e || cur <= r) {
+            if (cur > r) {                          // a match not played: its new day
+                for (k = 0; k < 20; k++) { e = &FAR:5715[5k];
+                    if (e[1] == r && e[2] == T && 2*e[3] == j) week = e[0]; }
+            } else week = fixture_week_of_nth_match(code, r);           // 1000:2895
+            matchday_refresh(week);                 // 1310:1190: sets FAR:2eba / FAR:2e8e
+            ui_draw_text_centered_shadow(rp, fmt(FAR:2eba) + "." + fmt(FAR:2e8e + 1) + ".",
+                                         SI+0xac, SI+0xac, DI, c, 0xff);
+        } else {                                    // own goals first
+            o = (c == 2);
+            set_color(c); move_to(SI+0xbd, DI); draw(fmt((i8)res[o]));
+            move_to(SI+0xc2, DI); draw(":"); move_to(SI+0xc7, DI); draw(fmt((i8)res[1-o]));
+        }
+        DI += 7;
+    }
+}
+for (;;) {
+    input_poll_mouse(FAR:6dc0); hit = ui_hit_icon_slot(); if (hit > 3) hit = 0;
+    if (FAR:2ea2 == 1 && hit == 3) { second ^= 1; goto REDRAW; }
+    if (FAR:2ea2 == 1) {                            // hit 0..2
+        ui_fill_rect(rp, SI+1, DI+1, SI+0xdf, DI+0xad, 8);    // SI, DI reset first
+        fixtures_build_round_pairings(T, DS:225a[T]);
+        return hit;
+    }
+}
+```
+
+The dates leave the date globals `FAR:2eba`/`FAR:2e8e` at the last date shown (see §6 note 6).
 
 ## 4. Monthly income and expenses (segment 24a4, spec'd here; Ghidra names `finance_weekly_income` / `finance_weekly_expenses`, set by another agent; they run **monthly**, not weekly)
 

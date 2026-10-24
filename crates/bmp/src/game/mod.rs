@@ -13,6 +13,7 @@ pub mod newspaper;
 pub mod office;
 pub mod scorers;
 pub mod season;
+pub mod season_end;
 pub mod squad_screen;
 pub mod stadium;
 pub mod start_menu;

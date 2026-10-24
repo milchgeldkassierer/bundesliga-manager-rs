@@ -14,6 +14,11 @@
 # The port runs on a temporary copy of $BMP_DATA, so scenarios may save. A
 # "# compare-file: <name>" line compares the file <name> the port wrote with the
 # one the original wrote (fetched into the reference directory) byte for byte.
+# A "# fixture: <generator> <file> [<seed> [<seed2>]]" line names a file (a save) that both
+# games start with: the port runs tests/visual/<generator> (with the seeds) on a fresh copy
+# of $BMP_DATA once and keeps the <file> it wrote in $BMP_HOLDOUT/fixtures/<scenario>/; that
+# file is then copied into the game directories of both the port and the DOSBox capture.
+# Fixtures and references belong together: delete both to regenerate them.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 DATA=${BMP_DATA:?set BMP_DATA to the game directory}
@@ -27,14 +32,26 @@ fi
 status=0
 for name in "${names[@]}"; do
   ref="$HOLDOUT/visual/$name"
+  fix="$HOLDOUT/fixtures/$name"
+  while read -r gen file fseed fseed2; do
+    [ -f "$fix/$file" ] && continue
+    mkdir -p "$fix"
+    gdata=$(mktemp -d); gout=$(mktemp -d)
+    cp -r "$DATA"/. "$gdata"
+    "$BIN" --data "$gdata" run --script "tests/visual/$gen" --shots "$gout" \
+      ${fseed:+--time "$fseed"} ${fseed2:+--time2 "$fseed2"} </dev/null >/dev/null 2>&1 || true
+    cp "$gdata/$file" "$fix/$file" && echo "fixture $name/$file generated"
+    rm -rf "$gdata" "$gout"
+  done < <(sed -n 's/^# fixture: *//p' "tests/visual/$name.port.txt")
   if [ ! -d "$ref" ]; then
     cycles=$(sed -n 's/^# cycles: *//p' "tests/visual/$name.dosbox.txt")
-    DOSBOX_CYCLES=${cycles:-${DOSBOX_CYCLES:-max}} \
+    DOSBOX_CYCLES=${cycles:-${DOSBOX_CYCLES:-max}} BMP_DOS_EXTRA=$([ -d "$fix" ] && echo "$fix") \
       tools/dosbox-capture.sh "$ref" "tests/visual/$name.dosbox.txt"
   fi
   out=$(mktemp -d)
   data=$(mktemp -d)
   cp -r "$DATA"/. "$data"
+  [ -d "$fix" ] && cp -r "$fix"/. "$data"
   seed=$(sed -n 's/^# seed: *\([0-9]*\).*/\1/p' "tests/visual/$name.port.txt")
   seed2=$(sed -n 's/^# seed2: *\([0-9]*\).*/\1/p' "tests/visual/$name.port.txt")
   "$BIN" --data "$data" run --script "tests/visual/$name.port.txt" --shots "$out" \

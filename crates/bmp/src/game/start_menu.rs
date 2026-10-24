@@ -24,7 +24,7 @@ pub struct Pictures {
 
 impl Pictures {
     pub fn load(host: &mut Host) -> Result<Self, String> {
-        let crest_cache = host.blank_bitmap(0xa4, 0x26, 5);
+        let crest_cache = host.blank_bitmap(0xa4, 0x26, 0);
         let portraits = host.load_picture(0)?;
         Ok(Self {
             portraits,
@@ -584,7 +584,7 @@ pub fn start_menu_new_or_load(
     let n0: u8 = 0;
     host.set_font(2);
     let hdr = host.load_picture(4)?;
-    let strip = host.blank_bitmap(0x135, 0x26, 5);
+    let strip = host.blank_bitmap(0x135, 0x26, 0);
     let frame = host.load_picture(0x22)?;
     let slot_frame = host.load_picture(0x23)?;
     let mut s = Screen {

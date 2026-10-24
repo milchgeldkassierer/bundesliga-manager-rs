@@ -12,7 +12,7 @@ use bmp_game::season::{GameOver, SeasonEndEvent, SeasonUi, SpecialDate, Title};
 use bmp_game::state::GameState;
 
 use super::cup_screens::DrawBoard;
-use super::disk::{HighscoreMode, highscore_load, highscore_screen};
+use super::disk::{HighscoreMode, highscore_load, highscore_save, highscore_screen};
 use super::live_match::LiveView;
 use super::office::{self, OfficeBitmaps};
 use super::start_menu::Pictures;
@@ -188,17 +188,22 @@ impl SeasonUi for ScreenSeason<'_> {
         highscore_load(&self.host.data, state).0
     }
 
-    fn highscore_insert(&mut self, state: &GameState, rng: &mut Rng) {
+    fn highscore_insert(&mut self, state: &GameState, rt: &mut Runtime, rng: &mut Rng) {
         let mut st = state.clone();
-        std::mem::swap(&mut self.session.rng, rng);
-        let r = highscore_screen(self.host, self.session, &mut st, HighscoreMode::Insert);
-        std::mem::swap(&mut self.session.rng, rng);
+        let r = self.lend(rng, rt, |ui| {
+            highscore_screen(ui.host, ui.session, &mut st, HighscoreMode::Insert)
+        });
         self.keep(r);
     }
 
-    fn game_end(&mut self, _state: &GameState, _table: &HighScoreTable) -> Result<(), Quit> {
-        // TODO(#83): write HIGH.XY, highscore_screen(0) and game_end_screen 2a58:000c.
-        self.check()
+    /// Origin: BMMAIN.EXE 2a58:3176 (season_main_loop, 2a58:432a..4341)
+    fn game_end(&mut self, state: &GameState, table: &HighScoreTable) -> Result<(), Quit> {
+        self.check()?;
+        highscore_save(&self.host.data, state, table);
+        let mut st = state.clone();
+        highscore_screen(self.host, self.session, &mut st, HighscoreMode::Show)?;
+        let auto = self.session.auto_play;
+        super::season_end::game_end_screen(self.host, auto)
     }
 
     fn ask_draw(&mut self, cup: u8) -> bool {
@@ -305,19 +310,40 @@ impl SeasonUi for ScreenSeason<'_> {
         self.keep(r);
     }
 
-    fn season_end(&mut self, _state: &GameState, _event: SeasonEndEvent<'_>) {
-        // TODO(#83): the season-end reports, dialogs and messages.
+    fn season_end(&mut self, state: &GameState, event: SeasonEndEvent<'_>) {
+        self.sync_format();
+        if !self.quitting() {
+            let r = super::season_end::season_end_event(self, state, event);
+            self.keep(r);
+        }
     }
 
+    /// `contract_negotiation(slot, 1, 0, 0)`: the single mode, whose terms the season end
+    /// decides by the late-season rules.
+    ///
+    /// Origin: BMMAIN.EXE 3277:2a8f (contract_negotiation)
     fn contract_negotiation(
         &mut self,
-        _state: &mut GameState,
+        state: &mut GameState,
         _rt: &Runtime,
-        _rng: &mut Rng,
-        _slot: u8,
+        rng: &mut Rng,
+        slot: u8,
     ) -> bool {
-        // TODO(#83): contract_negotiation 3277:2a8f in mode 1.
-        false
+        self.sync_format();
+        if self.quitting() {
+            return false;
+        }
+        std::mem::swap(&mut self.session.rng, rng);
+        let r =
+            super::negotiation::contract_negotiation_single(self.host, self.session, state, slot);
+        std::mem::swap(&mut self.session.rng, rng);
+        match r {
+            Ok(signed) => signed,
+            Err(q) => {
+                self.quit = Some(q);
+                false
+            }
+        }
     }
 
     fn news_env(&self) -> NewsEnv<'_> {

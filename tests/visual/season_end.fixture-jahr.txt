@@ -1,0 +1,62 @@
+# Fixture generator of the season_end scenario (bmp run --script syntax, milliseconds):
+# starts a new one-year game (manager "ADI", 1.FC Nürnberg, level 2, "1-Jahres-Spiel"),
+# answers the four cup draw questions with "KEIN DANKE", switches automatic play on with a
+# click on (1, 1), lets the season run to its end and stops automatic play with the pointer
+# on (0, 0) in the office of the season end (19 May 1993), then saves the game as
+# 01JAHR.MAN. Run with --time 45817 --time2 45841. The stop time depends on the port's
+# timing and the save on the season's random draws: when either changes, check that the save
+# shows the office of the season end, and capture fixtures and references again together.
+# (The cached fixture of the references was written before the goal scenes were ported, so
+# this generator now writes a different save of the same day.)
+key space
+wait 500
+click 160 120
+wait 4000
+click 40 220
+wait 200
+type adi
+key enter
+wait 200
+click 40 120
+wait 300
+rclick 160 120
+wait 500
+click 192 160
+wait 300
+rclick 160 120
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+wait 2000
+move 1 1
+wait 100
+click 1 1
+wait 100
+move 160 120
+wait 1368888
+move 0 0
+wait 2000
+move 160 120
+wait 500
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 174
+wait 100
+click 107 174
+wait 1000
+move 100 178
+wait 100
+click 100 178
+wait 250
+type 01jahr
+wait 250
+key enter
+wait 1000

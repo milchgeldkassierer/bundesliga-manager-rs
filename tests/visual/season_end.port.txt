@@ -1,0 +1,213 @@
+# Port side of the season_end scenario (bmp run --script syntax, milliseconds).
+# Two fixtures, written by the port itself (tools/visual-check.sh, "# fixture:"), start the
+# scenario at the season end: 00SAISON.MAN is the office of the season end of 1967/68
+# (2021-AUG.MAN played on in automatic play), 01JAHR.MAN the one of a new one-year game.
+# Load 00SAISON.MAN, look at the remaining fixtures ("RESTPROGRAMM" of the club info of the
+# 2. Bundesliga table, both halves, all played) and end the turn: the "Saisonende" report
+# (15th of the 2. Bundesliga, licence refused, a youth player, the joke), the contract talks
+# of the four expiring contracts (ROTTLER signs for two seasons, KLEIN, BITTENGEL and
+# KÜSTERS leave for their fees) and the first office of 1968/69 with the fixtures of a club
+# (dates to come) and back to the club info; then load 01JAHR.MAN from the office and end
+# the turn: the high-score table of the finished game and "ENDE". The HIGH.12 the port
+# writes must equal the original's.
+# Seed 3271 was recovered from the reference's report and first fixtures frame (searched
+# around the seed expected from the capture time; the only one that matches).
+# Known difference: r2-fixtures (99.92 %), r2-info and r2-info-again (99.99 %): the club
+# strengths of the new season differ by up to 3 points (DYNAMO DRESDEN 66 instead of 64);
+# everything before the rollover, the new fixture list and the high scores match, so one of
+# the steps after the contract talks (season_rebalance_player_clubs, the summer break or the
+# loop top of the new season) still differs from the original (#31).
+# fixture: season_end.fixture-saison.txt 00SAISON.MAN 1000
+# fixture: season_end.fixture-jahr.txt 01JAHR.MAN 45817 45841
+# seed: 3271
+# compare-file: HIGH.12
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+shot s01-office
+move 30 173
+wait 100
+click 30 173
+wait 500
+move 107 174
+wait 100
+click 107 174
+wait 1000
+move 60 43
+wait 100
+click 60 43
+wait 500
+shot r1-info
+move 203 220
+wait 100
+click 203 220
+wait 1000
+shot r1-fixtures
+move 281 220
+wait 100
+click 281 220
+wait 1000
+shot r1-second-half
+move 121 220
+wait 100
+click 121 220
+wait 500
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot r1-office
+move 280 75
+wait 100
+click 280 75
+wait 2000
+shot s02-report
+move 191 165
+wait 100
+click 191 165
+wait 2000
+shot s03
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s04
+move 191 165
+wait 100
+click 191 165
+wait 4500
+shot s05-contracts
+move 100 214
+wait 100
+click 100 214
+wait 300
+type 2
+key enter
+wait 500
+shot s06-typed
+move 212 207
+wait 100
+click 212 207
+wait 1000
+shot s07-answer
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s08
+move 191 165
+wait 100
+click 191 165
+wait 500
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s09-next
+move 212 222
+wait 100
+click 212 222
+wait 1000
+shot s10-leaves
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s11-fee
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s12-next
+move 212 222
+wait 100
+click 212 222
+wait 1000
+move 191 165
+wait 100
+click 191 165
+wait 1000
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s13-next
+move 212 222
+wait 100
+click 212 222
+wait 1000
+move 191 165
+wait 100
+click 191 165
+wait 1000
+move 191 165
+wait 100
+click 191 165
+wait 4000
+shot s14-office
+move 30 173
+wait 100
+click 30 173
+wait 500
+move 107 174
+wait 100
+click 107 174
+wait 1000
+move 60 43
+wait 100
+click 60 43
+wait 500
+shot r2-info
+move 203 220
+wait 100
+click 203 220
+wait 1000
+shot r2-fixtures
+move 203 220
+wait 100
+click 203 220
+wait 500
+shot r2-info-again
+move 121 220
+wait 100
+click 121 220
+wait 500
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot r2-office
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 132
+wait 100
+click 107 132
+wait 1000
+shot t01-load
+move 40 90
+wait 100
+click 40 90
+wait 500
+click 40 90
+wait 2000
+shot t02-office
+move 280 75
+wait 100
+click 280 75
+wait 3000
+shot t03-highscores
+move 160 120
+wait 100
+click 160 120
+wait 1000
+shot t04-end

@@ -22,6 +22,7 @@
 # BMP_ARGS is passed to BMP.BAT (e.g. 0 = no sound).
 # The game runs from a fresh temporary copy of $BMP_DOS_DIR (default ~/Apps/bmp-dos/game), so
 # neither real saves nor the files a scenario writes (saves, high scores) persist between runs.
+# BMP_DOS_EXTRA names a directory whose files are copied into that copy first (fixture saves).
 set -euo pipefail
 OUT=$(realpath -m "$1"); SCRIPT=$(realpath "$2")
 DOSBOX=${DOSBOX:-$(ls -d "$HOME"/Apps/dosbox-staging*/ | head -1)dosbox}
@@ -29,6 +30,7 @@ GAME=${BMP_DOS_DIR:-$HOME/Apps/bmp-dos/game}
 DISP=${CAPTURE_DISPLAY:-:77}
 WORK=$(mktemp -d); mkdir -p "$OUT" "$WORK/cap"
 cp -r "$GAME" "$WORK/game"; GAME="$WORK/game"
+if [ -n "${BMP_DOS_EXTRA:-}" ]; then cp -r "$BMP_DOS_EXTRA"/. "$GAME"; fi
 MAPPER=
 if [ "${DOSBOX_AUDIO:-0}" = 1 ]; then
   sed -e 's/ *"stick_[^"]*"//g' -e '/^hand_decfskip/d' -e 's/^hand_caprawopl .*/hand_caprawopl "key 64 mod1"/' \

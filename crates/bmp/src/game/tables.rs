@@ -944,7 +944,7 @@ pub fn screen_opponent_info(
     t: u8,
     side: u8,
     from_list: bool,
-    _arg: u8,
+    arg: u8,
 ) -> Run<()> {
     let x0: i16 = 0x59 + 2 * i16::from(from_list);
     let y0: i16 = 0x37;
@@ -997,9 +997,9 @@ pub fn screen_opponent_info(
                 buttons.register(host, x0 + 0xa4, y0 + 0x9f, INFO_SHOW, show);
             }
             if ev == LEFT_DOWN && hit == 2 && buttons.count() != 2 {
-                // TODO(#15): screen_team_fixtures 1000:28c4 ("RESTPROGRAMM",
-                // finance.md §3.10); the original redraws the info unless it
-                // returns 1.
+                if screen_team_fixtures(host, state, t, from_list, arg as i8)? == 1 {
+                    break 'draw;
+                }
                 continue 'draw;
             }
             if ev == LEFT_DOWN && hit == 1 {
@@ -1009,6 +1009,157 @@ pub fn screen_opponent_info(
     }
     host.ui.redraw_buttons(&mut host.g, &mut host.rp, slot, 0);
     Ok(())
+}
+
+/// `DS:292c`, `DS:2934..2956`, `DS:2958`, `DS:295c`: the texts of the remaining fixtures.
+const HALF_ICONS: [&[u8]; 2] = [b"R]CKRUNDE ", b"HINRUNDE "];
+const HALF_TITLES: [&[u8]; 2] = [b"Hin", b"R}ck"];
+const FIXTURES_TITLE: &[u8] = b"spiele ";
+const FIXTURES_INFO: &[u8] = b"INFO";
+const FIXTURES_HEADERS: [&[u8]; 4] = [b"GEGNER", b"PLATZ (ST[RKE)", b"DATUM", b"ERGEBNIS"];
+const HOME_AWAY: [&[u8]; 2] = [b"(H) ", b"(A) "];
+
+/// The rounds `start..end` of the half shown by [`screen_team_fixtures`]: the first or the
+/// second half of a league's `rounds`.
+fn fixture_half(rounds: i8, second: bool) -> (u8, u8) {
+    let half = (rounds >> 1) as u8;
+    let start = half.wrapping_mul(u8::from(second)).wrapping_add(1);
+    (start, half.wrapping_add(start))
+}
+
+/// "RESTPROGRAMM" of the club info: the matches of club `t` in one half of the season (the
+/// half of round `DS:225a + offset`) with the opponent, its place and strength, and the
+/// result, or the date of a match still to come (a rescheduled match the date of its new
+/// day). Returns the clicked icon: 1 "REICHT MIR", 2 "INFO", or 0 for a click elsewhere; the
+/// third icon switches the half. Like the original, the dates leave the date globals at the
+/// last date shown.
+///
+/// Origin: BMMAIN.EXE 1000:28c4 (screen_team_fixtures)
+pub fn screen_team_fixtures(
+    host: &mut Host,
+    state: &mut GameState,
+    t: u8,
+    right: bool,
+    offset: i8,
+) -> Run<u8> {
+    let code = league_tier_of_team(t);
+    let tier = usize::from(code >> 1);
+    let cur = state.competition_rounds[tier].wrapping_add(offset as u8);
+    let rounds = LEAGUE_ROUND_COUNT[tier] as i8;
+    let mut second = i16::from(cur) > i16::from(rounds >> 1);
+    let x0: i16 = 0x59 + 2 * i16::from(right);
+    let y0: i16 = 0x37;
+    // [BP-0x70]: the week of the last date, kept when a rescheduled match is not found.
+    let mut week: u8 = 0;
+    loop {
+        fill(host, x0 + 1, y0 + 1, x0 + 0xdf, y0 + 0xad, 8);
+        host.set_font(1);
+        // DS:2252 == 3 && DS:2254 == 0 (another version) puts "spiele " first.
+        let mut title = HALF_TITLES[usize::from(second)].to_vec();
+        cat(&mut title, FIXTURES_TITLE);
+        cat(&mut title, &club_name(state, t));
+        centered(host, &title, x0, x0 + 0xe0, y0 + 8, 0xb, 0);
+        line(
+            host,
+            x0 + 1,
+            (y0 + 0xa) as u8,
+            x0 + 0xdf,
+            (y0 + 0xa) as u8,
+            0xb,
+        );
+        let mut buttons = TextButtons::default();
+        host.set_font(2);
+        buttons.register(host, x0 + 4, y0 + 0x9f, INFO_EXIT, 0xa);
+        buttons.register(host, x0 + 0x54, y0 + 0x9f, FIXTURES_INFO, 0xa);
+        buttons.register(
+            host,
+            x0 + 0xa4,
+            y0 + 0x9f,
+            HALF_ICONS[usize::from(second)],
+            0xa,
+        );
+        host.number_pad = 1;
+        let x = x0 + 5;
+        let mut y = y0 + 0x11;
+        text_at(host, FIXTURES_HEADERS[0], x + 0xa, y, 1);
+        text_at(host, FIXTURES_HEADERS[1], x + 0x60, y, 1);
+        centered(host, FIXTURES_HEADERS[2], x + 0xaa, x + 0xaa, y, 1, 0xff);
+        text_at(host, FIXTURES_HEADERS[3], x + 0xb7, y, 1);
+        line(host, x - 4, (y + 2) as u8, x + 0xda, (y + 2) as u8, 1);
+        y += 9;
+        let (start, end) = fixture_half(rounds, second);
+        let mut r = start;
+        while r < end {
+            fixtures_build_round_pairings(state, tier, r);
+            let mut j = 0usize;
+            while j < usize::from(LEAGUE_TEAM_COUNT[tier]) {
+                let [h, a] = state.matchday_pairings[tier][j / 2];
+                j += 2;
+                let (opp, side) = if h == t {
+                    (a, 1u8)
+                } else if a == t {
+                    (h, 2u8)
+                } else {
+                    continue;
+                };
+                let mut buf = HOME_AWAY[usize::from(side - 1)].to_vec();
+                cat(&mut buf, &club_name(state, opp));
+                text_at(host, &buf, x, y, side);
+                let mut fmt = host.number_format();
+                let s = format_position_strength(state, opp, false, &mut fmt);
+                host.number_pad = fmt.pad_width;
+                text_at(host, &s, x + 0x69, y, side);
+                let res = round_result(state, tier, r as i8, j - 2);
+                if res[0] == NOT_PLAYED || cur <= r {
+                    if cur > r {
+                        if let Some(e) = state.rescheduled_matches.iter().find(|e| {
+                            e[2] == r && usize::from(e[3]) == tier && usize::from(e[4]) * 2 == j - 2
+                        }) {
+                            week = e[1];
+                        }
+                    } else {
+                        week = fixture_week_of_nth_match(&state.week_competitions, code, r as i8);
+                    }
+                    calendar_compute_date(state, u16::from(week));
+                    let mut buf = Vec::new();
+                    append_date(host, state, &mut buf);
+                    centered(host, &buf, x + 0xac, x + 0xac, y, side, 0xff);
+                } else {
+                    let own = usize::from(side == 2);
+                    let fmt = host.number_format();
+                    Gfx::rastport_set_color(&mut host.rp, side);
+                    Gfx::rastport_move_to(&mut host.rp, x + 0xbd, y);
+                    host.g
+                        .rastport_draw_text(&host.rp, &num(fmt, i32::from(res[own] as i8)));
+                    Gfx::rastport_move_to(&mut host.rp, x + 0xc2, y);
+                    host.g.rastport_draw_text(&host.rp, b":");
+                    Gfx::rastport_move_to(&mut host.rp, x + 0xc7, y);
+                    host.g
+                        .rastport_draw_text(&host.rp, &num(fmt, i32::from(res[1 - own] as i8)));
+                }
+                y += 7;
+            }
+            r += 1;
+        }
+        loop {
+            let ev = host.input_poll_mouse()?;
+            let (mx, my) = host.mouse_xy();
+            let mut hit = buttons.hit(mx, my) as u8;
+            if hit > 3 {
+                hit = 0;
+            }
+            if ev == LEFT_DOWN && hit == 3 {
+                second = !second;
+                break;
+            }
+            if ev == LEFT_DOWN {
+                fill(host, x0 + 1, y0 + 1, x0 + 0xdf, y0 + 0xad, 8);
+                let round = state.competition_rounds[tier];
+                fixtures_build_round_pairings(state, tier, round);
+                return Ok(hit);
+            }
+        }
+    }
 }
 
 /// The text lines of the opponent info of a German club.
@@ -1161,6 +1312,15 @@ fn draw_opponent_info_body(host: &mut Host, state: &GameState, t: u8, side: u8, 
 mod tests {
     use super::*;
     use bmp_game::state::GameState;
+
+    #[test]
+    fn the_remaining_fixtures_show_one_half_of_the_rounds() {
+        // 38 rounds (2. Bundesliga): 1..=19 and 20..=38.
+        assert_eq!(fixture_half(38, false), (1, 20));
+        assert_eq!(fixture_half(38, true), (20, 39));
+        // 34 rounds: 1..=17 and 18..=34.
+        assert_eq!(fixture_half(34, true), (18, 35));
+    }
 
     fn fmt() -> NumberFormat {
         NumberFormat {

@@ -471,7 +471,7 @@ pub(crate) fn highscore_load(data: &Path, state: &GameState) -> (HighScoreTable,
 /// Writes the table back to `HIGH.XY`.
 ///
 /// Origin: BMMAIN.EXE 422b:21c4 (highscore_load_save, write)
-fn highscore_save(data: &Path, state: &GameState, table: &HighScoreTable) {
+pub(crate) fn highscore_save(data: &Path, state: &GameState, table: &HighScoreTable) {
     let name = highscore_file_name(state.scenario, state.level);
     let path = find_case_insensitive(&data.join(&name)).unwrap_or(data.join(&name));
     if let Err(e) = std::fs::write(&path, table.to_bytes().expect("20 entries")) {
@@ -531,14 +531,10 @@ pub fn highscore_screen(
     let data = host.data.clone();
     let (mut table, variant) = highscore_load(&data, state);
     let cur = (state.current_manager as usize).min(3);
-    let mut cand = HighScoreEntry {
-        manager: [0; 26],
-        club: [0; 26],
-        score: 0,
-        extra: 0,
-    };
+    // FAR:4cfe, the candidate buffer, lives on between the calls.
+    let mut cand = session.rt.highscore_candidate;
     if mode != HighscoreMode::Show {
-        cand = highscore_build_entry(state, &mut session.rng, cur, variant);
+        highscore_build_entry(state, &mut session.rng, cur, variant, &mut cand);
     }
     if mode != HighscoreMode::Insert {
         host.g.mouse_pointer_hide(0);
@@ -549,9 +545,10 @@ pub fn highscore_screen(
     }
     // `[bp-0x70]`: the sort's outer counter, later the preview row + 1.
     let mut mark = 0usize;
-    if mode != HighscoreMode::Show
-        && highscore_insert(&mut table, &mut cand, session.highscore_tag).is_some()
-    {
+    let inserted = mode != HighscoreMode::Show
+        && highscore_insert(&mut table, &mut cand, session.highscore_tag).is_some();
+    session.rt.highscore_candidate = cand;
+    if inserted {
         if mode == HighscoreMode::Insert {
             highscore_save(&data, state, &table);
             return Ok(());
@@ -674,7 +671,8 @@ mod tests {
         };
         let state = GameState::from_savegame(&SaveGame::parse(&bytes).unwrap()).unwrap();
         let mut rng = Rng::default();
-        let mut cand = highscore_build_entry(&state, &mut rng, 0, 0);
+        let mut cand = bmp_game::runtime::Runtime::default().highscore_candidate;
+        highscore_build_entry(&state, &mut rng, 0, 0, &mut cand);
         // The original writes 96 for this save (DOSBox, office menu "Highscore").
         assert_eq!(cand.score, 96);
         assert_eq!(cand.manager_name(), b"OLIVER");

@@ -645,7 +645,9 @@ impl Host {
         Ok(self.g.alloc(Bitmap::from_image(&img)))
     }
 
-    /// A blank `w x h` bitmap filled with `color`.
+    /// A blank `w x h` bitmap filled with `color`. The original's blank pictures
+    /// (`vga_load_picture(0, w, h, depth, 0)`) are cleared with `rastport_clear(rp, 0)`;
+    /// the fourth argument is the depth, not a colour.
     ///
     /// Origin: BMMAIN.EXE 176b:0356 (vga_load_picture with picture 0 and no file)
     pub fn blank_bitmap(&mut self, w: i16, h: i16, color: u8) -> BitmapId {

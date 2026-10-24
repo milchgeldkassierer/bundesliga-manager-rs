@@ -6,6 +6,8 @@
 //! after program start (`docs/re/logic/state.md` §5, `docs/re/logic/ai.md` §5). Fields are added
 //! when a ported function needs them.
 
+use bmp_formats::savegame::HighScoreEntry;
+
 use crate::squad::LineupRules;
 use crate::state::{Layout, MANAGER_SLOTS, NewsRecord};
 
@@ -112,6 +114,11 @@ pub struct Runtime {
     /// read by the weekly `auto_lineup` (2ecd:3360) of the season loop. Both bytes are 0 in
     /// the program image.
     pub lineup_rules: LineupRules,
+    /// FAR:4cfe: the high-score candidate buffer. `highscore_build_entry` copies the names
+    /// into it with `strcpy`, so the bytes after a name's NUL keep what an earlier entry
+    /// left there, and the table sorts swap through it; both reach `HIGH.XY`. Zero in the
+    /// program image.
+    pub highscore_candidate: HighScoreEntry,
 }
 
 impl Default for Runtime {
@@ -147,6 +154,12 @@ impl Default for Runtime {
             lineup_rules: LineupRules {
                 suspended_allowed: false,
                 max_lineup_slot: 0,
+            },
+            highscore_candidate: HighScoreEntry {
+                manager: [0; 26],
+                club: [0; 26],
+                score: 0,
+                extra: 0,
             },
         }
     }

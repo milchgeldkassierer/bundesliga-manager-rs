@@ -54,9 +54,17 @@ pub fn highscore_compute_score(state: &GameState, m: usize) -> i32 {
     lmul(s, 10)
 }
 
-/// The high-score entry of manager `m` (`FAR:4cfe`): name, club, the score
-/// with the squad value, stadium and balance terms and the three title
-/// counters. `variant` 0 (the normal game) adds 300.
+/// `strcpy` into a fixed field: the bytes after the NUL keep their old values.
+fn strcpy_field(dst: &mut [u8], src: &[u8]) {
+    let n = src.len().min(dst.len() - 1);
+    dst[..n].copy_from_slice(&src[..n]);
+    dst[n] = 0;
+}
+
+/// Writes the high-score entry of manager `m` into the candidate buffer `e` (`FAR:4cfe`):
+/// name and club (by `strcpy`, so the rest of each field keeps what was there), the score
+/// with the squad value, stadium and balance terms and the three title counters. `variant` 0
+/// (the normal game) adds 300. The field at +0x36 is left alone.
 ///
 /// Origin: BMMAIN.EXE 422b:2a2a (highscore_build_entry)
 pub fn highscore_build_entry(
@@ -64,18 +72,11 @@ pub fn highscore_build_entry(
     rng: &mut Rng,
     m: usize,
     variant: u8,
-) -> HighScoreEntry {
+    e: &mut HighScoreEntry,
+) {
     let man = &state.managers[m];
-    let mut e = HighScoreEntry {
-        manager: [0; 26],
-        club: [0; 26],
-        score: 0,
-        extra: 0,
-    };
-    let name = man.name();
-    e.manager[..name.len().min(25)].copy_from_slice(&name[..name.len().min(25)]);
-    let club = state.clubs[usize::from(man.team)].name();
-    e.club[..club.len().min(23)].copy_from_slice(&club[..club.len().min(23)]);
+    strcpy_field(&mut e.manager, man.name());
+    strcpy_field(&mut e.club, state.clubs[usize::from(man.team)].name());
     let mut score = highscore_compute_score(state, m) as i16;
     let mut v: i32 = 0;
     for i in 0..state.squad_player_count(m) {
@@ -104,16 +105,15 @@ pub fn highscore_build_entry(
         score = 1;
     }
     e.score = score;
-    e
 }
 
-/// Puts manager entry `cand` into `table` at the game end: over the row of the same manager
-/// and club, or over the last row when it scores more, then sorts the table by score (the
-/// exchange sort swaps through the candidate buffer). The scan goes on after the row with
-/// the buffer as the candidate, which then holds the row the last swap moved out.
+/// Puts the candidate buffer `cand` into `table` at the game end: over the row of the same
+/// manager and club, or over the last row when it scores more, then sorts the table by score
+/// (the exchange sort swaps through the candidate buffer). The scan goes on after the row
+/// with the buffer as the candidate, which then holds the row the last swap moved out.
 ///
 /// Origin: BMMAIN.EXE 2a58:3176 (season_main_loop, 2a58:425a..42ee)
-pub fn highscore_game_end_insert(table: &mut HighScoreTable, mut cand: HighScoreEntry) {
+pub fn highscore_game_end_insert(table: &mut HighScoreTable, cand: &mut HighScoreEntry) {
     let rows = &mut table.entries;
     for i in 0..HIGHSCORE_ENTRIES {
         let row = &rows[i];
@@ -121,13 +121,13 @@ pub fn highscore_game_end_insert(table: &mut HighScoreTable, mut cand: HighScore
         if !same && !(i == HIGHSCORE_ENTRIES - 1 && row.score < cand.score) {
             continue;
         }
-        rows[i] = cand;
+        rows[i] = *cand;
         for a in 0..HIGHSCORE_ENTRIES - 1 {
             for b in a + 1..HIGHSCORE_ENTRIES {
                 if rows[a].score < rows[b].score {
-                    cand = rows[a];
+                    *cand = rows[a];
                     rows[a] = rows[b];
-                    rows[b] = cand;
+                    rows[b] = *cand;
                 }
             }
         }
@@ -167,20 +167,35 @@ mod tests {
     #[test]
     fn a_better_entry_replaces_the_last_row_and_is_sorted_in() {
         let mut t = table();
-        highscore_game_end_insert(&mut t, entry(b'X', 95));
+        highscore_game_end_insert(&mut t, &mut entry(b'X', 95));
         assert_eq!(names(&t), b"ABCDEFGHIJKXLMNOPQRS");
         let mut t = table();
-        highscore_game_end_insert(&mut t, entry(b'X', 10));
+        highscore_game_end_insert(&mut t, &mut entry(b'X', 10));
         assert_eq!(t, table(), "not better than the last row");
     }
 
     #[test]
     fn a_managers_row_is_replaced_and_the_swap_buffer_goes_on_scanning() {
         let mut t = table();
-        highscore_game_end_insert(&mut t, entry(b'C', 250));
+        highscore_game_end_insert(&mut t, &mut entry(b'C', 250));
         // C moves up through the buffer, which ends up holding B; B then beats the last row.
         assert_eq!(names(&t), b"CABBDEFGHIJKLMNOPQRS");
         assert_eq!(t.entries[0].score, 250);
         assert_eq!((t.entries[2].score, t.entries[3].score), (190, 190));
+    }
+
+    #[test]
+    fn strcpy_keeps_the_bytes_after_the_terminator() {
+        // HIGH.12 of the original after "OLIVER" / "BAYER 05 UERDINGEN" were in the buffer.
+        let mut name = [0u8; 26];
+        strcpy_field(&mut name, b"OLIVER");
+        strcpy_field(&mut name, b"ADI");
+        assert_eq!(&name[..7], b"ADI\0ER\0");
+        let mut club = [0u8; 26];
+        strcpy_field(&mut club, b"BAYER 05 UERDINGEN");
+        strcpy_field(&mut club, b"1.FC N\x9aRNBERG");
+        assert_eq!(&club[13..19], b"\0NGEN\0");
+        strcpy_field(&mut club, &[b'X'; 40]);
+        assert_eq!(club[25], 0, "a long name is cut before the last byte");
     }
 }

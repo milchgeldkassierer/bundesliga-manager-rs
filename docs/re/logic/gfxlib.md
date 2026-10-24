@@ -41,6 +41,11 @@ The model is `Gfx::planes` (4 x 64 KiB). `Gfx::to_vga` copies the page at `crtc_
   * `+1C` the screen bitmap descriptor.
 
   The block comes from `mem_alloc` without zero fill, so the game sets the draw mode explicitly.
+* **Blank pictures**: `vga_load_picture(0, w, h, depth, 0)` 176b:0356 (no file) allocates a
+  `w x h` bitmap and clears it with `rastport_clear(rp, 0)` (176b:0605: `SUB AL,AL; PUSH AX`). The
+  fourth argument goes to `bitmap_init` as the depth; it is not a fill colour (the crest cache
+  `DS:05b0`, created with 5, is black where no crest is drawn: its columns 38..39 show at the
+  right edge of `ui_draw_manager_header`'s 40-pixel crest).
 * **Work bitmap `FAR:56FA`**: main allocates a 1x1 picture (`176b:0356(0,1,1,0,0)`, handle `FAR:57BC`) and then patches its header to 320x240. Its data is therefore never valid. Every copy *from* it goes through `blit_bitmap_or_restore_page2`, which notices `h == 240` and copies from VRAM page 2 instead. So the work bitmap is a token for "page 2".
 
 ## 2. Library state (CS variables of 45ac)

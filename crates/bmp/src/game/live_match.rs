@@ -480,7 +480,7 @@ pub fn period_start(
         if live.panel.is_none() {
             live.panel = host.load_picture(0x26).ok();
             live.sprites = host.load_picture(8).ok();
-            live.badges = Some(host.blank_bitmap(0x98, 0x26, 5));
+            live.badges = Some(host.blank_bitmap(0x98, 0x26, 0));
         }
         live.badges_valid = false;
         live.counters = [[0; 6]; 4];

@@ -1365,10 +1365,11 @@ pub trait SeasonUi {
     fn highscores(&mut self, state: &GameState) -> HighScoreTable;
 
     /// At a season end the current manager's high-score entry goes into `HIGH.XY`
-    /// (`highscore_screen(2)`, which builds the entry from `rng`).
+    /// (`highscore_screen(2)`, which builds the entry from `rng` in
+    /// [`Runtime::highscore_candidate`]).
     ///
     /// Origin: BMMAIN.EXE 422b:2366 (highscore_screen, mode 2)
-    fn highscore_insert(&mut self, state: &GameState, rng: &mut Rng);
+    fn highscore_insert(&mut self, state: &GameState, rt: &mut Runtime, rng: &mut Rng);
 
     /// The last season of the game is over: `table` (with the managers' entries) is written
     /// back to `HIGH.XY` and shown, then "ENDE".
@@ -1985,15 +1986,15 @@ fn season_final<U: SeasonUi + ?Sized>(
         let mut table = ui.highscores(state);
         for m in 0..n {
             state.current_manager = m as i8;
-            let entry = highscore_build_entry(state, rng, m, 1);
-            highscore_game_end_insert(&mut table, entry);
+            highscore_build_entry(state, rng, m, 1, &mut rt.highscore_candidate);
+            highscore_game_end_insert(&mut table, &mut rt.highscore_candidate);
         }
         ui.game_end(state, &table)?;
         return Ok(true);
     }
     for m in 0..n as i8 {
         state.current_manager = m;
-        ui.highscore_insert(state, rng);
+        ui.highscore_insert(state, rt, rng);
         advertising_offers_generate(state, rng);
     }
     ui.clear_screen();
@@ -2091,6 +2092,17 @@ pub enum SeasonEndEvent<'a> {
         /// The fee the club gets.
         fee: i32,
     },
+    /// The talks with one player of manager `m` are over (the player may have left the
+    /// squad): the contracts list is drawn again.
+    ContractDone {
+        /// The manager.
+        m: u8,
+    },
+    /// Every manager's report and separations are done (the original waits 70 ticks and
+    /// fades out).
+    SeparationsDone,
+    /// The season-end messages are over (the original fades out).
+    Done,
 }
 
 /// The report line of a promotion into the 2. Bundesliga and its bonus.
@@ -2213,11 +2225,13 @@ pub fn season_end_messages<U: SeasonUi + ?Sized>(
             }
         }
     }
+    ui.season_end(state, SeasonEndEvent::SeparationsDone);
     if !ui.auto_play() {
         for m in 0..n {
             contract_talks(state, rt, rng, ui, m);
         }
     }
+    ui.season_end(state, SeasonEndEvent::Done);
     state.current_manager = n;
     season_rebalance_player_clubs(state, rt, rng);
 }
@@ -2500,6 +2514,7 @@ fn contract_talks<U: SeasonUi + ?Sized>(
             ui.season_end(state, SeasonEndEvent::Leaves { pid, fee });
             squad_remove_player(state, sl, true, SQUAD_SCAN as u8);
         }
+        ui.season_end(state, SeasonEndEvent::ContractDone { m: m as u8 });
     }
 }
 
@@ -2846,7 +2861,7 @@ mod tests {
         fn highscores(&mut self, _: &GameState) -> HighScoreTable {
             self.table.clone()
         }
-        fn highscore_insert(&mut self, state: &GameState, _: &mut Rng) {
+        fn highscore_insert(&mut self, state: &GameState, _: &mut Runtime, _: &mut Rng) {
             self.highscore_inserts.push(state.current_manager);
         }
         fn game_end(&mut self, _: &GameState, table: &HighScoreTable) -> Result<(), Done> {
@@ -4725,7 +4740,7 @@ mod tests {
         let mut ui = Headless::new(&s);
         retirements(&mut s, &mut Rng::new(5), &mut ui, 1, 2, 77);
         assert_eq!(ui.season_end.len(), 1);
-        assert!(ui.season_end[0].contains("Retirement"));
+        assert!(ui.season_end[0].starts_with("Retirement"));
         assert!(find_player_by_id(&s, 9).is_none());
         assert_eq!(s.players[9].owner_manager, NO_OWNER);
         for p in [9, 40] {
@@ -4768,12 +4783,9 @@ mod tests {
                     s.squads[1][0].player_id, 10,
                     "the leaving player is removed"
                 );
-                assert!(
-                    ui.season_end
-                        .last()
-                        .unwrap()
-                        .contains(&format!("fee: {fee}"))
-                );
+                let n = ui.season_end.len();
+                assert!(ui.season_end[n - 2].contains(&format!("fee: {fee}")));
+                assert!(ui.season_end[n - 1].starts_with("ContractDone"));
             }
         }
     }
