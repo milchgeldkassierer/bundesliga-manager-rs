@@ -89,7 +89,7 @@ switch row:
         if group < 2: first j in DS:0338[g] .. +DS:033C[g] with copy rank[j] == v:
                       copy rank[j] = copy rank[s]
         copy rank[s] = v
- 3: if parse_pair(buf, &a, &b) && (a + b) % 2 == 0: copy points[s] = (a, b)
+ 3: if parse_pair(buf, &a, &b) && (a + b) % 2 == 0: copy points[s] = (a, b)   ; 16-bit, wraps
     else dialog_message("FALSCHE", "EINGABE")
  4: if parse_pair(buf, &a, &b): copy goals[s] = (a, b) else dialog_message("FALSCHE", "EINGABE")
 12a5:0790: if selected != FF: panel_draw_selected(s)     ; 1000:26f1
@@ -126,6 +126,12 @@ Afterwards the main loop continues with the prompt's last pointer position: the 
 shows the target slot (now holding the selected club's data). Clicking the selected
 club itself deselects without swapping, and the main loop's select step then selects it
 again (`hovered` is still that club and the click is still pending).
+
+All arithmetic is 16-bit and wraps: `parse_pair` turns `40000` into -25536, which passes
+its `< 255` check, the sum `a + b` wraps (`ADD`, then `IDIV`), and the low byte is stored
+(`40000:40000` gives points 64:64; `65537:3` gives 1:3). Scenario
+`tests/visual/teamed_club_edges` covers this, the rank swap in the 2. Bundesliga and rank
+0 / 7 in a lower league, with the written `MANA.DAT` compared in full.
 
 ## Club buttons (`12a5:1361..1671`)
 

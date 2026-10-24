@@ -143,8 +143,10 @@ pub fn edit_panel(
                 dialog::message(host, ed, b"DIESER TABELLENPLATZ", b"EXISTIERT NICHT.")?;
             }
         }
+        // The 16-bit sum wraps like the original's ADD (parse_pair accepts wrapped,
+        // negative values such as 40000 -> -25536).
         3 => match parse_pair(&input) {
-            Some((a, b)) if (a + b) % 2 == 0 => {
+            Some((a, b)) if a.wrapping_add(b) % 2 == 0 => {
                 ed.copy.points[usize::from(sel)] = [a as u8, b as u8];
             }
             _ => dialog::message(host, ed, b"FALSCHE", b"EINGABE")?,
@@ -459,6 +461,10 @@ mod tests {
         assert_eq!(parse_pair(b"255:0"), None);
         assert_eq!(parse_pair(b"254:254"), Some((254, 254)));
         assert_eq!(parse_pair(b"12"), None);
+        // 16-bit wrap-around as in the original: 65537 -> 1, 40000 -> -25536 (accepted,
+        // since only values >= 255 are refused).
+        assert_eq!(parse_pair(b"65537:3"), Some((1, 3)));
+        assert_eq!(parse_pair(b"40000:40000"), Some((-25536, -25536)));
     }
 
     #[test]

@@ -1,0 +1,57 @@
+# DOSBox side of the team-editor club edge cases (tools/dosbox-capture.sh syntax, seconds).
+# exe: TEAMED.EXE
+# x is one higher than on the port side (see teamed_club.dosbox.txt). The written MANA.DAT
+# is fetched at the end.
+wait 5
+move 99 185 242
+wait 1
+click 99 185 242
+wait 1
+click 81 22 242
+wait 1
+type 3
+key Return
+wait 1
+shot v01-rank-2bl
+click 81 30 242
+wait 1
+type 40000:40000
+key Return
+wait 1
+shot v02-points-wrap
+click 81 37 242
+wait 1
+type 65537:3
+key Return
+wait 1
+shot v03-goals-wrap
+click 78 65 242
+wait 1
+move 316 120 242
+wait 1
+click 316 120 242
+wait 1
+shot v04-page2
+move 21 146 242
+wait 1
+click 21 146 242
+wait 1
+click 81 22 242
+wait 1
+type 0
+key Return
+wait 1
+shot v05-rank-zero
+click 81 22 242
+wait 1
+type 7
+key Return
+wait 1
+shot v06-rank-7
+click 78 65 242
+wait 1
+click 78 78 242
+wait 1
+click 113 191 242
+wait 1
+fetch MANA.DAT

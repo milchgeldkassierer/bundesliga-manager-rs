@@ -1,0 +1,62 @@
+# Port side of the team-editor club edge cases (bmp teamed --script syntax, milliseconds):
+# the rank swap in the 2. Bundesliga, points and goals whose numbers wrap at 16 bits
+# (40000 -> -25536 is accepted and stored as its low byte 64; 65537 -> 1), the crest page
+# switch and rank 0, which only the lower leagues accept. Ends with the save.
+# command: teamed
+# compare-file: MANA.DAT
+wait 2000
+# Club 18 (2. Bundesliga): rank 3; the club that had it gets 18's old rank.
+move 98 185
+wait 300
+click 98 185
+wait 500
+click 80 22
+wait 300
+type 3
+key enter
+wait 300
+shot v01-rank-2bl
+click 80 30
+wait 300
+type 40000:40000
+key enter
+wait 300
+shot v02-points-wrap
+click 80 37
+wait 300
+type 65537:3
+key enter
+wait 300
+shot v03-goals-wrap
+# AENDERUNG SICHERN, then LIGA: crest page 2.
+click 77 65
+wait 500
+move 315 120
+wait 300
+click 315 120
+wait 500
+shot v04-page2
+# Club 40 (group 2): rank 0, then 7 (no rank swap outside the Bundesligas), AENDERUNG SICHERN.
+move 20 146
+wait 300
+click 20 146
+wait 500
+click 80 22
+wait 300
+type 0
+key enter
+wait 300
+shot v05-rank-zero
+click 80 22
+wait 300
+type 7
+key enter
+wait 300
+shot v06-rank-7
+click 77 65
+wait 500
+# PROGRAMM-ENDE, MACH MAL !
+click 77 78
+wait 500
+click 112 191
+wait 1000
