@@ -105,6 +105,20 @@ Everything else plays like version 1.0.0.
   PNG under `docs/mod2026/crests/`. It is written as `PIC/<n>.VGA` by the generator.
 - A contact sheet of all 56 crests rendered by the port goes to `progress/`.
 
+### R5b High-resolution crests (owner's wish, where possible)
+
+- **Problem:** the port renders the original 320x200/320x240 frame and scales it to the window, so
+  a crest cannot carry more detail than its original picture size.
+- **Wish:** with mod data, crests may be shown in higher resolution:
+  - the generator also stores a high-resolution version of each crest (PNG, e.g. 4x the original
+    size, from the club's logo);
+  - the SDL window draws it as an overlay at the crest's on-screen position, scaled with the
+    window, instead of the low-resolution crest.
+- **Fallbacks:** the headless/script host and screenshots keep the low-resolution picture. The
+  original data is unaffected.
+- **Scope:** ticket 1 lists every place a crest is drawn (start menu carousel, office, tables,
+  match day, cup draws, team editor). The overlay covers at least the static ones.
+
 ### R6 Generator
 
 - The command `bmp mod2026 build --from <pristine dir> --out <dir>` copies the pristine data and
