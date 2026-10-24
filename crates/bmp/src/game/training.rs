@@ -3,6 +3,7 @@
 //! Spec: `docs/re/logic/finance.md` §2.3, §2.4, §2.10 and
 //! `docs/re/logic/transfer.md` §4.2-4.4.
 
+use bmp_game::ai::squad_recalc_team_strength;
 use bmp_game::rng::{Rng, lmul, lshr};
 use bmp_game::squad::{player_init_random_attrs, squad_count_listed};
 use bmp_game::state::GameState;
@@ -171,7 +172,8 @@ fn training_camp_apply(
 /// The training camp screen: eight camps with their legend, the price on
 /// hover, and booking one with a click.
 ///
-/// TODO(#24): `manager_ai_weekly(m, 0)` 1f9d:0002 is not called on exit.
+/// On exit, booked or not, the team strength is recomputed
+/// (`squad_recalc_team_strength(m, 0)`, 212a:0720).
 ///
 /// Origin: BMMAIN.EXE 212a:0145 (screen_training_camp)
 pub fn screen_training_camp(
@@ -328,7 +330,9 @@ pub fn screen_training_camp(
     if !booked {
         ui_wait_right_click_button(host, 0x10c, 0xc1, session.auto_play)?;
     }
-    // TODO(#24): manager_ai_weekly(m, 0) 1f9d:0002.
+    // 212a:0720: squad_recalc_team_strength(FAR:304a, 0), no RNG.
+    let cur = state.current_manager as u8;
+    squad_recalc_team_strength(state, &session.rt, &mut session.rng, cur, false);
     Ok(())
 }
 

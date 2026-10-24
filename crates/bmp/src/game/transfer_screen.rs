@@ -7,6 +7,7 @@
 //! functions of [`bmp_game::transfer`]; this module ports the screen around
 //! them.
 
+use bmp_game::ai::squad_recalc_team_strength;
 use bmp_game::squad::{InsertRejected, LineupRules, auto_lineup, squad_count_listed};
 use bmp_game::state::GameState;
 use bmp_game::transfer::{
@@ -387,7 +388,8 @@ fn unhighlight(host: &mut Host, mk: &mut Market) -> Run<()> {
 
 /// The transfer market screen.
 ///
-/// TODO(#24): `manager_ai_weekly(m, 0)` 1f9d:0002 is not called on exit.
+/// On exit the team strength is recomputed (`squad_recalc_team_strength(m, 0)`,
+/// 3277:1b52).
 ///
 /// Origin: BMMAIN.EXE 3277:04a5 (screen_transfer_market)
 pub fn screen_transfer_market(
@@ -560,7 +562,9 @@ pub fn screen_transfer_market(
         }
         if si == 0x66 {
             ui_wait_right_click_button(host, 0x10c, 0xc1, session.auto_play)?;
-            // TODO(#24): manager_ai_weekly(m, 0) 1f9d:0002.
+            // 3277:1b52: squad_recalc_team_strength(FAR:304a, 0), no RNG.
+            let cur = state.current_manager as u8;
+            squad_recalc_team_strength(state, &session.rt, &mut session.rng, cur, false);
             return Ok(());
         }
     }
