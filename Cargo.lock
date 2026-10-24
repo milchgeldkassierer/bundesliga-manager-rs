@@ -16,7 +16,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bmp"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bmp-formats",
  "bmp-game",
@@ -27,18 +27,18 @@ dependencies = [
 
 [[package]]
 name = "bmp-formats"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "bmp-game"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bmp-formats",
 ]
 
 [[package]]
 name = "bmp-sound"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bmp-formats",
 ]

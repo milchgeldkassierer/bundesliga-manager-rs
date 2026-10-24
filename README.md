@@ -61,10 +61,13 @@ All screenshots are rendered by the port.
 | Match day | Live view, goal and miss scenes, half-time and full-time results, tables, newspaper, cup draws, title ceremonies, substitutions |
 | Game logic | Complete: finances, computer clubs, match simulation, leagues, cups, squad, transfers, new game, newspaper, season loop |
 | Random numbers | Bit-exact: the same seed gives the same season as the DOS game |
-| Graphics | 184 of 188 reference frames match the original pixel for pixel, the rest 99.9 % or better |
+| Team editor | `TEAMED.EXE` with all its screens; the `MANA.DAT` and crest files it writes are byte-identical to the original's |
+| Graphics | About 370 reference frames of the game and the editor; all but 20 match the original pixel for pixel, the rest differ only in the mouse pointer position or a documented bug fix (99.7 % or better) |
 | Sound | Title music on an OPL2 (YM3812) emulation; the register stream equals the original driver's write for write; digitised crowd, whistle and goal sounds |
 | Save games | Read and written byte for byte compatible with the DOS version, in both directions |
 
+Version 1.0.0 marks the 1:1 port as complete. Obvious bugs of the original were fixed and are
+marked as deviations in the specifications; everything else behaves like the DOS version.
 Known gaps are tracked in the [issues](../../issues).
 
 The game was also sold in English as *The Manager*, with the English leagues. The engine still
