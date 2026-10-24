@@ -1141,21 +1141,10 @@ impl GameState {
         }
     }
 
-    /// Number of occupied slots (`player_id != 0`) among the first 24 slots
-    /// of `squad` (the first 12 for the transfer pool, squad 4). The slots
-    /// need not be contiguous; slot 24 is never examined.
-    ///
-    /// Origin: BMMAIN.EXE 4091:1109 (squad_count_by_flag, mode 0)
+    /// Number of occupied slots of `squad`; a method-call shorthand for
+    /// [`crate::squad::squad_count_listed`], which owns the port.
     pub fn squad_player_count(&self, squad: usize) -> u8 {
-        let n = if squad == TRANSFER_LIST {
-            TRANSFER_LIST_SCAN
-        } else {
-            SQUAD_SCAN
-        };
-        self.squads[squad][..n]
-            .iter()
-            .filter(|p| p.player_id != 0)
-            .count() as u8
+        crate::squad::squad_count_listed(self, squad)
     }
 
     /// Sorts the first `team_count` (`DS:225e[tier]`) entries of
