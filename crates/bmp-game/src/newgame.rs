@@ -3,14 +3,15 @@
 //! ([`add_managers`]), the club shuffle and the player pool built from MANA.DAT.
 //!
 //! The start menu itself (UI) runs between [`startup`] and [`new_game`] and draws no random
-//! numbers. The cup draws `main` makes are not ported yet (#27); they run through [`CupInit`]
-//! at their place in the random stream.
+//! numbers. The cup draws `main` makes ([`crate::cups`]) run through [`CupInit`] at their place
+//! in the random stream.
 //!
 //! Full documentation with addresses: `docs/re/logic/flow.md` §2, §4.6–§4.9 and §5.1–§5.5.
 
 use bmp_formats::mana::ManaDat;
 
 use crate::ai::{league_strength_drift, squad_recalc_team_strength};
+use crate::cups::{league_shuffle_teams, round_pairings};
 use crate::finance::interest_rates_update;
 use crate::rng::{Rng, ldiv, lmul};
 use crate::runtime::{Runtime, SEASON_START_DAY, TIER_FIRST};
@@ -37,8 +38,6 @@ const NAME_SLOT_BOUNDS: [u8; 5] = [0, 2, 8, 15, 20];
 const TRAINING_141: [u8; 5] = [5, 4, 6, 5, 6];
 /// DS:028c: initial training values of a manager.
 const TRAINING_146: [u8; 4] = [1, 3, 3, 3];
-/// DS:07d6: pairings per European cup round.
-const ROUND_PAIRINGS: [u8; 6] = [0x20, 0x10, 8, 4, 2, 1];
 /// FAR:513c of an endless game.
 const ENDLESS: u16 = 0x56ce;
 /// FAR:513c of a one-year game (1964).
@@ -280,107 +279,11 @@ pub fn startup_clear_state(state: &mut GameState) {
     h.as_flattened_mut().as_flattened_mut().fill([0xff; 2]);
 }
 
-/// Swaps two German club slots everywhere: the clubs of pool players and managers, the club
-/// records, league tables, series, records (and the opponents in them) and the managers'
-/// head-to-head logs. With `flag` the 1-based last-season winners are swapped too. Slots
-/// above 63 are ignored.
-///
-/// Origin: BMMAIN.EXE 1310:0b24 (team_swap_slots)
-pub fn team_swap_slots(state: &mut GameState, a: u8, b: u8, flag: bool) {
-    if a > 0x3f || b > 0x3f {
-        return;
-    }
-    let swap = |v: &mut u8| {
-        if *v == a {
-            *v = b;
-        } else if *v == b {
-            *v = a;
-        }
-    };
-    for p in &mut state.players[1..] {
-        swap(&mut p.team);
-    }
-    let count = usize::from(state.manager_count).min(MANAGER_SLOTS);
-    for m in &mut state.managers[..count] {
-        swap(&mut m.team);
-    }
-    if flag {
-        for v in [
-            &mut state.winner_07ac,
-            &mut state.winner_07ad,
-            &mut state.winner_07ae,
-            &mut state.winner_07af,
-            &mut state.competition_07b0,
-        ] {
-            swap_team_ref_byte(v, a, b);
-        }
-    }
-    let (a, b) = (usize::from(a), usize::from(b));
-    state.clubs.swap(a, b);
-    state.team_tables.swap(a, b);
-    let h = &mut state.match_history;
-    h.team_series.swap(a, b);
-    h.record_scores.swap(a, b);
-    h.record_opponents.swap(a, b);
-    team_swap_in_table_a4ca(h, a as u8, b as u8);
-    for per_manager in &mut h.recent_results[..count] {
-        per_manager.swap(a, b);
-    }
-}
-
-/// Swaps the 1-based club reference `*p` between `a + 1` and `b + 1`.
-///
-/// Origin: BMMAIN.EXE 1310:0ae8 (swap_team_ref_byte)
-fn swap_team_ref_byte(p: &mut u8, a: u8, b: u8) {
-    let v = u16::from(*p).wrapping_sub(1);
-    if v == u16::from(a) {
-        *p = b.wrapping_add(1);
-    } else if v == u16::from(b) {
-        *p = a.wrapping_add(1);
-    }
-}
-
-/// Swaps clubs `a` and `b` as opponents in the record table.
-///
-/// Origin: BMMAIN.EXE 1310:0f44 (team_swap_in_table_a4ca)
-fn team_swap_in_table_a4ca(h: &mut MatchHistory, a: u8, b: u8) {
-    for v in h.record_opponents.iter_mut().flatten() {
-        if *v == a {
-            *v = b;
-        } else if *v == b {
-            *v = a;
-        }
-    }
-}
-
 /// Swaps the league table records of clubs `a` and `b`.
 ///
 /// Origin: BMMAIN.EXE 18bc:1fc4 (team_stats_swap)
 pub fn team_stats_swap(state: &mut GameState, a: u8, b: u8) {
     state.team_tables.swap(usize::from(a), usize::from(b));
-}
-
-/// Shuffles the clubs inside each league tier: 55 random swaps of two slots per tier, each
-/// also applied to the tier's league order list.
-///
-/// Origin: BMMAIN.EXE 1310:09c5 (league_shuffle_teams)
-pub fn league_shuffle_teams(state: &mut GameState, rt: &Runtime, rng: &mut Rng) {
-    for (t, &lo) in TIER_FIRST.iter().enumerate() {
-        let count = rt.tier_team_count[t];
-        let hi = lo.wrapping_add(count as u8).wrapping_sub(1);
-        for _ in 0..0x37 {
-            let a = rng.random_range(i16::from(lo), i16::from(hi)) as u8;
-            let b = rng.random_range(i16::from(lo), i16::from(hi)) as u8;
-            team_swap_slots(state, a, b, true);
-            let row = &mut state.league_teams[t][..count.max(0) as usize];
-            if let (Some(i), Some(j)) = (
-                row.iter().position(|&x| x == a),
-                row.iter().position(|&x| x == b),
-            ) {
-                row.swap(i, j);
-            }
-        }
-    }
 }
 
 /// Whether `team` is drawn in one of the European cups selected by `mask` (bit `c - 1` for
@@ -392,7 +295,7 @@ pub fn league_shuffle_teams(state: &mut GameState, rt: &Runtime, rng: &mut Rng) 
 /// Origin: BMMAIN.EXE 18bc:1df3 (team_in_european_cup_lists)
 pub fn team_in_european_cup_lists(state: &GameState, team: u8, mask: u8) -> bool {
     // TODO(re): a round index above 5 reads past DS:07d6 in the original.
-    let n = usize::from(ROUND_PAIRINGS[usize::from(state.event_state[1])]);
+    let n = usize::from(round_pairings(state.event_state[1]));
     // In the first round the UEFA cup list runs 32 bytes past FAR:76ca into the first squad
     // record (FAR:774a).
     let mut lists = state.cup_pairings.as_flattened().to_vec();
@@ -787,7 +690,7 @@ fn draw_tier_slot(
 /// Moves manager `m`'s club into slot `r`; the league table records stay with the slots.
 fn move_club(state: &mut GameState, m: usize, r: u8) {
     let t = state.managers[m].team;
-    team_swap_slots(state, t, r, false);
+    state.team_swap_slots(t, r, false);
     team_stats_swap(state, t, r);
 }
 
@@ -972,52 +875,6 @@ pub(crate) mod tests {
         );
         assert_eq!(s.managers[0].values_132, [0, 0, 0x1e, 0x1e, 0x1e]);
         assert_eq!(s.managers[1].values_132, [0; 5]);
-    }
-
-    #[test]
-    fn team_swap_slots_moves_every_table() {
-        let mut s = GameState::zeroed();
-        s.manager_count = 2;
-        s.players[1].team = 3;
-        s.players[2].team = 5;
-        s.players[0].team = 3; // record 0 is not part of the pool
-        s.managers[0].team = 5;
-        s.managers[2].team = 3; // beyond DS:07ab
-        s.clubs[3].morale = 33;
-        s.team_tables[3].prestige = 333;
-        s.match_history.team_series[3][0][0] = 1;
-        s.match_history.record_scores[3][0] = 2;
-        s.match_history.record_opponents[3][0] = 9;
-        s.match_history.record_opponents[9][1] = 3;
-        s.match_history.recent_results[1][3][0][0] = 4;
-        s.match_history.recent_results[2][3][0][0] = 4;
-        s.winner_07ac = 4; // club 3, 1-based
-        s.winner_07ad = 0; // none
-        s.competition_07b0 = 6; // club 5
-        let mut a = s.clone();
-        team_swap_slots(&mut a, 3, 5, true);
-        assert_eq!(
-            (a.players[1].team, a.players[2].team, a.players[0].team),
-            (5, 3, 3)
-        );
-        assert_eq!((a.managers[0].team, a.managers[2].team), (3, 3));
-        assert_eq!((a.clubs[5].morale, a.team_tables[5].prestige), (33, 333));
-        assert_eq!(a.match_history.team_series[5][0][0], 1);
-        assert_eq!(a.match_history.record_scores[5][0], 2);
-        assert_eq!(a.match_history.record_opponents[5][0], 9);
-        assert_eq!(a.match_history.record_opponents[9][1], 5);
-        assert_eq!(a.match_history.recent_results[1][5][0][0], 4);
-        assert_eq!(a.match_history.recent_results[2][3][0][0], 4);
-        assert_eq!(
-            (a.winner_07ac, a.winner_07ad, a.competition_07b0),
-            (6, 0, 4)
-        );
-        let mut b = s.clone();
-        team_swap_slots(&mut b, 3, 5, false);
-        assert_eq!((b.winner_07ac, b.competition_07b0), (4, 6));
-        let mut c = s.clone();
-        team_swap_slots(&mut c, 3, 0x40, true);
-        assert_eq!(c, s);
     }
 
     #[test]

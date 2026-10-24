@@ -92,6 +92,14 @@ pub struct Runtime {
     /// in this period. Reset by 1310:15db and 1310:2303, counted by 2a58:0ca3, read by
     /// 1310:347f.
     pub period_chances_used: [[u8; 2]; MANAGER_SLOTS],
+    /// FAR:57dc: a relegation play-off leg is being played on cup row 1. Set and cleared by
+    /// `matchday_relegation_match` (1310:02bf), read by `cup_round_complete` (27c2:16dc).
+    pub relegation_mode: u8,
+    /// FAR:2e74: used length of [`crate::state::GameState::euro_qualified_list`], set by
+    /// `euro_cup_qualifiers_build` (27c2:0ef2).
+    // TODO(re): not saved, so after loading a game no club counts as qualified until the next
+    // season end rebuilds the list (cups.md §11.2).
+    pub euro_qualified_count: u8,
     /// FAR:56f4: the game started in 1992 rather than 1963; set by the new-game options
     /// dialog, not saved.
     pub modern_start: bool,
@@ -124,6 +132,8 @@ impl Default for Runtime {
             booked_players: [[NO_BOOKING; 6]; MANAGER_SLOTS],
             manager_plays_now: [0; MANAGER_SLOTS],
             period_chances_used: [[0; 2]; MANAGER_SLOTS],
+            relegation_mode: 0,
+            euro_qualified_count: 0,
             modern_start: false,
         }
     }

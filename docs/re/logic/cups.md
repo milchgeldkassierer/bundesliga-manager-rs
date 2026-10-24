@@ -939,6 +939,8 @@ later (18bc:0888) `cup_draw_first_round(0, 0)` and `cup_draw_first_round(c, 1)` 
 1. How `match_penalty_shootout` (1310:356d) records the shoot-out winner in `FAR:4c7e/4c7f`. The DFB
    code only compares goals after stripping the +10/+20 markers (home team wins on equality), and the
    European code calls `cup_tie_winner` again; both rely on the shoot-out adjusting the goal bytes.
+   Resolved: `match_penalty_shootout` overwrites both bytes, home = shoot-out score + 0x14, away =
+   shoot-out score (`crates/bmp-game/src/matchsim.rs`).
 2. `FAR:2e74` (length of the European-qualified list) is not in the save file, so after loading a game
    `team_is_euro_qualified` returns 0 until the next season end. `season_end_messages` (1cb5:02f1) uses
    it at season end, after `euro_cup_qualifiers_build` has rebuilt it, so this is probably harmless.
@@ -955,4 +957,5 @@ later (18bc:0888) `cup_draw_first_round(0, 0)` and `cup_draw_first_round(c, 1)` 
 7. Word 0 of the mouse-position struct `*FAR:6dc0` is compared against row y values in
    `screen_cup_matches` while MEMORY_MAP calls it x; needs checking against `input_poll_mouse`.
 8. `team_swap_slots` 1310:0b24 was only skimmed (owned by the match/season area); the full list of
-   swapped per-team tables must come from that spec.
+   swapped per-team tables must come from that spec. Resolved: full spec in match.md
+   "1310:0b24 `team_swap_slots`", ported as `GameState::team_swap_slots`.

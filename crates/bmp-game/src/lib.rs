@@ -1,6 +1,7 @@
 //! Game logic reconstructed from `BMMAIN.EXE`.
 
 pub mod ai;
+pub mod cups;
 pub mod finance;
 pub mod league;
 pub mod matchsim;

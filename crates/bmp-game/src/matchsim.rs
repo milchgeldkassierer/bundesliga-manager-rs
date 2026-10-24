@@ -9,10 +9,11 @@
 //!
 //! The functions of other areas that the engine calls mid-match go through [`MatchHooks`]:
 //! the gate money and live-match registry and the match ticker (season area, #31), the cup
-//! tie checks and the cup round (cup area, #27) and the newspaper (news area, #32).
+//! tie checks and the cup round ([`crate::cups`]) and the newspaper (news area, #32).
 //!
-//! Not here: the relegation match 1310:02bf (cup area), the club swaps 1310:0ae8/0b24/0f44
-//! (season rollover and new game) and every screen of the segment.
+//! Not here: the relegation match 1310:02bf ([`crate::cups::matchday_relegation_match`]),
+//! the league shuffle 1310:09c5 ([`crate::cups::league_shuffle_teams`]), the club swaps
+//! 1310:0ae8/0b24/0f44 ([`GameState::team_swap_slots`]) and every screen of the segment.
 
 use std::iter::StepBy;
 use std::ops::Range;
@@ -20,6 +21,7 @@ use std::ops::Range;
 use bmp_formats::savegame::{BLOCK_COMPETITION_SLOTS, BLOCK_PLAYERS, BLOCKS, BlockDesc};
 
 use crate::ai::{GoalFollowUp, match_goal_chance, match_simulate_quick_result};
+use crate::cups::round_pairings;
 use crate::league::{
     NO_MATCH, NOT_PLAYED, RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
 };
@@ -355,9 +357,8 @@ pub struct TickerEvent {
 ///   (season.md §3.6).
 /// * [`MatchHooks::match_ticker_events`] (season area) counts chances into
 ///   [`Runtime::period_chances_used`] and applies cards, injuries and scorers.
-/// * [`MatchHooks::cup_check_ties_extra_time`] (cup area) clears
-///   [`Runtime::manager_plays_now`], sets [`Runtime::live_match_shown`] and calls
-///   [`match_penalty_shootout`] (cups.md §4.1).
+/// * [`MatchHooks::cup_check_ties_extra_time`] and [`MatchHooks::cup_round_complete`] forward
+///   to [`crate::cups::cup_check_ties_extra_time`] and [`crate::cups::cup_round_complete`].
 #[allow(clippy::too_many_arguments)]
 pub trait MatchHooks {
     /// Gate money, forfeits and the live-match registry of one pairing before kick-off.
@@ -391,7 +392,8 @@ pub trait MatchHooks {
 
     /// Marks the cup ties still level for extra time (`shootout == false`) or for penalties
     /// (`shootout == true`, playing them); `count` is the number of pairing bytes. Returns
-    /// whether a tie was level.
+    /// whether a tie was level. Implementers forward to
+    /// [`crate::cups::cup_check_ties_extra_time`].
     ///
     /// Origin: BMMAIN.EXE 27c2:1226 (cup_check_ties_extra_time)
     fn cup_check_ties_extra_time(
@@ -404,7 +406,8 @@ pub trait MatchHooks {
         shootout: bool,
     ) -> bool;
 
-    /// Completes the cup round after a cup day; `euro` is the cup mask - 1.
+    /// Completes the cup round after a cup day; `euro` is the cup mask - 1. Implementers
+    /// forward to [`crate::cups::cup_round_complete`].
     ///
     /// Origin: BMMAIN.EXE 27c2:16dc (cup_round_complete)
     fn cup_round_complete(
@@ -690,17 +693,10 @@ pub fn match_penalty_shootout<H: MatchHooks + ?Sized>(
     results[cell + 1] = score[1];
 }
 
-/// DS:07d6: pairings played in each cup round.
-const CUP_ROUND_PAIRINGS: [u8; 6] = [32, 16, 8, 4, 2, 1];
-
 /// Pairing bytes of the cup round of a cup day: the European round (FAR:0009) for
 /// `cup_mask > 1`, else the DFB cup round (FAR:0008).
 fn cup_pairing_bytes(state: &GameState, cup_mask: u8) -> u8 {
-    let round = state.event_state[usize::from(cup_mask > 1)];
-    let pairings = CUP_ROUND_PAIRINGS
-        .get(usize::from(round))
-        .unwrap_or_else(|| panic!("cup round {round} outside DS:07d6"));
-    pairings << 1
+    round_pairings(state.event_state[usize::from(cup_mask > 1)]) << 1
 }
 
 /// Home and away club of league pairing `slot` (even) of `tier`.

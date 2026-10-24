@@ -251,8 +251,9 @@ record! {
         /// 0x10 (neutral); set by the lineup screen, read by
         /// `squad_recalc_team_strength` 1f9d:0002.
         pub value_131: u8,
-        /// +0x132 (FAR:2374) 5 bytes initialized to 0x1e (30);
-        /// `startup_clear_state` re-sets `[2..5]` to 0x1e.
+        /// +0x132 (FAR:2374) `manager_cup_stage[c]` of cup row `c` (and a fifth byte):
+        /// 0x1e = not taking part, 1 = in round 1, `k + 1` = won round `k`. Initialized to
+        /// 0x1e; `startup_clear_state` re-sets `[2..5]` to 0x1e.
         pub values_132: [u8; 5],
         /// +0x137 not yet traced.
         pub unknown_137: u8,
@@ -274,7 +275,8 @@ record! {
         /// +0x13f (FAR:2381) training intensity 0..=0x22 (`screen_training`);
         /// drives a monthly cost and [`Manager::fatigue_sum`].
         pub training_intensity: u8,
-        /// +0x140 per-manager state byte.
+        /// +0x140 (FAR:2382) season-end status: 1 = promoted, 2 = relegated, 4 = licence
+        /// withdrawn, 8 = dropped out of the Amateur-Oberliga (`season_main_loop` 2a58:3d99).
         pub value_140: u8,
         /// +0x141 (FAR:2383) 5 bytes copied from DS:0286 on a new game
         /// (`screen_training`).
@@ -657,16 +659,20 @@ pub struct GameState {
     pub league_results: [[[u8; 20]; 38]; 3],
     /// #7 DS:07ab number of human managers (also the string-table group count).
     pub manager_count: u8,
-    /// #8 DS:07ac competition winner + 1 (DFB-Pokal, prestige bonus 20).
+    /// #8 DS:07ac DFB-Pokal winner + 1, 0 = none (prestige bonus 20); set by
+    /// `cup_round_complete` 27c2:16dc.
     pub winner_07ac: u8,
-    /// #9 DS:07ad competition winner + 1 (prestige bonus 50).
+    /// #9 DS:07ad German Champions' Cup holder + 1, 0 = none or a foreign winner (prestige
+    /// bonus 50).
     pub winner_07ad: u8,
-    /// #10 DS:07ae competition winner + 1 (prestige bonus 40).
+    /// #10 DS:07ae German Cup Winners' Cup holder + 1, 0 = none or a foreign winner (prestige
+    /// bonus 40).
     pub winner_07ae: u8,
-    /// #11 DS:07af competition winner + 1 (prestige bonus 30).
+    /// #11 DS:07af German UEFA Cup holder + 1, 0 = none or a foreign winner (prestige bonus 30).
     pub winner_07af: u8,
-    /// #12 DS:07b0 competition state byte (`competition_reset` 27c2:0ef2).
-    pub competition_07b0: u8,
+    /// #12 DS:07b0 DFB-Pokal runner-up + 1 (`cup_round_complete` 27c2:16dc, read by
+    /// `euro_cup_qualifiers_build` 27c2:0ef2).
+    pub dfb_cup_runner_up: u8,
     /// #13 FAR:2242 the four human-manager records.
     pub managers: [Manager; 4],
     /// #14 FAR:5714 rescheduled matches (`Nachholspiele`), 20 x 5 bytes.
@@ -692,23 +698,33 @@ pub struct GameState {
     pub day_counter: i32,
     /// #24 DS:07e0 year word (start year of the game).
     pub start_year: u16,
-    /// #25 FAR:56fe team id list (`team_is_in_list` 27c2:11e7).
-    pub cup_team_list: [u8; 10],
-    /// #26 FAR:57aa competition slots, 0x80 = empty (`competition_reset`).
+    /// #25 FAR:56fe the German clubs qualified for a European cup; the length FAR:2e74
+    /// ([`crate::runtime::Runtime::euro_qualified_count`]) is not saved
+    /// (`euro_cup_qualifiers_build` 27c2:0ef2, `team_is_euro_qualified` 27c2:11e7).
+    pub euro_qualified_list: [u8; 10],
+    /// #26 FAR:57aa `euro_qualifiers[3][6]`: the German qualifiers of European cup `c` in row
+    /// `c - 1`, 0x80 = empty (`euro_cup_qualifiers_build` 27c2:0ef2).
     pub competition_slots: [u8; 18],
-    /// #27 FAR:2e6e relegation pairing (copied to FAR:21e2).
-    pub relegation_pair: [u8; 2],
-    /// #28 FAR:76ca cup pairings `[64][2]` (`cup_play_round` 27c2:16dc).
+    /// #27 FAR:2e6e relegation play-off first-leg goals, re-oriented to the return-leg slot
+    /// order (`matchday_relegation_match` 1310:02bf).
+    pub relegation_first_leg: [u8; 2],
+    /// #28 FAR:76ca `cup_slots[4][32]` as pairs: club of each draw slot of cup row `c`
+    /// (0 = DFB-Pokal, 1..3 = European cups); slot `2k` is the home club.
     pub cup_pairings: [[u8; 2]; 64],
-    /// #29 FAR:21e2 relegation match table.
-    pub relegation_table: [u8; 96],
-    /// #30 FAR:0008 event state bytes (`random_weekly_events`, 3e3a:0fdf).
+    /// #29 FAR:21e2 European first-leg goals, rows 1..3 of FAR:21c2[4][32] (row 0 is never
+    /// used), already re-oriented to the return-leg slot order (`cup_round_complete`
+    /// 27c2:16dc).
+    pub cup_first_leg_goals: [u8; 96],
+    /// #30 FAR:0008 event state bytes; `[0..4]` is the round of cup row `c` (0 = draw in
+    /// progress, 1 = first round .. 5 = final), also read by `random_weekly_events` 3e3a:0fdf.
     pub event_state: [u8; 8],
-    /// #31 FAR:1d18 relegation/cup state.
-    pub far_1d18: [u8; 3],
+    /// #31 FAR:1d18 `euro_second_leg_pending[c - 1]` of European cup `c`: 1 after the first
+    /// leg was played (`cup_round_complete` 27c2:16dc).
+    pub euro_second_leg_pending: [u8; 3],
     /// #32 FAR:535a club ids of each league tier `[tier][20]`, ordered.
     pub league_teams: [[u8; 20]; 3],
-    /// #33 FAR:4c7e cup results `[64][2]`.
+    /// #33 FAR:4c7e `cup_goals[4][32]` as pairs: goals of each draw slot in the cup match
+    /// just played; +10 = after extra time, +20 = after penalties.
     pub cup_results: [[u8; 2]; 64],
     /// #34 DS:225a per-competition round counters.
     pub competition_rounds: [u8; 3],
@@ -771,8 +787,10 @@ pub struct GameState {
     pub ds_061c: [u8; 4],
     /// #59 DS:05b8 (no code reference found).
     pub ds_05b8: [u8; 4],
-    /// #60 FAR:3060 byte read by `season_main_loop`.
-    pub far_3060: u8,
+    /// #60 FAR:3060 relegation play-off result `cup_tie_winner(1, 0)`: 0 = the Bundesliga club
+    /// won, 1 = the 2. Bundesliga club won, 0x1e = undecided (`matchday_relegation_match`
+    /// 1310:02bf, read by `season_main_loop`).
+    pub relegation_result: u8,
 
     // ---- after the blocks ----
     /// Message strings per manager (string table, rebuilt into FAR:5524).
@@ -835,7 +853,7 @@ macro_rules! for_each_block {
             9 winner_07ad: u8,
             10 winner_07ae: u8,
             11 winner_07af: u8,
-            12 competition_07b0: u8,
+            12 dfb_cup_runner_up: u8,
             13 managers: [Manager; 4],
             14 rescheduled_matches: [[u8; 5]; 20],
             15 clubs: [Club; 200],
@@ -848,13 +866,13 @@ macro_rules! for_each_block {
             22 year: i32,
             23 day_counter: i32,
             24 start_year: u16,
-            25 cup_team_list: [u8; 10],
+            25 euro_qualified_list: [u8; 10],
             26 competition_slots: [u8; 18],
-            27 relegation_pair: [u8; 2],
+            27 relegation_first_leg: [u8; 2],
             28 cup_pairings: [[u8; 2]; 64],
-            29 relegation_table: [u8; 96],
+            29 cup_first_leg_goals: [u8; 96],
             30 event_state: [u8; 8],
-            31 far_1d18: [u8; 3],
+            31 euro_second_leg_pending: [u8; 3],
             32 league_teams: [[u8; 20]; 3],
             33 cup_results: [[u8; 2]; 64],
             34 competition_rounds: [u8; 3],
@@ -883,7 +901,7 @@ macro_rules! for_each_block {
             57 ds_05d6: [u8; 4],
             58 ds_061c: [u8; 4],
             59 ds_05b8: [u8; 4],
-            60 far_3060: u8,
+            60 relegation_result: u8,
         }
     };
 }
@@ -1051,6 +1069,55 @@ impl GameState {
         0
     }
 
+    /// Exchanges the club slots `a` and `b` (both German, below [`GERMAN_CLUBS`]; otherwise nothing
+    /// happens): the players' and managers' club ids, with `with_refs` also the cup title
+    /// holders, then the club records, league table records and history rows of the two
+    /// slots and every record opponent. Team ids are positional, so promotion, relegation,
+    /// the yearly league shuffle and the start menu move clubs with this swap.
+    ///
+    /// Origin: BMMAIN.EXE 1310:0b24 (team_swap_slots)
+    pub fn team_swap_slots(&mut self, a: u8, b: u8, with_refs: bool) {
+        if usize::from(a) >= GERMAN_CLUBS || usize::from(b) >= GERMAN_CLUBS {
+            return;
+        }
+        let rename = |t: &mut u8| {
+            if *t == a {
+                *t = b;
+            } else if *t == b {
+                *t = a;
+            }
+        };
+        for p in &mut self.players[1..PLAYER_COUNT] {
+            rename(&mut p.team);
+        }
+        let managers = self.active_managers().len();
+        for m in &mut self.managers[..managers] {
+            rename(&mut m.team);
+        }
+        if with_refs {
+            for holder in [
+                &mut self.winner_07ac,
+                &mut self.winner_07ad,
+                &mut self.winner_07ae,
+                &mut self.winner_07af,
+                &mut self.dfb_cup_runner_up,
+            ] {
+                swap_team_ref_byte(holder, a, b);
+            }
+        }
+        let (a, b) = (usize::from(a), usize::from(b));
+        self.clubs.swap(a, b);
+        self.team_tables.swap(a, b);
+        let history = &mut self.match_history;
+        history.team_series.swap(a, b);
+        history.record_scores.swap(a, b);
+        history.record_opponents.swap(a, b);
+        team_swap_in_table_a4ca(&mut history.record_opponents, a as u8, b as u8);
+        for results in &mut history.recent_results[..managers] {
+            results.swap(a, b);
+        }
+    }
+
     /// Number of occupied slots (`player_id != 0`) among the first 24 slots
     /// of `squad` (the first 12 for the transfer pool, squad 4). The slots
     /// need not be contiguous; slot 24 is never examined.
@@ -1170,6 +1237,31 @@ impl GameState {
                 0..=37 => rec.position_history[idx as usize] = pos,
                 _ => {}
             }
+        }
+    }
+}
+
+/// Renames a 1-based club reference (`club + 1`, 0 = none) from `a` to `b` or back. Only
+/// called with German clubs, so `club + 1` cannot wrap.
+///
+/// Origin: BMMAIN.EXE 1310:0ae8 (swap_team_ref_byte)
+fn swap_team_ref_byte(p: &mut u8, a: u8, b: u8) {
+    if *p == a + 1 {
+        *p = b + 1;
+    } else if *p == b + 1 {
+        *p = a + 1;
+    }
+}
+
+/// Renames club `a` to `b` and back in every record-opponent entry.
+///
+/// Origin: BMMAIN.EXE 1310:0f44 (team_swap_in_table_a4ca)
+fn team_swap_in_table_a4ca(table: &mut [[u8; 8]; 64], a: u8, b: u8) {
+    for x in table.as_flattened_mut() {
+        if *x == a {
+            *x = b;
+        } else if *x == b {
+            *x = a;
         }
     }
 }
@@ -1312,6 +1404,83 @@ pub(crate) mod tests {
         assert_eq!(s.manager_index_of_team(9, 7), 0x81);
         assert_eq!(s.manager_index_of_team(1, 9), 0x82);
         assert_eq!(s.manager_index_of_team(11, 11), 0);
+    }
+
+    /// A state whose per-team rows of clubs 2 and 5 carry distinct markers.
+    fn swap_state() -> GameState {
+        let mut s = GameState::zeroed();
+        s.manager_count = 1;
+        s.players[0].team = 2;
+        s.players[1].team = 2;
+        s.players[150].team = 5;
+        s.managers[0].team = 5;
+        s.managers[1].team = 2;
+        s.winner_07ac = 3;
+        s.dfb_cup_runner_up = 6;
+        s.winner_07ad = 9;
+        for (t, mark) in [(2, 0x22), (5, 0x55)] {
+            s.clubs[t].name[0] = mark;
+            s.team_tables[t].points[0] = mark;
+            let h = &mut s.match_history;
+            h.team_series[t][0][0] = mark;
+            h.record_scores[t][0] = mark;
+            h.recent_results[0][t][0][0] = mark;
+            h.recent_results[1][t][0][0] = mark;
+        }
+        s.match_history.record_opponents[9][..3].copy_from_slice(&[2, 5, 7]);
+        s.match_history.record_opponents[2][0] = 0x22;
+        s
+    }
+
+    #[test]
+    fn team_swap_slots_moves_every_reference() {
+        let before = swap_state();
+        let mut s = before.clone();
+        s.team_swap_slots(2, 5, true);
+        assert_eq!(s.players[0].team, 2, "player 0 is not a real player");
+        assert_eq!((s.players[1].team, s.players[150].team), (5, 2));
+        assert_eq!((s.managers[0].team, s.managers[1].team), (2, 2));
+        assert_eq!((s.winner_07ac, s.dfb_cup_runner_up), (6, 3));
+        assert_eq!(s.winner_07ad, 9);
+        assert_eq!(s.clubs[2].name[0], 0x55);
+        assert_eq!(s.clubs[5].name[0], 0x22);
+        assert_eq!(s.team_tables[2].points[0], 0x55);
+        let h = &s.match_history;
+        assert_eq!(h.team_series[5][0][0], 0x22);
+        assert_eq!(h.record_scores[5][0], 0x22);
+        assert_eq!(h.recent_results[0][5][0][0], 0x22);
+        assert_eq!(h.recent_results[1][5][0][0], 0x55, "manager 1 is inactive");
+        assert_eq!(h.record_opponents[9][..3], [5, 2, 7]);
+        // The rows move first, then every entry is renamed: row 5 now holds club 2's old row.
+        assert_eq!(h.record_opponents[5][0], 0x22);
+
+        let mut s = before.clone();
+        s.team_swap_slots(2, 5, false);
+        assert_eq!((s.winner_07ac, s.dfb_cup_runner_up), (3, 6));
+        assert_eq!(s.managers[0].team, 2);
+
+        for (a, b) in [(64, 2), (2, 64)] {
+            let mut s = before.clone();
+            s.team_swap_slots(a, b, true);
+            assert_eq!(s, before);
+        }
+    }
+
+    #[test]
+    fn real_saves_team_swap_twice_restores_the_state() {
+        for (path, before) in crate::test_saves::save_states() {
+            let pairs = [
+                (before.managers[0].team, 0),
+                (before.league_teams[0][0], before.league_teams[1][0]),
+                (3, 3),
+            ];
+            for (a, b) in pairs {
+                let mut s = before.clone();
+                s.team_swap_slots(a, b, true);
+                s.team_swap_slots(a, b, true);
+                assert_eq!(s, before, "{} swap {a}/{b}", path.display());
+            }
+        }
     }
 
     #[test]

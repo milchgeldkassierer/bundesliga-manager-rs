@@ -71,11 +71,11 @@ inferred from code plus observed data, **L** = name or role guessed.
 | 5 | DS:079e | `lineup_state: [[u8;2];4]` | Per-manager byte pair. A value of `[m][0] > 1` forces the lineup dialog (2ecd:14c7 `auto_lineup_disable`), which then resets it to 1. `season_main_loop` shifts `[1]` into `[0]` | 2a58:3176, 2ecd:* | M |
 | 6 | FAR:6ddc | `league_results: [[[u8;20];38];3]` | League results `[tier][round][slot]`. Even slot = home goals, odd slot = away goals, 0x1e = not played (writer 1310:0ae8..: `((FAR:4bd0[i]*0x26 + FAR:57a6[i])*0x14 + DS:0170[i] + k)`) | 3a41:2d33, 1310:152e | H |
 | 7 | DS:07ab | `manager_count: u8` | Number of human managers. It is also the string-table group count | everywhere | H |
-| 8 | DS:07ac | `winner_07ac: u8` | Competition winner club + 1. It gives a +20 prestige bonus in `season_end` 2a58:4597 (DFB-Pokal?) | `competition_reset` 27c2:0ef2, `cup_play_round` | M/L |
-| 9 | DS:07ad | `winner_07ad: u8` | Same, +50 bonus (European Champions Cup?) | same | M/L |
-| 10 | DS:07ae | `winner_07ae: u8` | Same, +40 bonus | same | M/L |
-| 11 | DS:07af | `winner_07af: u8` | Same, +30 bonus | same | M/L |
-| 12 | DS:07b0 | `competition_07b0: u8` | Competition state (observed 13, 30, 32) | `competition_reset` | L |
+| 8 | DS:07ac | `winner_07ac: u8` | DFB-Pokal winner + 1, 0 = none (cups.md §0.3). It gives a +20 prestige bonus in `season_end` 2a58:4597 | `euro_cup_qualifiers_build` 27c2:0ef2, `cup_round_complete` 27c2:16dc | H |
+| 9 | DS:07ad | `winner_07ad: u8` | German Champions' Cup holder + 1, 0 = none or foreign; +50 bonus | same | H |
+| 10 | DS:07ae | `winner_07ae: u8` | German Cup Winners' Cup holder + 1; +40 bonus | same | H |
+| 11 | DS:07af | `winner_07af: u8` | German UEFA Cup holder + 1; +30 bonus | same | H |
+| 12 | DS:07b0 | `dfb_cup_runner_up: u8` | DFB-Pokal runner-up + 1 (cups.md §4.2) | `cup_round_complete` 27c2:16dc, `euro_cup_qualifiers_build` 27c2:0ef2 | H |
 | 13 | FAR:2242 | `managers: [Manager;4]` | Human manager records (§3.1) | | H |
 | 14 | FAR:5714 | `rescheduled_matches: [[u8;5];20]` | "Nachholspiele" list. Byte +1 = team (0 = free entry), +2..+4 further match data | `matchday_title_rescheduled` 1310:07a2, `screen_fixtures` 3a41:120a | M |
 | 15 | FAR:3066 | `clubs: [Club;200]` | Club table (§3.2) | | H |
@@ -88,15 +88,15 @@ inferred from code plus observed data, **L** = name or role guessed.
 | 22 | FAR:a7a0 | `year: i32` | Current year. Compared with `Credit::due_year`; observed 1965..1968 | `finance_weekly_processing` 212a:0a6d | H |
 | 23 | DS:07dc | `day_counter: i32` | Day counter of `season_main_loop`. "WINTERPAUSE"/season end when it passes `DS:224c + 0x142` | 2a58:3176, `random_weekly_events` | H |
 | 24 | DS:07e0 | `start_year: u16` | Year word (observed one less than `year`) | `start_menu_new_or_load`, `season_main_loop` | M |
-| 25 | FAR:56fe | `cup_team_list: [u8;10]` | Team id list, length FAR:2e74 (`team_is_in_list` 27c2:11e7) | `competition_reset` | M |
-| 26 | FAR:57aa | `competition_slots: [u8;18]` | Competition slots, 0x80 = empty | `competition_reset` | M |
-| 27 | FAR:2e6e | `relegation_pair: [u8;2]` | Relegation pairing, copied to FAR:21e2 | `matchday_title_relegation` 1310:02bf | M |
-| 28 | FAR:76ca | `cup_pairings: [[u8;2];64]` | Cup pairings (home, away) | `cup_play_round` 27c2:16dc, `competition_init` 27c2:09e0 | M |
-| 29 | FAR:21e2 | `relegation_table: [u8;96]` | Relegation matches (zero in all samples) | 1310:02bf, 27c2:13a2 | L |
-| 30 | FAR:0008 | `event_state: [u8;8]` | Event and state bytes (Christmas text, random events) | `random_weekly_events` 1cb5:13bd, 3e3a:0fdf | L |
-| 31 | FAR:1d18 | `far_1d18: [u8;3]` | Relegation/cup state | 1310:02bf, 27c2:16dc | L |
+| 25 | FAR:56fe | `euro_qualified_list: [u8;10]` | German clubs qualified for a European cup, length FAR:2e74 (not saved) | `euro_cup_qualifiers_build` 27c2:0ef2, `team_is_euro_qualified` 27c2:11e7 | H |
+| 26 | FAR:57aa | `competition_slots: [u8;18]` | `euro_qualifiers[3][6]`: German qualifiers of European cup `c` in row `c - 1`, 0x80 = empty | `euro_cup_qualifiers_build` 27c2:0ef2, `cup_draw_first_round` 27c2:09e0 | H |
+| 27 | FAR:2e6e | `relegation_first_leg: [u8;2]` | Relegation play-off first-leg goals (re-oriented), copied to FAR:21e2 for the return leg | `matchday_relegation_match` 1310:02bf | H |
+| 28 | FAR:76ca | `cup_pairings: [[u8;2];64]` | `cup_slots[4][32]`: club of each draw slot (home, away) | `cup_round_complete` 27c2:16dc, `cup_draw_first_round` 27c2:09e0 | H |
+| 29 | FAR:21e2 | `cup_first_leg_goals: [u8;96]` | European first-leg goals, rows 1..3 of FAR:21c2[4][32], re-oriented to the return-leg slot order | 27c2:16dc, 27c2:13a2, 1310:02bf | H |
+| 30 | FAR:0008 | `event_state: [u8;8]` | Event and state bytes; `[0..4]` is the round of cup row `c` (cups.md §0.2) | `random_weekly_events` 1cb5:13bd, 3e3a:0fdf, segment 27c2 | M |
+| 31 | FAR:1d18 | `euro_second_leg_pending: [u8;3]` | 1 after the first leg of European cup `c` (index `c - 1`) was played | 1310:02bf, 27c2:16dc | H |
 | 32 | FAR:535a | `league_teams: [[u8;20];3]` | Club ids of each league tier (18 or 20 used), reordered by table sorting (3a41:2d33) and swapped in 1310:0f44 | 3a41:2d33, `season_main_loop` | H |
-| 33 | FAR:4c7e | `cup_results: [[u8;2];64]` | Cup result goals | `cup_play_round`, `match_penalty_shootout` 1310:356d | M |
+| 33 | FAR:4c7e | `cup_results: [[u8;2];64]` | `cup_goals[4][32]`: goals of the cup match just played, +10 = extra time, +20 = penalties | `cup_round_complete` 27c2:16dc, `match_penalty_shootout` 1310:356d | H |
 | 34 | DS:225a | `competition_rounds: [u8;3]` | Round counter per competition (incremented by bits 0..2 of DS:2280[week]) | `screen_league_table`, `office_menu_dispatcher` | M |
 | 35 | FAR:9336 | `match_history: MatchHistory` | Head-to-head and record tables (§3.6) | 3a41:2d33, 3a41:2073 | H |
 | 36 | DS:05fe | `options: [u8;15]` | Option flags (settings screen; `+0x0e` read by `screen_fade`) | `screen_settings` 362f:01b8, `match_live_view` | L |
@@ -123,7 +123,7 @@ inferred from code plus observed data, **L** = name or role guessed.
 | 57 | DS:05d6 | `ds_05d6: [u8;4]` | No code reference found | – | L |
 | 58 | DS:061c | `ds_061c: [u8;4]` | No code reference found | – | L |
 | 59 | DS:05b8 | `ds_05b8: [u8;4]` | No code reference found | – | L |
-| 60 | FAR:3060 | `far_3060: u8` | Byte read by `season_main_loop` | 2a58:3176 | L |
+| 60 | FAR:3060 | `relegation_result: u8` | Relegation play-off result: 0 = Bundesliga club won, 1 = 2. Bundesliga club won, 0x1e = undecided | `matchday_relegation_match` 1310:02bf, 2a58:3176 | H |
 
 The fields outside the blocks are:
 
@@ -357,7 +357,7 @@ xrefs/decompilations above and MEMORY_MAP.
 | FAR:5524[4*20] | `message_strings` | Far pointers of the per-manager message strings (rebuilt from the string table) | 4091:* |
 | FAR:a6d8[50] | `save_id_history` | Session history of loaded/saved ids | 422b:07fe |
 | FAR:57cf / 56dc | `save_key` / `save_checksum` | Cipher state | savegame.md |
-| FAR:2e74 | `cup_team_list_len` | Length of FAR:56fe | MEMORY_MAP |
+| FAR:2e74 | `euro_qualified_count` (`Runtime`) | Length of FAR:56fe | `euro_cup_qualifiers_build` 27c2:0ef2 |
 | FAR:2e98 | `match_count` | Number of matches in the current match-day buffer (FAR:4bd0, 57a6, DS:0170, 549c) | 1310:0ae8 |
 | FAR:2ea2, 3046/3048 | `mouse_event`, `button_latch` | Input state | MEMORY_MAP |
 | FAR:2f28/2f2a | `main_rastport` | Rastport used by all drawing | MEMORY_MAP |
