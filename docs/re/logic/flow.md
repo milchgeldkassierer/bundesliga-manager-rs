@@ -101,7 +101,7 @@ External callees used but specified elsewhere (named by their owners): `mana_loa
 `tore_scene_open` 24a4:0419 (`FUN_24a4_0419`), `season_main_loop` 2a58:3176, `league_strength_drift`
 1f9d:0697, `transfer_market_refresh` 3277:1e38, `squad_insert_player` 2ecd:37d8, `auto_lineup` 2ecd:3360,
 `squad_recalc_team_strength` 1f9d:0002, `player_value_calc` 3277:25de, `FUN_24a4_2cb4`
-(player development), `squad_count_by_flag` 4091:1109, `league_tier_of_team` 27c2:1bb5,
+(`advertising_offers_generate`, stats.md §3.6), `squad_count_by_flag` 4091:1109, `league_tier_of_team` 27c2:1bb5,
 `team_is_euro_qualified` 27c2:11e7, `cup_draw_screen_open` 27c2:0006, `cup_draw_animate_slot` 27c2:0378,
 `cup_draw_screen_close` 27c2:089a, `rank_tier_teams_by_strength` 1cb5:2a3b, `pick_random_free_team_in_tier`
 1cb5:2987, `FUN_24a4_1798`, `manager_index_of_team` 1310:32b1, all screens of §6.5.
@@ -149,7 +149,8 @@ void main(int argc, char far * far *argv)          // 18bc:0418, cdecl far
     if (cmf) mem_free(cmf, 0);
     sound_voice_init();                             // 176b:0006 (CT-VOICE + EMS)
     sound_load_digi_voc();                          // 176b:005f
-    mana_load_club_table();                         // 362f:36ec (MANA.DAT)
+    mana_load_club_table();                         // 362f:36ec (MANA.DAT); 800 RNG draws on the
+                                                    // power-on generator state (before seed #1)
     for (int i = 0; i < 2; i++) {                   // button frame pictures
         FAR:578c[i] = vga_load_picture(0x18 + i, 0, 0, 0, 1);   // PIC\24.VGA, PIC\25.VGA
         FAR:548e[i] = *FAR:578c[i];                              // bitmap
@@ -605,7 +606,7 @@ if (FAR:513c < 2000) {                                           // unsigned; hi
 M[m].b[0x131] = 0x10;                                            // FAR:2373
 M[m].w[0x1dc] = (u16)(tf * 0xffec) + 0x32;                       // FAR:241e = 50 - 20*tf (u16 MUL)
 manager_compute_wage_budget((u8)m);                              // 18bc:0a63  RNG
-FUN_24a4_2cb4();                                                 // player development (other area, RNG)
+FUN_24a4_2cb4();                                                 // advertising_offers_generate (stats.md §3.6, RNG)
 if (n0 != 0) { auto_lineup(); squad_recalc_team_strength((u8)m, 0); }
 ```
 `bp4` is the value of the local `[bp-4]` at this point: `7` after the 1-year loop of the same iteration;
@@ -716,7 +717,7 @@ for (u16 p = 1; p < 0x97; p++) {                              // remaining names
     if (!(DS:07a7[k] > p)) k++;
     if (P[p].name[0] == 0) {
         _fstrcpy(P[p].name, mana_pick_unused_player_name(buf, 1, k, (u8)p));   // RNG
-        if (FAR:513c > 0x7d0) P[p].team = 0xff;               // modern start: no team
+        if (FAR:513c > 0x7d0) P[p].team = 0xff;               // endless game (end year > 2000): no team
     }
 }
 for (p = 1;    p <= 0x14; p++) P[p].b[0x1f] = 0;
@@ -760,11 +761,13 @@ u8 lst[3][20];
 for (u8 k = 0; k < 3; k++) rank_tier_teams_by_strength(k, lst[k]);   // 1cb5:2a3b
 for (u8 p = 1; p < 0x97; p++)
     if (manager_index_of_team(P[p].team, 0xff) == 0 &&
-        (P[p].team == 0xff || FAR:a7a0 /* s32 */ == 0))
+        (P[p].team == 0xff || FAR:a7a0 /* s32 */ != 0))
         for (u8 k = 0; k < 3; k++)
             if (n[k] != 0) { P[p].team = pick_random_free_team_in_tier(k, lst[k]); n[k]--; }   // 1cb5:2987 RNG
 ```
-(Several `k` may overwrite the same record; faithful.)
+(Several `k` may overwrite the same record; faithful.) The year test is `!= 0` (disassembly 24a4:1a5d..1a76:
+team `0xff` jumps into the tier loop, otherwise a zero `FAR:a7a0|a7a2` skips the player). The callee
+never reads `lst[k]` (1cb5:2987..2a3a only reads its first argument), so the ranking has no effect.
 
 ### 5.4 `league_shuffle_teams` 1310:09c5 — `void (void)`
 

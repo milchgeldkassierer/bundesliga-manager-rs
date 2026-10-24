@@ -1,18 +1,18 @@
 //! Start menu: club carousel, four manager slots with portraits and names, then the
 //! new-game options dialog. Spec: `docs/re/logic/flow.md` §4.
 
+use bmp_game::newgame::{
+    GameOptions, MODE_ENDLESS, MODE_HISTORICAL, MODE_LENGTHS, MODE_ONE_YEAR, MODE_THREE_YEARS,
+    ManagerChoice, MenuChoices,
+};
 use bmp_game::rng::format_long_thousands;
+use bmp_game::state::{Club, GameState, NO_TEAM};
 
-use bmp_game::state::GameState;
-
-use super::{ClubEntry, Session, load_game, office_show_cached_background};
+use super::{Session, load_game, office_show_cached_background};
 use crate::gfx::{
     BitmapId, Gfx, RastPort, ui_draw_text_at, ui_draw_text_centered_shadow, ui_fill_rect,
 };
 use crate::host::{Host, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, Run};
-
-/// `M[i].team` value of a slot without a club.
-pub const NO_CLUB: u8 = 100;
 
 /// Pictures `main` loads before the start menu.
 pub struct Pictures {
@@ -33,59 +33,10 @@ impl Pictures {
     }
 }
 
-/// The start-menu part of a manager record.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ManagerChoice {
-    /// `+0x00` club slot, [`NO_CLUB`] for none.
-    pub team: u8,
-    /// `+0x1d` portrait slot (1-based), swapped by clicking two portraits.
-    pub slot: u8,
-    /// 29-byte name buffer, without the NUL.
-    pub name: Vec<u8>,
-}
-
-/// What the player chose for a new game.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewGame {
-    /// The active managers (`DS:07ab` entries).
-    pub managers: Vec<ManagerChoice>,
-    /// Shown level 0..5 (`DS:4a28` before it is stored as `5 - level`).
-    pub level: u8,
-    /// Game-mode bits: 1 endless, 2 one year, 4 three years, 8 historical start.
-    pub mode_flags: u8,
-}
-
-impl NewGame {
-    /// `FAR:513c`, the end year (save block 43).
-    pub fn end_year(&self) -> u16 {
-        let mut year = 0x56ce;
-        if self.mode_flags & 2 != 0 {
-            year = 0x7ac;
-        }
-        if self.mode_flags & 4 != 0 {
-            year = 0x7ae;
-        }
-        if self.modern_start() {
-            year += 0x1d;
-        }
-        year
-    }
-
-    /// `FAR:56f4`: modern start (bit 3 "Histor. Start" clear).
-    pub fn modern_start(&self) -> bool {
-        ((((self.mode_flags as i8) >> 3) + 1) & 1) != 0
-    }
-
-    /// `DS:4a28` as stored: `5 - shown level`.
-    pub fn difficulty(&self) -> u8 {
-        5u8.wrapping_sub(self.level)
-    }
-}
-
 /// Result of the start menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
-    NewGame(NewGame),
+    NewGame(MenuChoices),
     /// The header bar was clicked and a saved game was loaded.
     LoadGame(Box<GameState>),
 }
@@ -93,7 +44,7 @@ pub enum Outcome {
 struct Screen<'a> {
     host: &'a mut Host,
     pics: &'a Pictures,
-    clubs: &'a [ClubEntry],
+    clubs: &'a [Club],
     managers: [ManagerChoice; 4],
     /// `DS:07ab`.
     count: u8,
@@ -197,7 +148,7 @@ impl Screen<'_> {
                 0x28,
             );
             if i + 1 > i16::from(n0) {
-                self.managers[i as usize].team = NO_CLUB;
+                self.managers[i as usize].team = NO_TEAM;
             } else {
                 self.blit(
                     self.pics.crest_cache,
@@ -228,8 +179,8 @@ impl Screen<'_> {
         self.blit(self.strip, 0, 0, screen, 0x11, 0x30, 0x11f, 0x26);
         self.host.set_font(1);
         Gfx::rastport_set_draw_mode(&mut self.host.rp, 0);
-        let name = self.clubs[3].name.clone();
-        self.centered(&name, 0x55, 0xeb, 0x62, 0, 0xff);
+        let clubs = self.clubs;
+        self.centered(clubs[3].name(), 0x55, 0xeb, 0x62, 0, 0xff);
         self.host.screen_fade(1)
     }
 
@@ -294,8 +245,8 @@ impl Screen<'_> {
             }
             self.blit(self.strip, 0, 0, screen, 0x11, 0x30, 0x11f, 0x26);
             self.fill(0x55, 0x59, 0xeb, 0x63, 5);
-            let name = self.clubs[*center as usize].name.clone();
-            self.centered(&name, 0x55, 0xeb, 0x62, 0, 0xff);
+            let clubs = self.clubs;
+            self.centered(clubs[*center as usize].name(), 0x55, 0xeb, 0x62, 0, 0xff);
             self.host.input_poll_mouse()?;
             self.host.wait_5_ticks()?;
             if self.host.button == LEFT_UP {
@@ -405,7 +356,7 @@ impl Screen<'_> {
                 if self.managers[mi].name.is_empty() {
                     for k in i16::from(m)..4 {
                         // NB: index m, not k (original bug).
-                        self.managers[mi].team = NO_CLUB;
+                        self.managers[mi].team = NO_TEAM;
                         self.fill(k * 0x50 + 0x16, 0x72, k * 0x50 + 0x3d, 0x97, 0);
                         self.fill(k * 0x50 + 0x13, 0xe1, k * 0x50 + 0x3b, 0xe7, 0);
                     }
@@ -515,11 +466,12 @@ fn draw_toggle(host: &mut Host, pic: BitmapId, x: i16, y: i16, on: bool) {
 }
 
 const LEVEL_LABELS: [&[u8]; 3] = [b"Spiel-Level", b"", b""];
-const MODE_LABELS: [&[u8]; 4] = [
-    b"Endlosspiel",
-    b"1-Jahres-Spiel",
-    b"3-Jahres-Spiel",
-    b"Histor. Start",
+/// The mode rows of the dialog, top to bottom, with the bit each row sets.
+const MODE_ROWS: [(&[u8], u8); 4] = [
+    (b"Endlosspiel", MODE_ENDLESS),
+    (b"1-Jahres-Spiel", MODE_ONE_YEAR),
+    (b"3-Jahres-Spiel", MODE_THREE_YEARS),
+    (b"Histor. Start", MODE_HISTORICAL),
 ];
 
 /// §4.7: level and game-mode dialog of a new game. Returns `(level, flags)`.
@@ -528,7 +480,7 @@ fn options_dialog(host: &mut Host) -> Result<Run<(u8, u8)>, String> {
     // DS:2252/2254 == DS:224e/2250 (both 1 in the shipped data): four mode rows.
     let four: i16 = 4;
     let mut level: i16 = 2; // DS:4a28 initial value
-    let mut flags: u8 = 1;
+    let mut flags = MODE_ENDLESS;
     let h = 0x8e - 0x14 * i16::from(four == 3);
     host.ui
         .draw_button(&mut host.g, &mut host.rp, 0x4e, 0x45, 0xa4, h, true, 8);
@@ -551,14 +503,20 @@ fn options_dialog(host: &mut Host) -> Result<Run<(u8, u8)>, String> {
         ui_draw_text_centered_shadow(
             &mut host.g,
             &mut host.rp,
-            MODE_LABELS[i as usize],
+            MODE_ROWS[i as usize].0,
             0x4f,
             0xb9,
             i * 0x12 + 0x92,
             1,
             0,
         );
-        draw_toggle(host, dlg, 0xb5, i * 0x12 + 0x86, (flags >> i) & 1 != 0);
+        draw_toggle(
+            host,
+            dlg,
+            0xb5,
+            i * 0x12 + 0x86,
+            flags & MODE_ROWS[i as usize].1 != 0,
+        );
     }
     loop {
         let ev = match host.input_poll_mouse() {
@@ -573,16 +531,25 @@ fn options_dialog(host: &mut Host) -> Result<Run<(u8, u8)>, String> {
                 }
                 if my > 0x85 && my < 0xcd - 0x12 * i16::from(four == 3) {
                     let i = (my - 0x86) / 0x12;
-                    if i == 3 {
-                        flags &= 7;
+                    let bit = MODE_ROWS[i as usize].1;
+                    if bit == MODE_HISTORICAL {
+                        flags &= MODE_LENGTHS;
                     } else {
-                        flags &= 8;
+                        flags &= MODE_HISTORICAL;
                     }
-                    flags |= u8::from(mx < 0xcd) << i;
+                    if mx < 0xcd {
+                        flags |= bit;
+                    }
                     // The original reuses mx as the loop counter here.
                     mx = 0;
                     while mx < four {
-                        draw_toggle(host, dlg, 0xb5, mx * 0x12 + 0x86, (flags >> mx) & 1 != 0);
+                        draw_toggle(
+                            host,
+                            dlg,
+                            0xb5,
+                            mx * 0x12 + 0x86,
+                            flags & MODE_ROWS[mx as usize].1 != 0,
+                        );
                         mx += 1;
                     }
                 }
@@ -593,7 +560,7 @@ fn options_dialog(host: &mut Host) -> Result<Run<(u8, u8)>, String> {
                 }
             }
         }
-        if ev == RIGHT_DOWN && flags & 7 != 0 {
+        if ev == RIGHT_DOWN && flags & MODE_LENGTHS != 0 {
             break;
         }
     }
@@ -611,7 +578,7 @@ fn options_dialog(host: &mut Host) -> Result<Run<(u8, u8)>, String> {
 pub fn start_menu_new_or_load(
     host: &mut Host,
     pics: &Pictures,
-    clubs: &[ClubEntry],
+    clubs: &[Club],
     session: &mut Session,
 ) -> Result<Run<Outcome>, String> {
     let n0: u8 = 0;
@@ -625,9 +592,9 @@ pub fn start_menu_new_or_load(
         pics,
         clubs,
         managers: std::array::from_fn(|m| ManagerChoice {
-            team: NO_CLUB,
-            slot: m as u8 + 1,
             name: Vec::new(),
+            team: NO_TEAM,
+            slot: m as u8 + 1,
         }),
         count: 0,
         hdr,
@@ -635,11 +602,12 @@ pub fn start_menu_new_or_load(
         frame,
         slot_frame,
     };
-    let result = (|| -> Run<Option<Outcome>> {
+    // `[bp-4]` and `[bp-0xa]`: the carousel position and the club under the centre crest.
+    let (mut pos, mut center) = (0i16, 3i16);
+    let mut result = || -> Run<Option<Outcome>> {
         s.host.screen_fade(0)?;
         s.host.g.palette_load_slot(0, 0x100);
         s.full_redraw(n0)?;
-        let (mut pos, mut center) = (0i16, 3i16);
         let mut pending_swap = 0i16;
         loop {
             let ev = s.host.input_poll_mouse()?;
@@ -647,7 +615,7 @@ pub fn start_menu_new_or_load(
                 && s.count != 0
                 && s.managers[..s.count as usize]
                     .iter()
-                    .all(|m| m.team != NO_CLUB)
+                    .all(|m| m.team != NO_TEAM)
             {
                 return Ok(None);
             }
@@ -673,7 +641,8 @@ pub fn start_menu_new_or_load(
             }
             s.slot_clicks(n0, mx, my, center, &mut pending_swap)?;
         }
-    })();
+    };
+    let result = result();
     let outcome = match result {
         Err(q) => return Ok(Err(q)),
         Ok(Some(o)) => o,
@@ -693,16 +662,16 @@ pub fn start_menu_new_or_load(
                     0x26,
                 );
             }
-            let managers = s.managers[..s.count as usize].to_vec();
             s.host.set_font(1);
             let (level, mode_flags) = match options_dialog(s.host)? {
                 Ok(v) => v,
                 Err(q) => return Ok(Err(q)),
             };
-            Outcome::NewGame(NewGame {
-                managers,
-                level,
-                mode_flags,
+            Outcome::NewGame(MenuChoices {
+                managers: s.managers.clone(),
+                count: s.count,
+                carousel_pos: pos,
+                options: GameOptions { level, mode_flags },
             })
         }
     };
@@ -710,31 +679,4 @@ pub fn start_menu_new_or_load(
         s.host.g.free(bm);
     }
     Ok(Ok(outcome))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn game(mode_flags: u8, level: u8) -> NewGame {
-        NewGame {
-            managers: Vec::new(),
-            level,
-            mode_flags,
-        }
-    }
-
-    #[test]
-    fn end_year_follows_mode_and_start() {
-        // Historical start (bit 3): 0x56ce / 0x7ac / 0x7ae; modern start adds 29.
-        assert_eq!(game(1 | 8, 2).end_year(), 0x56ce);
-        assert_eq!(game(2 | 8, 2).end_year(), 0x7ac);
-        assert_eq!(game(4 | 8, 2).end_year(), 0x7ae);
-        assert_eq!(game(1, 2).end_year(), 0x56eb);
-        assert_eq!(game(2, 2).end_year(), 0x7c9);
-        assert_eq!(game(4, 2).end_year(), 0x7cb);
-        assert!(game(1, 0).modern_start());
-        assert!(!game(9, 0).modern_start());
-        assert_eq!(game(1, 2).difficulty(), 3);
-    }
 }

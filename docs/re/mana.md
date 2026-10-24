@@ -139,13 +139,21 @@ Previous season final table position: 1..18 for clubs 0..17, then
 
 `mana_load_club_table` (`362f:36ec`), called once from `18bc:0418`:
 
-1. `open("mana.dat", O_RDONLY)`, read `0x40` bytes -> crest (see above), and
-   `strcpy` a placeholder string (`DS:54c9`, `"@@@@@@@@..."`) into a 64-entry
-   table at `0xed0 + i*0x36` (not file data).
-2. read `0x258` bytes -> strength (200 x 3).
+1. `open("mana.dat", O_RDONLY)`, read `0x40` bytes -> crest `(b + 0x30) & 0x7f` (see above),
+   and `strcpy` the placeholder string `DS:54c9` (`"@@@@@@@@"`) into the first form string
+   of the 64 league table records (`FAR:0ed0 + i*0x36`, not file data).
+2. read `0x258` bytes -> strength (200 x 3). For each club `i` and part `j`: current and base
+   strength = the file byte, then the club field `strength_1e[j]` (+0x1e)
+   `= random_range(45, 55) - (i > 64 ? 5 : 0)`; after the three parts
+   `morale = random_range(45, 55)`. These 800 draws run before `main`'s first seed, on the
+   generator's power-on state.
 3. read `0x140` bytes (blocks 3-5) and discard them.
 4. read `0x93f8` bytes (block 6), then for `i` in `0..200`:
    `strcpy(team[i].name /* +0x00 */, p); p += 0x17; if (i < 0x40) p += 0x208;`.
+5. fill the league order lists `FAR:535a[t][i]` with a running club index for
+   `i < DS:225e[t]`: `0..18`, `18..38`, `38..58`.
+
+`bmp_game::stats::mana_load_club_table` ports it.
 
 `mana_load_player_names` (`422b:035c`) reads `0x3d8` bytes (blocks 1-5, discarded)
 and then `0x87c0` bytes (the 64 German club records) into a 40000 byte far buffer.

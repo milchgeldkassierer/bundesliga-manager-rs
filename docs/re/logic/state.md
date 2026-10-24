@@ -25,7 +25,9 @@ symbols, where the function is still called `FUN_xxxx_xxxx`.
 | `record!` macro | – | Declares a struct whose fields lie back to back. `LEN` is the sum of the field sizes |
 | `GameState::from_savegame(&SaveGame)` | 422b:120c `screen_load_game` | Decodes every block into its typed field. Header, string table and tail are kept |
 | `GameState::to_savegame()` | 422b:07fe `screen_save_game` / `savegame_write_man` | Inverse of `from_savegame`. `SaveGame::to_bytes` then recomputes the cipher and checksums |
-| `GameState::zeroed()` | (C startup zeroes far data/BSS) | All blocks zero, empty message table, V2 header |
+| `GameState::zeroed()` | – | All blocks zero, empty message table, V2 header. Not the program-start state |
+| `GameState::program_start()` | DGROUP image (segment 5cb3) | `zeroed()` plus the initialised DGROUP blocks: #0, #5, #8, #24, #34, #36, #41, #42, #47, #50, #51, #54, #57..#59 (every far block starts zero) |
+| `GameState::far_data_image()` (crate-private) | – | The 64 KiB far segment with every saved far block at its address and every unsaved far global zero; for ports that read past the end of a far table (`player_pool_season_shuffle`) |
 | `GameState::manager_index_of_team(a, b)` | 1310:32b1 `manager_index_of_team` | Scans managers `0..DS:07ab` in order. It returns `m+1` if `team == a`, `0x81+m` if `team == b` (team `a` is checked first for each manager), otherwise `0`. The original loop counter is a byte and is bounded by the unclamped `DS:07ab`. The port clamps it to the 4 records |
 | `current()`, `active_managers()` | – | `managers[FAR:304a]`, `managers[..DS:07ab]` |
 | `GameState::sort_league_table(tier, team_count, view, ignore_played)` | 3a41:2d33 (sort loop 3a41:33d0..353f, position loop 3a41:3750..3784) | Exchange sort of `league_teams[tier][..DS:225e[tier]]` (for `i < j`, swap when club `j` ranks strictly higher), then `team_tables[league_teams[tier][i]].table_position = i`. See §3.4 for the keys and `view` |
@@ -335,7 +337,9 @@ xrefs/decompilations above and MEMORY_MAP.
 | DS:07a7[4] | `player_group_bounds` | Index bounds of the 4 player groups in FAR:57dd | 422b:035c |
 | DS:0286[5], DS:028c[4] | `training_defaults` | Initial values for `Manager::training_141/146` | 18bc:2184 |
 | DS:2271 | `points_per_win` | Points for a win (2 or 3). `< 3` means the 2-point display | 3a41:2d33 |
-| DS:224c | `season_start_offset` | Season end at `DS:07dc > DS:224c + 0x142` | 2a58:3176 |
+| DS:224c | `season_start_offset` | `runtime::SEASON_START_DAY`. Season end at `DS:07dc > DS:224c + 0x142` | 2a58:3176 |
+| FAR:56f4 | `modern_start` | 1 = the game starts in 1992 (options dialog, "Histor. Start" off). `Runtime::modern_start` | 18bc:2184 |
+| DS:943c[4] | `free_group_records` | Records each human squad of a new game takes from the top of a player group; counted down. A static in the original, so a second new game continues from there; the port copies it into a local of `newgame_init_player_pool`, so it restarts from the image on every call | 422b:035c |
 | DS:224d | `ignore_matches_played` | When != 0 the "matches played" sort key (second key) is skipped | 3a41:2d33 |
 | DS:224e/2250, 2252/2254 | `option_long_a/b` | Game-option longs compared together in the start menu | 18bc:2184 |
 | DS:225e[3] | `tier_team_count` | Number of clubs per league tier (bound of the table sort) | 3a41:10e3, 3a41:2d33 |
@@ -349,7 +353,7 @@ xrefs/decompilations above and MEMORY_MAP.
 | DS:079c | `number_format_mode` | Number-format/picture-loading flag set before `format_long_thousands` | 3a41:0f0e |
 | DS:9440 | `save_io_error` | Disables the cipher I/O after an error | savegame.md |
 | DS:9720/9722 | `rand_state` | MSC `rand()` state. It is **not** saved, so loading a save does not restore the RNG | FUNCTION_MAP §3.4 |
-| DS:9438[4]?, DS:943c[4]? | – | Group counters used by `mana_load_player_names` (`-0x6bc8`/`-0x6bc4`). The segment is uncertain | 422b:035c |
+| DS:9438[4]? | – | Group counter used by `mana_load_player_names` (`-0x6bc8`). The segment is uncertain | 422b:035c |
 | FAR:5524[4*20] | `message_strings` | Far pointers of the per-manager message strings (rebuilt from the string table) | 4091:* |
 | FAR:a6d8[50] | `save_id_history` | Session history of loaded/saved ids | 422b:07fe |
 | FAR:57cf / 56dc | `save_key` / `save_checksum` | Cipher state | savegame.md |

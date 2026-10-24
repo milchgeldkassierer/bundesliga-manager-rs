@@ -16,6 +16,8 @@ pub const TIER_COUNT: [u8; 3] = [18, 20, 20];
 pub const TIER_ROUNDS: [u8; 3] = [34, 38, 38];
 /// Booking slot value of [`Runtime::booked_players`] that holds nobody.
 pub const NO_BOOKING: i8 = 0x7f;
+/// DS:224c: season start-day offset (0 in the shipped data).
+pub const SEASON_START_DAY: i8 = 0;
 
 /// A match shown in the live view: the fixture row and the even pairing slot of the home team.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,6 +92,9 @@ pub struct Runtime {
     /// in this period. Reset by 1310:15db and 1310:2303, counted by 2a58:0ca3, read by
     /// 1310:347f.
     pub period_chances_used: [[u8; 2]; MANAGER_SLOTS],
+    /// FAR:56f4: the game started in 1992 rather than 1963; set by the new-game options
+    /// dialog, not saved.
+    pub modern_start: bool,
 }
 
 impl Default for Runtime {
@@ -119,6 +124,7 @@ impl Default for Runtime {
             booked_players: [[NO_BOOKING; 6]; MANAGER_SLOTS],
             manager_plays_now: [0; MANAGER_SLOTS],
             period_chances_used: [[0; 2]; MANAGER_SLOTS],
+            modern_start: false,
         }
     }
 }

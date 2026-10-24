@@ -10,22 +10,16 @@ pub mod start_menu;
 pub mod tables;
 pub mod widgets;
 
-use bmp_formats::mana::{self, ManaDat};
-use bmp_game::league::league_team_ids;
+use bmp_formats::mana::ManaDat;
+use bmp_game::newgame::{self, NoCups};
 use bmp_game::rng::Rng;
+use bmp_game::runtime::Runtime;
+use bmp_game::state::{GERMAN_CLUBS, GameState};
+
+pub use bmp_game::runtime::SEASON_START_DAY;
 
 use crate::host::{Host, LEFT_DOWN, Run};
 
-/// The part of a club record (`CLUB[i]`, 0x22 bytes) the start menu needs.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClubEntry {
-    pub name: Vec<u8>,
-    /// Crest code; the picture is `PIC\<code + 0x50>.VGA`.
-    pub crest: u8,
-}
-
-/// `DS:224c`: season start-day offset (0 in the shipped data).
-pub const SEASON_START_DAY: i8 = 0;
 /// `DS:224e/2250`: game option long A (1 in the shipped data; 4 selects the
 /// English variant: ordinal suffixes, bench of 13).
 pub const GAME_OPTION_A: i32 = 1;
@@ -36,6 +30,8 @@ pub const GAME_OPTION_B: i32 = 1;
 /// Game globals that live outside the save game.
 pub struct Session {
     pub rng: Rng,
+    /// The non-saved logic globals.
+    pub rt: Runtime,
     /// `DS:05ac`: the copy protection counts as passed (initial data value 1).
     pub copy_protection_ok: bool,
     /// `DS:05d4`: automatic play ("Spiele automatisch") ends every turn at once.
@@ -47,6 +43,7 @@ impl Session {
     pub fn new(rng: Rng) -> Self {
         Self {
             rng,
+            rt: Runtime::default(),
             copy_protection_ok: true,
             auto_play: false,
             saves: load_game::SaveSession::default(),
@@ -57,42 +54,17 @@ impl Session {
 /// How [`run`] ended.
 #[derive(Debug)]
 pub enum Exit {
-    /// The player set up a new game (the world initialisation is not ported yet).
-    NewGame(start_menu::NewGame),
+    /// The player set up a new game; its first office turn is not ported yet.
+    NewGame(Box<GameState>),
     /// A loaded game's office turn ended; the season loop is not ported yet.
     EndOfTurn,
 }
 
-/// The 64 German club slots in MANA.DAT order.
-pub fn load_clubs(host: &Host) -> Result<Vec<ClubEntry>, String> {
+/// The MANA.DAT of the game data.
+fn load_mana(host: &Host) -> Result<ManaDat, String> {
     let path = host.data.join("MANA.DAT");
     let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let dat = ManaDat::parse(&bytes).map_err(|e| e.to_string())?;
-    Ok((0..mana::GERMAN_CLUB_COUNT)
-        .map(|i| ClubEntry {
-            name: dat.clubs[i].name_bytes().to_vec(),
-            crest: dat.crest_index(i),
-        })
-        .collect())
-}
-
-/// Shuffles the clubs inside each tier: 55 random slot swaps per tier.
-///
-/// Only the club records are swapped here; the full world state (pool players,
-/// statistics, league order list) moves with them once the new-game
-/// initialisation is ported (#30).
-///
-/// Origin: BMMAIN.EXE 1310:09c5 (league_shuffle_teams)
-pub fn league_shuffle_teams(rng: &mut Rng, clubs: &mut [ClubEntry]) {
-    for t in 0..3 {
-        let ids = league_team_ids(t);
-        let (lo, hi) = (ids.start as i16, ids.end as i16 - 1);
-        for _ in 0..0x37 {
-            let a = rng.random_range(lo, hi) as usize;
-            let b = rng.random_range(lo, hi) as usize;
-            clubs.swap(a, b);
-        }
-    }
+    ManaDat::parse(&bytes).map_err(|e| e.to_string())
 }
 
 /// Shows the blue marble background: decoded once from `PIC\22.CP` and cached in
@@ -151,6 +123,36 @@ pub fn append_ordinal_suffix(buf: &mut Vec<u8>, n: u8, option_a: i32, option_b: 
     buf.extend_from_slice(suffix);
 }
 
+/// `main`'s new-game part after the start menu.
+fn finish_new_game(
+    world: &mut GameState,
+    session: &mut Session,
+    mana: &ManaDat,
+    choices: &newgame::MenuChoices,
+    time: i32,
+) -> Result<(), String> {
+    // TODO(#27): the cup draws; until then the games `NoCups` cannot finish are refused.
+    if !NoCups::can_finish(choices) {
+        return Err(format!(
+            "a one-year game with {} managers needs the European cup draws, which are not \
+             ported yet (#27)",
+            choices.count
+        ));
+    }
+    // TODO(re): the original reads time() again for the second seed; the port reuses `time` so
+    // that scripted runs stay deterministic.
+    newgame::new_game(
+        world,
+        &mut session.rt,
+        &mut session.rng,
+        mana,
+        choices,
+        time,
+        &mut NoCups,
+    );
+    Ok(())
+}
+
 /// Pictures `main` keeps loaded for the whole game.
 fn load_main_pictures(host: &mut Host) -> Result<(), String> {
     for i in 0..2u16 {
@@ -183,11 +185,11 @@ pub fn run(host: &mut Host, time: i32) -> Result<Run<Exit>, String> {
             Ok(_) => {}
         }
     }
+    let mana = load_mana(host)?;
+    let mut session = Session::new(Rng::default());
+    // TODO(#27): the European cup draws.
+    let mut world = newgame::startup(&mana, &mut session.rt, &mut session.rng, time, &mut NoCups);
     load_main_pictures(host)?;
-    let mut rng = Rng::new(0);
-    rng.seed_from_time(time);
-    let mut clubs = load_clubs(host)?;
-    league_shuffle_teams(&mut rng, &mut clubs);
     let pics = start_menu::Pictures::load(host)?;
     // The 32x23 picture of icon code 0x23, cut from the icon sheet.
     let icon_alt = host.blank_bitmap(0x20, 0x17, 0);
@@ -199,15 +201,20 @@ pub fn run(host: &mut Host, time: i32) -> Result<Run<Exit>, String> {
     if let Err(q) = host.delay_ticks(150) {
         return Ok(Err(q));
     }
-    let mut session = Session::new(rng);
-    let outcome = match start_menu::start_menu_new_or_load(host, &pics, &clubs, &mut session)? {
+    let outcome = match start_menu::start_menu_new_or_load(
+        host,
+        &pics,
+        &world.clubs[..GERMAN_CLUBS],
+        &mut session,
+    )? {
         Ok(o) => o,
         Err(q) => return Ok(Err(q)),
     };
     let mut state = match outcome {
-        start_menu::Outcome::NewGame(ng) => {
-            // TODO(#30): new-game world initialisation, then the office.
-            return Ok(Ok(Exit::NewGame(ng)));
+        start_menu::Outcome::NewGame(choices) => {
+            finish_new_game(&mut world, &mut session, &mana, &choices, time)?;
+            // TODO(#31): the first office turn of the new game.
+            return Ok(Ok(Exit::NewGame(Box::new(world))));
         }
         start_menu::Outcome::LoadGame(state) => state,
     };
@@ -225,50 +232,37 @@ pub fn run(host: &mut Host, time: i32) -> Result<Run<Exit>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bmp_game::state::NO_TEAM;
 
-    /// Seed 35372 was recovered from a DOSBox run of the original: its carousel
-    /// showed exactly these seven clubs, and no other 16-bit seed produces them.
     #[test]
-    fn league_shuffle_matches_original_carousel() {
-        let Some(dir) = bmp_formats::data_dir() else {
-            return;
+    fn one_year_games_of_three_managers_are_refused() {
+        let mana = ManaDat {
+            crest: [0; 64],
+            strength: [[0; 3]; 200],
+            points: [[0; 2]; 64],
+            goals: [[0; 2]; 64],
+            rank: [0; 64],
+            clubs: Vec::new(),
         };
-        let bytes = std::fs::read(dir.join("MANA.DAT")).unwrap();
-        let dat = ManaDat::parse(&bytes).unwrap();
-        let mut clubs: Vec<ClubEntry> = (0..mana::GERMAN_CLUB_COUNT)
-            .map(|i| ClubEntry {
-                name: dat.clubs[i].name_bytes().to_vec(),
-                crest: dat.crest_index(i),
-            })
-            .collect();
-        let mut rng = Rng::new(0);
-        rng.seed_from_time(35372);
-        league_shuffle_teams(&mut rng, &mut clubs);
-        let first: Vec<&[u8]> = clubs[..7].iter().map(|c| c.name.as_slice()).collect();
-        assert_eq!(first[0], b"DYNAMO DRESDEN");
-        assert_eq!(first[2], b"BORUSSIA DORTMUND");
-        assert_eq!(first[3], b"HAMBURGER SV");
-        assert_eq!(first[4], b"VFL BOCHUM");
-        assert_eq!(first[5], b"WATTENSCHEID 09");
-    }
-
-    #[test]
-    fn league_shuffle_keeps_clubs_inside_their_tier() {
-        let mut clubs: Vec<ClubEntry> = (0..64u8)
-            .map(|i| ClubEntry {
-                name: vec![i],
-                crest: i,
-            })
-            .collect();
-        league_shuffle_teams(&mut Rng::new(7), &mut clubs);
-        for t in 0..3 {
-            let ids = league_team_ids(t);
-            let range = ids.start as usize..ids.end as usize;
-            let mut tier: Vec<u8> = clubs[range].iter().map(|c| c.crest).collect();
-            tier.sort_unstable();
-            assert_eq!(tier, ids.collect::<Vec<_>>());
-        }
-        assert!(clubs[58..].iter().map(|c| c.crest).eq(58..64));
+        let manager = |team| newgame::ManagerChoice {
+            name: b"M".to_vec(),
+            team,
+            slot: 1,
+        };
+        let choices = newgame::MenuChoices {
+            managers: [manager(1), manager(2), manager(3), manager(NO_TEAM)],
+            count: 3,
+            carousel_pos: 0,
+            options: newgame::GameOptions {
+                level: 2,
+                mode_flags: newgame::MODE_ONE_YEAR,
+            },
+        };
+        let mut world = GameState::program_start();
+        let mut session = Session::new(Rng::default());
+        let before = world.clone();
+        assert!(finish_new_game(&mut world, &mut session, &mana, &choices, 0).is_err());
+        assert_eq!(world, before);
     }
 
     #[test]

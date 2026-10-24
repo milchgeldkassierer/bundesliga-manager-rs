@@ -64,11 +64,16 @@ const LATE_SEASON_DAY: i32 = 0x141;
 ///
 /// Origin: BMMAIN.EXE 3277:25de (player_value_calc)
 pub fn player_value_calc(state: &GameState, rng: &mut Rng, slot: u8, mode: u8) -> i32 {
-    if mode & 1 != 0 {
-        return salary_formula(state, slot);
-    }
     let p = record(state, slot);
-    let mut v = lmul(value_points(state, p, &VALUE_WEIGHTS[0]), 10000);
+    player_value_of(rng, p, state.players[p.player_id as usize].age, mode)
+}
+
+/// [`player_value_calc`] of record `p` whose player is `age` years old.
+pub(crate) fn player_value_of(rng: &mut Rng, p: &SquadPlayer, age: u8, mode: u8) -> i32 {
+    if mode & 1 != 0 {
+        return record_salary(p, age);
+    }
+    let mut v = lmul(value_points(p, age, &VALUE_WEIGHTS[0]), 10000);
     if v > 110_000 {
         v = v.wrapping_sub(100_000);
     }
@@ -98,7 +103,12 @@ pub fn player_value_calc(state: &GameState, rng: &mut Rng, slot: u8, mode: u8) -
 /// The salary formula of [`player_value_calc`] (odd modes, no random draws).
 fn salary_formula(state: &GameState, slot: u8) -> i32 {
     let p = record(state, slot);
-    let points = value_points(state, p, &VALUE_WEIGHTS[1]);
+    record_salary(p, state.players[p.player_id as usize].age)
+}
+
+/// [`salary_formula`] of record `p` whose player is `age` years old.
+fn record_salary(p: &SquadPlayer, age: u8) -> i32 {
+    let points = value_points(p, age, &VALUE_WEIGHTS[1]);
     let mut v = lmul(lmul(points, points), points) / 1000;
     let mut s = i32::from(p.skills[0]) + i32::from(p.skills[1]);
     if s > 100 {
@@ -113,7 +123,7 @@ fn salary_formula(state: &GameState, slot: u8) -> i32 {
 
 /// The weighted sum of skills, statistics, value terms, tendency, cards and
 /// age that both formulas of [`player_value_calc`] start from.
-fn value_points(state: &GameState, p: &SquadPlayer, w: &[i8; 6]) -> i32 {
+fn value_points(p: &SquadPlayer, age: u8, w: &[i8; 6]) -> i32 {
     let w = w.map(i32::from);
     let h = (u16::from(p.skills[1]) + u16::from(p.skills[0])) as i16 / 2;
     let mut v = i32::from(h) * w[0] / 100;
@@ -131,7 +141,7 @@ fn value_points(state: &GameState, p: &SquadPlayer, w: &[i8; 6]) -> i32 {
     let mut r3 = (6 * u16::from(p.cards[0]) + u16::from(p.cards[1])) as i16;
     clamp_int(&mut r3, 0, 20);
     v += w[4] * i32::from(r3) * 5 / 100;
-    let mut r4 = 0x2d - i16::from(state.players[p.player_id as usize].age);
+    let mut r4 = 0x2d - i16::from(age);
     clamp_int(&mut r4, 0, 27);
     v + i32::from(r4) * 100 / 27 * w[5] / 100
 }

@@ -147,6 +147,8 @@ pub const BLOCK_MANAGERS: usize = 13;
 pub const BLOCK_CLUBS: usize = 15;
 /// Index of the player table (FAR:57dd, 151 x 37 bytes) in [`BLOCKS`].
 pub const BLOCK_PLAYERS: usize = 17;
+/// Index of the squad table (FAR:774a, 5 x 25 x 52 bytes) in [`BLOCKS`].
+pub const BLOCK_SQUADS: usize = 18;
 /// Index of the competition slots (FAR:57aa, 18 bytes) in [`BLOCKS`].
 pub const BLOCK_COMPETITION_SLOTS: usize = 26;
 

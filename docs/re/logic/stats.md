@@ -814,8 +814,10 @@ byte.
 `player_pool_season_shuffle(quota)`, then `1cb5:2a3b(k, list_k)` for `k` = 0..2 (builds 20-byte
 candidate team lists per tier, season agent), then for each pool player `p` = 1..150 whose team is
 not human-managed and (`P(p)[0x24] == 0xff` or `FAR:a7a0` (int32) != 0): for `k` = 0..2 with
-`quota[k] != 0`: `P(p)[0x24] = 1cb5:2987(k, list_k)`, `quota[k]--`. (Low confidence on the exact
-inner loop; the decompile is damaged. See Open questions.)
+`quota[k] != 0`: `P(p)[0x24] = 1cb5:2987(k, list_k)`, `quota[k]--` (verified in the disassembly
+24a4:1a5d..1a76; 1cb5:2987 never reads `list_k`). `transfer_value(p, 0)` in
+`player_pool_season_shuffle` gets the pool index as a squad slot, so it reads record
+`FAR:304a * 25 + p` of the flat table FAR:774a, past the 125 squad records for large `p`.
 
 ### 3.4 Club strength and player value
 
@@ -1476,8 +1478,8 @@ best streaks (84) + records (512) + record opponents (512) = 5012.
    counter is `[BP-6]`), so the result depends on stack garbage left by the caller. A port
    must reproduce the stack content of `screen_transfer_market` or pick a documented value;
    decide with the transfer agent.
-4. `assign_pool_players_to_teams` 24a4:19fb: the inner loop (use of `1cb5:2987`/`2a3b` and the
-   quota words) was taken from a damaged decompile and needs an asm pass.
+4. ~~`assign_pool_players_to_teams` 24a4:19fb: the inner loop needs an asm pass.~~ Resolved: see
+   §3.3 (checked against the disassembly; `bmp_game::newgame::assign_pool_players_to_teams`).
 5. `transfer_list_add(p, 2, 0, 15000, 0x18)` (2ecd:37d8) and `transfer_value(i, 0)` (3277:25de)
    semantics belong to the squad/transfer agents; in `highscore_build_entry` the loop passes the
    squad index `i` (not a player id).

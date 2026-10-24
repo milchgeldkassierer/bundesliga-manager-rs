@@ -124,6 +124,19 @@ pub fn c_str(bytes: &[u8]) -> &[u8] {
     &bytes[..end]
 }
 
+// TODO(re): a string with no room for its NUL overruns into the next field
+// in the original; the shipped data has none.
+/// `strcpy` into a fixed field: the C string `src` and its NUL. The bytes
+/// after the NUL keep their values; a string that fills the field is cut.
+pub(crate) fn strcpy(dst: &mut [u8], src: &[u8]) {
+    let s = c_str(src);
+    let n = s.len().min(dst.len());
+    dst[..n].copy_from_slice(&s[..n]);
+    if let Some(nul) = dst.get_mut(n) {
+        *nul = 0;
+    }
+}
+
 /// Club index stored in [`Manager::team`] when the slot has no club
 /// (written by `start_menu_new_or_load` 18bc:2184).
 pub const NO_TEAM: u8 = 100;
@@ -141,9 +154,9 @@ pub const RESCHEDULED_GAMES_DAY: u8 = 0x80;
 /// Number of human-manager slots in every per-manager table.
 pub const MANAGER_SLOTS: usize = 4;
 /// Number of clubs in the club table FAR:3066.
-pub const CLUB_COUNT: usize = 200;
+pub const CLUB_COUNT: usize = bmp_formats::mana::CLUB_COUNT;
 /// Number of German clubs (league clubs with table/history entries).
-pub const GERMAN_CLUBS: usize = 64;
+pub const GERMAN_CLUBS: usize = bmp_formats::mana::GERMAN_CLUB_COUNT;
 /// Number of entries of the player master table FAR:57dd (entry 0 unused).
 pub const PLAYER_COUNT: usize = 151;
 /// Squad slots per squad in FAR:774a.
@@ -784,6 +797,16 @@ pub struct GameState {
 /// DS:0630 in the data segment image.
 const INITIAL_BASE_INTEREST_RATE: i16 = 5;
 
+/// DS:2280 (save block 50) in the data segment image (`season.md` §1.4).
+const INITIAL_WEEK_COMPETITIONS: [u8; 95] = [
+    0x07, 0x70, 0x07, 0x00, 0x07, 0x70, 0x07, 0x06, 0x08, 0x00, 0x07, 0x00, 0x07, 0x06, 0x07, 0x70,
+    0x07, 0x07, 0x07, 0x70, 0x07, 0x00, 0x08, 0x01, 0x07, 0x06, 0x07, 0x00, 0x07, 0x06, 0x08, 0x70,
+    0x07, 0x00, 0x07, 0x70, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x07, 0x00, 0x07, 0x70,
+    0x08, 0x07, 0x07, 0x70, 0x07, 0x06, 0x07, 0x00, 0x07, 0x00, 0x07, 0x00, 0x07, 0x70, 0x07, 0x00,
+    0x07, 0x70, 0x07, 0x00, 0x07, 0x00, 0x08, 0x00, 0x07, 0x00, 0x07, 0x10, 0x10, 0x00, 0x00,
+];
+
 /// Error converting between [`SaveGame`] and [`GameState`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StateError {
@@ -928,9 +951,10 @@ macro_rules! decode_blocks {
             }
         }
 
-        /// A state with every saved global zeroed, as after program start
-        /// (far data and BSS are zero-initialized), an empty message table and
-        /// the runtime globals at their data-segment image values.
+        /// A state with every saved global zero, an empty message table and
+        /// the runtime globals at their data-segment image values. This is
+        /// not the program-start state: some saved DGROUP globals start
+        /// non-zero (see [`GameState::program_start`]).
         pub fn zeroed() -> GameState {
             GameState {
                 signature: *savegame::SIGNATURE,
@@ -953,6 +977,47 @@ macro_rules! decode_blocks {
 
 impl GameState {
     for_each_block!(decode_blocks);
+
+    /// The saved globals as the program starts: far data and BSS are zero,
+    /// the initialised DGROUP blocks hold their image values.
+    ///
+    /// Origin: BMMAIN.EXE DGROUP image (initialised data of segment 5cb3)
+    pub fn program_start() -> GameState {
+        let mut s = GameState::zeroed();
+        s.interest_rates = [7, 6, 5, 4, 3, 2];
+        s.lineup_state = [[2; 2]; 4];
+        s.winner_07ac = 7;
+        s.start_year = 0x7ab;
+        s.competition_rounds = [1; 3];
+        s.options = [1; 15];
+        s.options[14] = 0;
+        s.manager_contracts = [[50000, 6000, 6000, 6000, 6000, 6000, 6000, 0, 5000]; 4];
+        s.level = 2;
+        s.match_options = 0x28;
+        s.week_competitions = INITIAL_WEEK_COMPETITIONS;
+        s.ds_0620 = [-80, -50, -100, -60, 80, 50, 70, 60];
+        s.ds_05fa = [1, 1, 1, 2];
+        s.ds_05d6 = [0x0b, 0x0e, 0x0b, 0x0b];
+        s.ds_061c = [0x31, 0x20, 0x0b, 0x0c];
+        s.ds_05b8 = [7; 4];
+        s
+    }
+
+    // TODO(re): far globals the save does not store read as zero here; the
+    // running program may hold other values in them.
+    /// The 64 KiB far data segment (FAR:0000..FFFF) with every saved far
+    /// block at its address. For ports that read past the end of a far
+    /// table, as the original does.
+    pub(crate) fn far_data_image(&self) -> Vec<u8> {
+        let mut img = vec![0u8; 0x10000];
+        for (desc, bytes) in BLOCKS.iter().zip(&self.to_savegame().blocks) {
+            if desc.segment == savegame::Segment::FarData {
+                let o = desc.offset as usize;
+                img[o..o + bytes.len()].copy_from_slice(bytes);
+            }
+        }
+        img
+    }
 
     /// The manager whose turn it is (FAR:304a), if the index is valid.
     pub fn current(&self) -> Option<&Manager> {
@@ -1203,6 +1268,37 @@ pub(crate) mod tests {
         assert_eq!(r.n_yellow, 0x94);
         assert_eq!(r.spectators, i32::from_le_bytes([0x96, 0x97, 0x98, 0x99]));
         assert_eq!(r.to_bytes(), bytes);
+    }
+
+    #[test]
+    fn program_start_has_the_image_values_and_round_trips() {
+        let s = GameState::program_start();
+        assert_eq!(s.start_year, 0x7ab);
+        assert_eq!(s.level, 2);
+        assert_eq!(s.winner_07ac, 7);
+        assert_eq!(
+            s.manager_contracts[3],
+            [50000, 6000, 6000, 6000, 6000, 6000, 6000, 0, 5000]
+        );
+        assert_eq!(s.ds_0620[0], -80);
+        assert_eq!(s.week_competitions[93], 0);
+        let bytes = s.to_savegame().to_bytes().unwrap();
+        let back = GameState::from_savegame(&SaveGame::parse(&bytes).unwrap()).unwrap();
+        assert_eq!(back, s);
+    }
+
+    #[test]
+    fn far_data_image_places_blocks() {
+        let mut s = GameState::zeroed();
+        s.players[3].age = 27;
+        s.squads[0][0].player_id = 9;
+        s.squads[0][0].market_value = 0x0102_0304;
+        s.match_history.recent_results[0][0][0][0] = 0xab;
+        let img = s.far_data_image();
+        assert_eq!(img.len(), 0x10000);
+        assert_eq!(img[0x57dd + 0x25 * 3 + 0x1a], 27);
+        assert_eq!(&img[0x774a..0x774a + 0x34], s.squads[0][0].to_bytes());
+        assert_eq!(img[0x9336], 0xab);
     }
 
     #[test]

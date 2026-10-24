@@ -1,18 +1,34 @@
 //! Player statistics of `BMMAIN.EXE` segment 24a4: the goal scorers of the
-//! clubs no human manages and the top-scorer list.
+//! clubs no human manages, the top-scorer list, the yearly reshuffle of the
+//! player pool, the stadium attraction and the advertising offers. Also the
+//! club table loader of segment 362f.
 //!
-//! Full documentation with addresses: `docs/re/logic/stats.md` §3.2 and §3.8.
+//! Full documentation with addresses: `docs/re/logic/stats.md` §3.2, §3.3,
+//! §3.5, §3.6, §3.8 and §4.6.
+
+use bmp_formats::mana::ManaDat;
+use bmp_formats::savegame::{BLOCK_PLAYERS, BLOCK_SQUADS, BLOCKS};
 
 use crate::league::{
     LEAGUE_ROUND_COUNT, LEAGUE_TEAM_COUNT, NO_MATCH, NOT_PLAYED, league_team_ids, round_results,
 };
-use crate::rng::Rng;
-use crate::state::{GameState, PLAYER_COUNT, Player};
+use crate::rng::{Rng, clamp_int, ldiv, lmul};
+use crate::runtime::Runtime;
+use crate::state::{
+    CLUB_COUNT, GERMAN_CLUBS, GameState, Layout, PLAYER_COUNT, Player, SquadPlayer, strcpy,
+};
+use crate::transfer::player_value_of;
 
 /// DS:5331 scorer selection weights, indexed by the candidate count.
 const SCORER_WEIGHTS: [u8; 11] = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 46];
 /// Rows of the top-scorer list.
 const TOP_SCORER_ROWS: usize = 20;
+/// DS:54c9: form string of a club that has not played yet.
+const FORM_PLACEHOLDER: &[u8] = b"@@@@@@@@";
+/// FAR address of the player table ([`GameState::players`]).
+const PLAYERS_FAR: usize = BLOCKS[BLOCK_PLAYERS].offset as usize;
+/// FAR address of the squad table ([`GameState::squads`]).
+const SQUADS_FAR: usize = BLOCKS[BLOCK_SQUADS].offset as usize;
 
 /// League goals this season (+0x22).
 fn goals(p: &Player) -> u8 {
@@ -193,6 +209,270 @@ pub fn goals_per_game_tenths(player: &Player) -> u16 {
         0 => q,
         g => q / g as u16,
     }
+}
+
+/// Fills the club table from MANA.DAT: crests and an empty form string for the
+/// 64 German clubs; strength, base strength, a random third strength part
+/// (5 lower for clubs above 64) and a random morale for all 200 clubs; the
+/// names; and the league order lists `0..18`, `18..38`, `38..58`.
+///
+/// RNG: per club `random_range(45, 55)` for each of the three parts, then one
+/// for the morale (800 draws). `main` calls it before the first seed, so the
+/// draws run on the generator's power-on state.
+///
+/// Origin: BMMAIN.EXE 362f:36ec (mana_load_club_table)
+pub fn mana_load_club_table(state: &mut GameState, rt: &Runtime, rng: &mut Rng, mana: &ManaDat) {
+    for i in 0..GERMAN_CLUBS {
+        state.clubs[i].crest = mana.crest_index(i);
+        strcpy(&mut state.team_tables[i].form[0], FORM_PLACEHOLDER);
+    }
+    for i in 0..CLUB_COUNT {
+        let club = &mut state.clubs[i];
+        for j in 0..3 {
+            let v = mana.strength[i][j];
+            club.base_strength[j] = v;
+            club.strength[j] = v;
+            let lower = if i > 0x40 { 5 } else { 0 };
+            club.strength_1e[j] = (rng.random_range(0x2d, 0x37) as u8).wrapping_sub(lower);
+        }
+        club.morale = rng.random_range(0x2d, 0x37) as u8;
+    }
+    for i in 0..CLUB_COUNT {
+        strcpy(&mut state.clubs[i].name, &mana.clubs[i].name);
+    }
+    let mut next = 0u8;
+    for (t, row) in state.league_teams.iter_mut().enumerate() {
+        for slot in &mut row[..rt.tier_team_count[t] as usize] {
+            *slot = next;
+            next = next.wrapping_add(1);
+        }
+    }
+}
+
+/// Moves a skill by -3..=+3 and clamps it to 30..=99.
+///
+/// Origin: BMMAIN.EXE 24a4:174e (player_skill_drift)
+pub fn player_skill_drift(rng: &mut Rng, v: &mut u8) {
+    let mut x = i16::from(*v) + rng.random_range(1, 7) - 4;
+    clamp_int(&mut x, 30, 99);
+    *v = x as u8;
+}
+
+/// A random club no human manager runs whose strength suits a player of
+/// `value` (the player's value in 10 000s): a German club, or a foreign one
+/// with `foreign`. The club's strength is `(sum of strength and base
+/// strength + 150) / 9`; it suits when `strength - 2 < value < strength +
+/// 20`. After 500 tries any free club is taken.
+///
+/// The original's first argument, the player, is not read.
+///
+/// Origin: BMMAIN.EXE 24a4:24bf (pick_team_for_player)
+pub fn pick_team_for_player(state: &GameState, rng: &mut Rng, value: u8, foreign: bool) -> u8 {
+    let (lo, hi) = if foreign { (0x40, 0xc7) } else { (0, 0x3f) };
+    let value = i16::from(value);
+    let mut tries: i16 = 0;
+    loop {
+        let t = rng.random_range(lo, hi) as u8;
+        if state.manager_index_of_team(t, 0xff) == 0 {
+            let club = &state.clubs[t as usize];
+            let s = (0..3).fold(0i16, |acc, j| {
+                acc + i16::from(club.strength[j]) + i16::from(club.base_strength[j]) + 50
+            }) / 9;
+            if tries > 500 || (value < s + 20 && value + 2 > s) {
+                return t;
+            }
+        }
+        tries += 1;
+    }
+}
+
+/// A club index of a foreign club (not German, not "no club").
+fn is_foreign(team: u8) -> bool {
+    team > 0x3f && team != 0xff
+}
+
+/// The value byte [`pick_team_for_player`] gets for pool player `p`:
+/// `player_value_calc(p, 0) / 10000`. The original passes the pool index as a
+/// squad slot, so the value is that of record `FAR:304a * 25 + p` of the flat
+/// squad table, which runs past the 125 squad records into the following far
+/// data; the age is read the same way, through the record's player id.
+fn pool_value_byte(state: &GameState, img: &[u8], rng: &mut Rng, p: u8) -> u8 {
+    let r = usize::try_from(i16::from(state.current_manager) * 25 + i16::from(p))
+        .expect("FAR:304a is not a squad group");
+    let at = SQUADS_FAR + r * SquadPlayer::LEN;
+    let rec = SquadPlayer::from_bytes(&img[at..at + SquadPlayer::LEN]).unwrap();
+    let at = PLAYERS_FAR + rec.player_id as usize * Player::LEN;
+    let age = Player::from_bytes(&img[at..at + Player::LEN]).unwrap().age;
+    ldiv(player_value_of(rng, &rec, age, 0), 10000) as u8
+}
+
+/// The yearly reshuffle of the player pool: every player's two skills drift,
+/// 5..=15 random players of clubs no human runs get a new German club (while
+/// more than four players play abroad, the drawn foreigners go back to a
+/// German club instead), and the result is the number of free players each
+/// league tier may take: the tier's share of the human squads applied to the
+/// players neither abroad nor in a human squad.
+///
+/// RNG: 2 per player (skill drift), the move count, then per move the player
+/// draws, the value draws of [`player_value_calc`](crate::transfer::player_value_calc)
+/// and the club draws of [`pick_team_for_player`].
+///
+/// Origin: BMMAIN.EXE 24a4:1798 (player_pool_season_shuffle)
+pub fn player_pool_season_shuffle(state: &mut GameState, rng: &mut Rng) -> [i16; 3] {
+    let mut per_tier = [0u8; 3];
+    let mut total = 0u8;
+    let mut foreign = 0u8;
+    for (tier, n) in per_tier.iter_mut().enumerate() {
+        for m in 0..state.active_managers().len() {
+            if usize::from(state.managers[m].league) == tier {
+                *n = n.wrapping_add(state.squad_player_count(m));
+            }
+        }
+        total = total.wrapping_add(*n);
+    }
+    for player in &mut state.players[1..] {
+        player_skill_drift(rng, &mut player.skills[0]);
+        player_skill_drift(rng, &mut player.skills[1]);
+        if is_foreign(player.team) {
+            foreign += 1;
+        }
+    }
+    // The moves below only change club indices, which the value never reads.
+    let img = state.far_data_image();
+    let moves = rng.random_range(5, 15) as u8;
+    for _ in 0..moves {
+        let p = loop {
+            let mut p = rng.random_range(1, 150) as u8;
+            let old = state.players[p as usize].team;
+            if foreign > 4 && is_foreign(old) {
+                foreign -= 1;
+                let v = pool_value_byte(state, &img, rng, p);
+                state.players[p as usize].team = pick_team_for_player(state, rng, v, false);
+                p = 0;
+            }
+            if state.manager_index_of_team(old, 0xff) == 0 && p != 0 && foreign <= 4 {
+                break p;
+            }
+        };
+        let v = pool_value_byte(state, &img, rng, p);
+        state.players[p as usize].team = pick_team_for_player(state, rng, v, false);
+    }
+    for player in &state.players[1..] {
+        if is_foreign(player.team) {
+            total = total.wrapping_add(1);
+        }
+    }
+    let rest = i32::from(150u8.wrapping_sub(total));
+    let total = i32::from(total.max(1));
+    per_tier.map(|n| ldiv(lmul(ldiv(lmul(i32::from(n), 100), total), rest), 100) as i16)
+}
+
+/// How attractive the current manager's stadium is to advertisers, 0..=100:
+/// the places (covered places count half), capped at 80 000, plus the
+/// weighted stadium extras, capped at 100 000, in thousands.
+///
+/// Origin: BMMAIN.EXE 24a4:2bba (stadium_attraction)
+pub fn stadium_attraction(state: &GameState) -> i32 {
+    let st = &current_manager(state).stadium;
+    let s = |k: usize| st[k][0];
+    let mut v = (s(2) >> 1).wrapping_add(s(1)).wrapping_add(s(0));
+    if v > 80_000 {
+        v = 80_000;
+    }
+    let extras = lmul(s(6).wrapping_mul(2).wrapping_add(s(5)), 1000).wrapping_add(lmul(s(3), 1500));
+    v = v.wrapping_add(lmul(s(4), 1900).wrapping_add(extras));
+    if v > 100_000 {
+        v = 100_000;
+    }
+    ldiv(v, 1000)
+}
+
+/// The human manager `FAR:304a`.
+fn current_manager(state: &GameState) -> &crate::state::Manager {
+    state.current().expect("FAR:304a is not a human manager")
+}
+
+/// Draws the current manager's 2 x 10 advertising offers: the amounts
+/// `far_002e` (`long`, 0 = no interest) and the contract lengths `far_2ec2`
+/// (1..=3 seasons) of offer kind `k` (0, 1) and offer `i` at index
+/// `(2 * m + k) * 10 + i`. Better stadiums, more fans, a higher league and
+/// the difficulty raise the amounts; later offers are less likely to come.
+///
+/// RNG per offer: `random_range(15, 20)`, the base amount, the interest
+/// draw, then either the refusal draw (when the interest draw is high) or
+/// the fan factor, the length and the two spreads.
+///
+/// Origin: BMMAIN.EXE 24a4:2cb4 (advertising_offers_generate)
+pub fn advertising_offers_generate(state: &mut GameState, rng: &mut Rng) {
+    let m = current_manager(state);
+    let km = i32::from(m.fans);
+    let tier2 = 2i16.wrapping_sub(i16::from(m.league));
+    let mi = state.current_manager as usize;
+    let level = i32::from(state.level as i8);
+    for k in 0..2usize {
+        for i in 0..10i16 {
+            let idx = (2 * mi + k) * 10 + i as usize;
+            let offer = advertising_offer(state, rng, km, tier2, level, k, i);
+            let (amount, years) = offer.unwrap_or((0, state.far_2ec2[idx]));
+            state.far_002e[4 * idx..4 * idx + 4].copy_from_slice(&amount.to_le_bytes());
+            state.far_2ec2[idx] = years;
+        }
+    }
+}
+
+/// One offer of [`advertising_offers_generate`]: amount and length, `None`
+/// when the advertiser has no interest (the length stays).
+fn advertising_offer(
+    state: &GameState,
+    rng: &mut Rng,
+    km: i32,
+    tier2: i16,
+    level: i32,
+    k: usize,
+    i: i16,
+) -> Option<(i32, u8)> {
+    let mut s = stadium_attraction(state);
+    if s < 50 && km > 29 {
+        s += 20;
+    }
+    let r1 = rng.random_range(15, 20);
+    let mut base = (s >> 1).wrapping_add(50);
+    let thr = base.wrapping_add(i32::from(r1)).wrapping_sub(50);
+    let q = (ldiv(base, 5) as i16).wrapping_add(2 * i);
+    let mut o = i32::from(rng.random_range(
+        q.wrapping_mul(11).wrapping_add(0x3a),
+        q.wrapping_mul(12).wrapping_add(0x3e),
+    ));
+    if k == 0 {
+        base = lmul(base, 5);
+    }
+    let p = ((i * 7) / 10 + 3) * 3;
+    let v = 10 * i + rng.random_range(3, 20);
+    if i32::from(v) >= thr && rng.random_range(0, p) != 0 {
+        return None;
+    }
+    let r = rng.random_range(
+        (ldiv(km, 7) as i16).wrapping_add(100),
+        (ldiv(km, 5) as i16).wrapping_add(100),
+    );
+    o = ldiv(lmul(lmul(o, base), i32::from(r)), 100);
+    let d = rng.random_range(0, 2);
+    if tier2 == 1 {
+        o = ldiv(lmul(o, 107), 100);
+    }
+    let spread = rng.random_range((d + 9) * 10, d * 15 + 92);
+    o = ldiv(lmul(o, i32::from(spread)), 100);
+    let spread = rng.random_range(
+        tier2.wrapping_add(5).wrapping_mul(20),
+        tier2.wrapping_mul(23).wrapping_add(102),
+    );
+    o = ldiv(lmul(o, i32::from(spread)), 100)
+        .wrapping_add(level * 800)
+        .wrapping_add(16500);
+    if k == 0 {
+        o = o.wrapping_add(level * 2000 - 11000);
+    }
+    Some((o, d as u8 + 1))
 }
 
 #[cfg(test)]
@@ -466,5 +746,219 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn club_table_comes_from_mana() {
+        let mana = crate::newgame::tests::synthetic_mana();
+        let rt = Runtime::default();
+        let mut s = GameState::zeroed();
+        let mut rng = Rng::default();
+        mana_load_club_table(&mut s, &rt, &mut rng, &mana);
+        let mut probe = Rng::default();
+        let draws: Vec<u8> = (0..800)
+            .map(|_| probe.random_range(0x2d, 0x37) as u8)
+            .collect();
+        assert_eq!(rng, probe, "800 draws");
+        assert_eq!(s.clubs[0].crest, (mana.crest[0] + 0x30) & 0x7f);
+        assert_eq!(s.clubs[63].crest, mana.crest_index(63));
+        assert_eq!(s.clubs[64].crest, 0);
+        for i in [0, 64, 65, 199] {
+            let c = &s.clubs[i];
+            assert_eq!(c.strength, mana.strength[i]);
+            assert_eq!(c.base_strength, mana.strength[i]);
+            let lower = if i > 64 { 5 } else { 0 };
+            for j in 0..3 {
+                assert_eq!(c.strength_1e[j], draws[4 * i + j] - lower, "club {i}");
+            }
+            assert_eq!(c.morale, draws[4 * i + 3]);
+            assert_eq!(c.name(), mana.clubs[i].name_bytes());
+        }
+        assert_eq!(&s.team_tables[63].form[0], b"@@@@@@@@\0");
+        assert_eq!(s.team_tables[63].form[1], [0; 9]);
+        assert!(s.league_teams[0][..18].iter().copied().eq(0..18));
+        assert!(s.league_teams[1].iter().copied().eq(18..38));
+        assert!(s.league_teams[2].iter().copied().eq(38..58));
+        assert_eq!(&s.league_teams[0][18..], &[0, 0]);
+    }
+
+    #[test]
+    fn skill_drift_moves_by_three_and_clamps() {
+        let mut rng = Rng::new(11);
+        for _ in 0..200 {
+            let (mut hi, mut mid, mut lo) = (99u8, 60u8, 0u8);
+            player_skill_drift(&mut rng, &mut hi);
+            player_skill_drift(&mut rng, &mut mid);
+            player_skill_drift(&mut rng, &mut lo);
+            assert!((96..=99).contains(&hi));
+            assert!((57..=63).contains(&mid));
+            assert_eq!(lo, 30);
+        }
+    }
+
+    #[test]
+    fn pick_team_takes_any_free_club_after_500_tries() {
+        let s = GameState::zeroed();
+        // Every club has strength (0 + 0 + 150) / 9 = 16; value 0 never suits.
+        let mut rng = Rng::new(5);
+        let mut probe = rng;
+        let t = pick_team_for_player(&s, &mut rng, 0, false);
+        let mut draws = 0;
+        while probe != rng {
+            probe.rand();
+            draws += 1;
+        }
+        assert_eq!(draws, 502);
+        assert!(t <= 0x3f);
+        // Value 20 suits strength 16 at once (14 < 20 < 36): one draw, a foreign club.
+        let mut rng = Rng::new(5);
+        let t = pick_team_for_player(&s, &mut rng, 20, true);
+        assert!((0x40..=0xc7).contains(&t));
+        let mut probe = Rng::new(5);
+        probe.rand();
+        assert_eq!(rng, probe);
+    }
+
+    /// Players 1..=150 at German club 30, the first 20 in squad `m` of each listed manager.
+    fn shuffle_state(tiers: &[u8]) -> GameState {
+        let mut s = GameState::zeroed();
+        for p in &mut s.players[1..] {
+            p.team = 30;
+            p.skills = [50; 3];
+        }
+        s.manager_count = tiers.len() as u8;
+        for (m, &tier) in tiers.iter().enumerate() {
+            s.managers[m].league = tier;
+            s.managers[m].team = 60 + m as u8;
+            for k in 0..20 {
+                let pid = 20 * m + k + 1;
+                s.squads[m][k].player_id = pid as u8;
+                s.players[pid].team = 60 + m as u8;
+            }
+        }
+        s
+    }
+
+    #[test]
+    fn pool_quota_is_the_tier_share_of_the_rest() {
+        // No foreigners: total = human squad players, rest = 150 - total.
+        let q =
+            |tiers: &[u8]| player_pool_season_shuffle(&mut shuffle_state(tiers), &mut Rng::new(9));
+        assert_eq!(q(&[]), [0, 0, 0]);
+        assert_eq!(q(&[0]), [130, 0, 0]);
+        assert_eq!(q(&[0, 2]), [55, 0, 55]);
+        // 40 * 100 / 60 = 66, * 90 / 100 = 59; 20 * 100 / 60 = 33, * 90 / 100 = 29.
+        assert_eq!(q(&[0, 0, 1]), [59, 29, 0]);
+    }
+
+    #[test]
+    fn pool_shuffle_keeps_human_clubs_and_counts_foreigners() {
+        for seed in 0..20 {
+            let mut s = shuffle_state(&[0]);
+            for p in 100..110 {
+                s.players[p].team = 0x80;
+            }
+            let q = player_pool_season_shuffle(&mut s, &mut Rng::new(seed));
+            let foreign = s.players[1..].iter().filter(|p| is_foreign(p.team)).count();
+            assert!(foreign <= 10, "seed {seed}");
+            // total = 20 + foreigners, rest = 150 - total.
+            let total = 20 + foreign as i32;
+            assert_eq!(i32::from(q[0]), 20 * 100 / total * (150 - total) / 100);
+            for (i, p) in s.players.iter().enumerate().skip(1) {
+                assert_eq!(p.team == 60, i <= 20, "seed {seed}: player {i}");
+                assert!(!is_foreign(p.team) || (100..110).contains(&i));
+            }
+        }
+    }
+
+    #[test]
+    fn pool_value_reads_past_the_squad_table() {
+        let mut s = GameState::zeroed();
+        s.players[7].age = 21;
+        let mut rec = SquadPlayer::zeroed();
+        rec.player_id = 7;
+        rec.skills = [80, 90, 50];
+        rec.value_terms = [100, 0, 0];
+        // Record 140 of the flat squad table starts 0x84 bytes into FAR:9336.
+        let mut h = s.match_history.to_bytes();
+        h[0x84..0x84 + SquadPlayer::LEN].copy_from_slice(&rec.to_bytes());
+        s.match_history = crate::state::MatchHistory::from_bytes(&h).unwrap();
+        let img = s.far_data_image();
+        let mut rng = Rng::new(1);
+        let v = pool_value_byte(&s, &img, &mut rng, 140);
+        let expected = ldiv(player_value_of(&mut Rng::new(1), &rec, 21, 0), 10000) as u8;
+        assert_eq!(v, expected);
+        assert_ne!(v, 0);
+        // Inside the table the record is the squad slot itself.
+        s.squads[4][10] = rec.clone();
+        let img = s.far_data_image();
+        assert_eq!(pool_value_byte(&s, &img, &mut rng, 110), expected);
+    }
+
+    fn stadium_state(items: [i32; 7]) -> GameState {
+        let mut s = GameState::zeroed();
+        s.manager_count = 1;
+        for (k, v) in items.into_iter().enumerate() {
+            s.managers[0].stadium[k][0] = v;
+        }
+        s
+    }
+
+    #[test]
+    fn stadium_attraction_caps_places_and_total() {
+        // 301 >> 1 + 500 + 1000 = 1650.
+        assert_eq!(
+            stadium_attraction(&stadium_state([1000, 500, 301, 0, 0, 0, 0])),
+            1
+        );
+        // Places capped at 80 000, then 10 * 1900 = 19 000 more.
+        assert_eq!(
+            stadium_attraction(&stadium_state([90_000, 0, 0, 0, 10, 0, 0])),
+            99
+        );
+        // 80 000 + 1500 + (2 * 100 + 3) * 1000 is capped at 100 000.
+        assert_eq!(
+            stadium_attraction(&stadium_state([90_000, 0, 0, 1, 0, 3, 100])),
+            100
+        );
+        // Negative sums stay negative and truncate toward zero.
+        assert_eq!(
+            stadium_attraction(&stadium_state([-1999, 0, 0, 0, 0, 0, 0])),
+            -1
+        );
+    }
+
+    #[test]
+    fn advertising_offer_follows_the_formula() {
+        let mut s = stadium_state([0; 7]);
+        s.managers[0].fans = 50;
+        s.level = 3;
+        s.far_2ec2 = [0xee; 80];
+        let mut rng = Rng::new(77);
+        let mut p = rng;
+        advertising_offers_generate(&mut s, &mut rng);
+        // Offer (k = 0, i = 0): stadium 0 + 20 (fans > 29), base 60, threshold 10 + r1,
+        // q = 12; the interest draw 3..=20 is always below the threshold.
+        let r1 = i32::from(p.random_range(15, 20));
+        let mut o = i32::from(p.random_range(190, 206));
+        let v = p.random_range(3, 20);
+        assert!(i32::from(v) < 10 + r1);
+        let r = i32::from(p.random_range(107, 110));
+        o = o * 300 * r / 100;
+        let d = p.random_range(0, 2);
+        o = o * i32::from(p.random_range((d + 9) * 10, d * 15 + 92)) / 100;
+        o = o * i32::from(p.random_range(140, 148)) / 100 + 3 * 800 + 16500;
+        o += 3 * 2000 - 11000;
+        assert_eq!(&s.far_002e[..4], &o.to_le_bytes());
+        assert_eq!(s.far_2ec2[0], d as u8 + 1);
+        for i in 0..20 {
+            let amount = i32::from_le_bytes(s.far_002e[4 * i..4 * i + 4].try_into().unwrap());
+            if amount == 0 {
+                assert_eq!(s.far_2ec2[i], 0xee, "offer {i} keeps its length");
+            } else {
+                assert!((1..=3).contains(&s.far_2ec2[i]));
+            }
+        }
+        assert!(s.far_002e[80..].iter().all(|&b| b == 0), "only manager 0");
     }
 }

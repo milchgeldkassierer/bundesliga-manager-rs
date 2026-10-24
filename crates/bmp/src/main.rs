@@ -171,12 +171,9 @@ fn run_game(args: &Args) -> Result<(), String> {
         None => host::Host::with_window(&dir, 3)?,
     };
     match game::run(&mut host, time)? {
-        Ok(game::Exit::NewGame(ng)) => eprintln!(
-            "new game: {} manager(s), end year {}, modern start {}, difficulty {}",
-            ng.managers.len(),
-            ng.end_year(),
-            ng.modern_start(),
-            ng.difficulty()
+        Ok(game::Exit::NewGame(state)) => eprintln!(
+            "new game: {} manager(s), end year {}, difficulty {}",
+            state.manager_count, state.scenario, state.level
         ),
         Ok(game::Exit::EndOfTurn) => eprintln!("end of turn (the season loop is not ported yet)"),
         Err(host::Quit) => {}
