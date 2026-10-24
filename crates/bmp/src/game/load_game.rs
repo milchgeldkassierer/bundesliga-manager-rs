@@ -71,7 +71,7 @@ pub struct SaveSession {
 
 impl SaveSession {
     /// `C:\` plus the directory, as `getcwd` reports it.
-    fn cwd_text(&self) -> Vec<u8> {
+    pub(crate) fn cwd_text(&self) -> Vec<u8> {
         let mut s = b"C:\\".to_vec();
         s.extend_from_slice(self.dir.join("\\").as_bytes());
         s
@@ -80,7 +80,7 @@ impl SaveSession {
     /// `_chdrive(n)` (1 = A:) as DOSBox answers it: the floppy drives A: and B:
     /// can be selected without a disk, C: is the game directory, and any other
     /// drive does not exist (the call fails and nothing changes).
-    fn change_drive(&mut self, n: usize) {
+    pub(crate) fn change_drive(&mut self, n: usize) {
         match n {
             1 | 2 => self.drive = n as u8,
             3 => self.drive = 0,
@@ -90,7 +90,7 @@ impl SaveSession {
 
     /// The current drive is an empty floppy drive: `findfirst` finds nothing,
     /// `getcwd` fails (the old directory text stays) and nothing can be deleted.
-    fn on_floppy(&self) -> bool {
+    pub(crate) fn on_floppy(&self) -> bool {
         self.drive != 0
     }
 
@@ -100,7 +100,7 @@ impl SaveSession {
 
     /// `chdir(name)` relative to the current directory; unknown names are ignored
     /// like a failing `chdir`.
-    fn change_dir(&mut self, data: &Path, name: &[u8]) {
+    pub(crate) fn change_dir(&mut self, data: &Path, name: &[u8]) {
         let name = String::from_utf8_lossy(name).to_string();
         match name.as_str() {
             "." | "" => {}

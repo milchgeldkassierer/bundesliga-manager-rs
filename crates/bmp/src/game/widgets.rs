@@ -4,7 +4,8 @@ use bmp_game::rng::{format_long_thousands, spinner_round_bound};
 
 use super::GAME_OPTION_A;
 use crate::gfx::{
-    BitmapId, Gfx, ui_draw_frame, ui_draw_line, ui_draw_text_centered_shadow, ui_fill_rect,
+    BitmapId, Gfx, RastPort, ui_draw_frame, ui_draw_line, ui_draw_text_centered_shadow,
+    ui_fill_rect,
 };
 use crate::host::{Host, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, Run};
 /// Most text buttons that can be registered (`DS:07b3` stops counting at 10; the
@@ -24,20 +25,45 @@ impl TextButtons {
     ///
     /// Origin: BMMAIN.EXE 4091:123d (ui_register_icon_slot)
     pub fn register(&mut self, host: &mut Host, x: i16, y: i16, text: &[u8], color: u8) {
+        // The original selects the font after the frame; the frame does not use it.
+        host.set_font(2);
+        self.register_on(
+            &mut host.g,
+            &mut host.rp,
+            x,
+            y,
+            text,
+            color,
+            (x + 1, x + 0x39),
+        );
+    }
+
+    /// The body of [`TextButtons::register`] on any rastport, with the label centred
+    /// between `text_x.0` and `text_x.1` in the rastport's current font. TEAMED.EXE's
+    /// copy (`12a5:0087`) uses font 3 and centres between `x` and `x + 0x3F`.
+    ///
+    /// Origin: BMMAIN.EXE 4091:123d (ui_register_icon_slot)
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_on(
+        &mut self,
+        g: &mut Gfx,
+        rp: &mut RastPort,
+        x: i16,
+        y: i16,
+        text: &[u8],
+        color: u8,
+        text_x: (i16, i16),
+    ) {
         let mut corners = [[0u8; 2]; 2];
         for (a, row) in corners.iter_mut().enumerate() {
             for (b, px) in row.iter_mut().enumerate() {
-                *px = host
-                    .g
-                    .rastport_get_pixel(&host.rp, x + a as i16 * 0x38, y + b as i16 * 0xb)
-                    as u8;
+                *px = g.rastport_get_pixel(rp, x + a as i16 * 0x38, y + b as i16 * 0xb) as u8;
             }
         }
         self.xy[self.count] = (x, y);
         if self.count < 10 {
             self.count += 1;
         }
-        let (g, rp) = (&mut host.g, &mut host.rp);
         ui_fill_rect(g, rp, x, y, x + 0x38, y + 0xb, 0);
         let (yb, yb2) = (y as u8, (y as u8).wrapping_add(0xb));
         ui_draw_line(g, rp, x, yb, x + 0x38, yb, 2);
@@ -50,17 +76,7 @@ impl TextButtons {
                 g.rastport_put_pixel(rp, x + a as i16 * 0x38, y + b as i16 * 0xb);
             }
         }
-        host.set_font(2);
-        ui_draw_text_centered_shadow(
-            &mut host.g,
-            &mut host.rp,
-            text,
-            x + 1,
-            x + 0x39,
-            y + 8,
-            color,
-            0xff,
-        );
+        ui_draw_text_centered_shadow(g, rp, text, text_x.0, text_x.1, y + 8, color, 0xff);
     }
 
     /// Number of registered buttons (`DS:07b3`).

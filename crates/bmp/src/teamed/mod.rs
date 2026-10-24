@@ -16,10 +16,12 @@
 //! Ported: the start-up, the main loop's hover display, the "LIGA" paging,
 //! "PROGRAMM-ENDE" with the save question and the strength recomputation ([`save`]), the
 //! `MANA.DAT` reader and writer, the editing of a selected club ([`club`]) and the UEFA
-//! list ([`uefa`]). The crest editor ([`crest`]) plugs in at its `TODO(#158)` stubs.
+//! list ([`uefa`]) and the crest editor with its picture import ([`crest`],
+//! [`crest_import`]).
 
 pub mod club;
 pub mod crest;
+pub mod crest_import;
 pub mod dialog;
 pub mod save;
 pub mod uefa;
@@ -41,7 +43,7 @@ pub const CREST_PITCH: i16 = 0x27;
 pub const CRESTS_PER_PAGE: u8 = 0x20;
 /// Pictures the editor loads at start-up (`PIC\<n>.VGA`).
 pub const PIC_BAR: u16 = 0x3f;
-/// Second picture loaded at start-up (`DS:011A`); used by the crest import (package crest).
+/// Second picture loaded at start-up (`DS:011A`); never drawn (see `Editor::crest_import_pic`).
 pub const PIC_CREST_IMPORT: u16 = 0x40;
 /// Background of the crest editor (`DS:011E`, blitted by `1000:1d73`).
 pub const PIC_CREST_EDITOR: u16 = 0x3d;
@@ -91,8 +93,6 @@ pub enum Exit {
 }
 
 /// The editor's state: the `MANA.DAT` buffers, the pictures and the screen.
-// TODO(#158): the feature packages read the fields the skeleton does not use yet.
-#[allow(dead_code)]
 pub struct Editor {
     /// The buffers read from `MANA.DAT`: crests `DS:5956`, strength `DS:33CA`, points
     /// `DS:467C`, goals `DS:364E`, ranks `DS:1E04`, club names `DS:0042` and the player
@@ -111,7 +111,9 @@ pub struct Editor {
     pub grid: RastPort,
     /// "LIGA"/"UEFA" bar (`DS:0116`, `PIC\63.VGA`).
     pub bar: BitmapId,
-    /// `DS:011A` (`PIC\64.VGA`).
+    /// `DS:011A` (`PIC\64.VGA`): loaded at start-up and only freed again by
+    /// `fatal_error_exit` (`1000:1039`); nothing draws it (not even the crest import).
+    #[allow(dead_code)]
     pub crest_import_pic: BitmapId,
     /// `DS:011E` (`PIC\61.VGA`), background of the crest editor.
     pub crest_editor_pic: BitmapId,
@@ -137,6 +139,11 @@ pub struct Editor {
     /// input reuses. It is never cleared: `text_input` measures one stale byte past the
     /// text (see [`dialog::text_input`]).
     pub input_buf: [u8; INPUT_BUF_LEN],
+    /// `[BP-04]` of the main loop: the colour the crest editor paints with (-1 = none
+    /// chosen yet; it stays chosen across clubs).
+    pub crest_color: i16,
+    /// The crest import's browser directory and last picture header.
+    pub import: crest_import::ImportState,
     /// `random_range` of the CRT (`rand()` is never seeded: the MSC start state).
     pub rng: Rng,
 }
@@ -234,6 +241,8 @@ pub fn init(host: &mut Host) -> Result<Editor, String> {
         crest_changed: false,
         input_buf: [0; INPUT_BUF_LEN],
         uefa_page: 0,
+        crest_color: -1,
+        import: crest_import::ImportState::default(),
         rng: Rng::default(),
     };
     clear_grid(&mut host.g, &mut ed.grid);
@@ -444,11 +453,10 @@ pub fn main_loop(host: &mut Host, ed: &mut Editor) -> Run<Exit> {
             // deselects). They end the selection, so the crest editor and player checks
             // that follow in the original (with y replaced by the row) never match.
             club::buttons(host, ed, y)?;
-        } else if ev == LEFT_DOWN {
-            // TODO(#158) package crest: 12a5:1684..1fad, the crest editor (painting
-            // in the enlarged crest, 1000:1d73) and its picture import (1579:05b7).
-            crest::click(host, ed, x, y)?;
-            // 12a5:2028: editing a player name of the selected club in the list.
+        } else if !crest::click(host, ed, ev, hx, hy)? && ev == LEFT_DOWN {
+            // 12a5:1671: the crest editor (both buttons; it reads the pointer copies
+            // [BP-E2]/[BP-EA]); unless it ended the iteration, 12a5:2028: editing a
+            // player name of the selected club in the list.
             club::edit_player(host, ed, x, y)?;
         }
         if quit && let Some(exit) = end_program(host, ed, &mut quit)? {

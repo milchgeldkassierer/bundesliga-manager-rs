@@ -1,0 +1,96 @@
+# DOSBox side of the crest editor scenario (tools/dosbox-capture.sh syntax, seconds).
+# exe: TEAMED.EXE
+# DOSBox's pointer lands up to two pixels off the requested x in the 242-line mode; the port
+# script uses the x positions DOSBox reaches.
+# In the scrolled view of the import (mouse y range 87..328) DOSBox maps the window's 242
+# rows onto y 0..328 (about y * 329 / 242) and clamps to 87: the y values there are chosen
+# to land on the port's driver positions (99 -> 135, 94 -> 128, 104 -> 142, 100 -> 136,
+# 60 -> 87).
+wait 5
+# Select club 0 (1.FC Kaiserslautern): the crest editor.
+click 21 100 242
+wait 2
+shot c01-editor
+# Right button in the enlarged crest: colour pick with a frame around the field.
+click 61 130 242 3
+wait 1
+shot c02-pick-colour
+# A colour field (row 2, column 7: yellow).
+click 309 128 242
+wait 1
+shot c03-colour-field
+# Three strokes of one pixel each.
+click 41 120 242
+wait 1
+click 45 124 242
+wait 1
+click 81 160 242
+wait 1
+shot c04-painted
+# Undo takes back the last stroke only.
+click 201 176 242
+wait 2
+shot c05-undo
+# Ur-Wappen restores the crest picture.
+click 201 192 242
+wait 2
+shot c06-original
+# Paint again and AENDERUNG SICHERN: PIC\88.VGA is written, the grid shows the new crest.
+click 41 120 242
+wait 1
+click 78 65 242
+wait 2
+shot c07-saved
+# Club 1, Iff-Bild laden: the scrolled view with the browser (C:\).
+click 60 100 242
+wait 2
+click 201 160 242
+wait 2
+shot c08-browser
+# Into the directory IFF (row 3). The DOSBox mouse maps the window to y 0..241 and clamps it to 87..328, so positions are driver positions: the pointer is drawn 87 rows higher.
+click 33 99 242
+wait 2
+shot c09-iff-dir
+# CREST.IFF (row 2): first click picks the name, the second loads it.
+click 33 94 242
+wait 1
+shot c10-file-picked
+click 33 94 242
+wait 3
+shot c11-crop
+move 101 100 242
+wait 1
+shot c12-crop-moved
+# Left button: the framed part becomes the working crest.
+click 101 100 242
+wait 2
+shot c13-imported
+# Again: the browser starts in IFF; WIDE.IFF (336 wide) is refused.
+click 201 160 242
+wait 2
+shot c14-browser-again
+click 33 104 242
+wait 1
+click 33 104 242
+wait 2
+shot c15-wrong-format
+wait 6
+# PBM.LBM (8 planes, chunky); the right button cancels the crop.
+click 201 160 242
+wait 2
+click 33 99 242
+wait 1
+click 33 99 242
+wait 3
+move 151 60 242
+wait 1
+shot c16-crop-pbm
+click 151 60 242 3
+wait 2
+shot c17-crop-cancelled
+# AENDERUNG SICHERN writes the imported crest to PIC\83.VGA.
+click 78 65 242
+wait 2
+shot c18-saved-import
+fetch PIC/88.VGA
+fetch PIC/83.VGA

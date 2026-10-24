@@ -28,6 +28,8 @@
 # and values in C notation), e.g. a save with a broken signature, version or checksum.
 # A "# fixture-edit: <file> <save> <op>..." line makes the fixture <file> a copy of the save
 # <save> of $BMP_DATA with game-state edits (crates/bmp-game/examples/save_patch.rs lists them).
+# A "# fixture-example: <file> <example> [<args>...]" line makes the fixture <file> (a path, e.g.
+# IFF/CREST.IFF) with the bmp-formats example <example>, called as "<example> <out> <args...>".
 # A "# fixture-delete: <path>" line removes the file <path> (e.g. PIC/33.VGA) from the game
 # directories of both the port and the DOSBox capture, e.g. to provoke a fatal error.
 # Fixtures and references belong together: delete both to regenerate them.
@@ -86,6 +88,13 @@ PY
     cargo run -q -p bmp-game --example save_patch -- "$DATA/$src" "$fix/$file" $ops \
       && echo "fixture $name/$file patched"
   done < <(sed -n 's/^# fixture-edit: *//p' "tests/visual/$name.port.txt")
+  while read -r file tool args; do
+    [ -f "$fix/$file" ] && continue
+    mkdir -p "$(dirname "$fix/$file")"
+    # shellcheck disable=SC2086 # the arguments are split on purpose
+    cargo run -q -p bmp-formats --example "$tool" -- "$fix/$file" $args \
+      && echo "fixture $name/$file made by $tool"
+  done < <(sed -n 's/^# fixture-example: *//p' "tests/visual/$name.port.txt")
   if [ ! -d "$ref" ]; then
     cycles=$(sed -n 's/^# cycles: *//p' "tests/visual/$name.dosbox.txt")
     aim=$(sed -n 's/^# aim-seed: *\([0-9]*\).*/\1/p' "tests/visual/$name.dosbox.txt")

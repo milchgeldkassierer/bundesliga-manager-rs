@@ -1,0 +1,100 @@
+# Port side of the crest editor scenario (bmp teamed --script syntax, milliseconds).
+# command: teamed
+# fixture-example: IFF/CREST.IFF iff_fixture ilbm
+# fixture-example: IFF/PBM.LBM iff_fixture pbm
+# fixture-example: IFF/WIDE.IFF iff_fixture wide
+# compare-file: PIC/88.VGA
+# compare-file: PIC/83.VGA
+wait 2000
+# Select club 0 (1.FC Kaiserslautern): the crest editor.
+# The pointer moves first: the hover display takes the iteration of a move.
+move 20 100
+wait 500
+click 20 100
+wait 2000
+shot c01-editor
+# Right button in the enlarged crest: colour pick with a frame around the field.
+rclick 60 130
+wait 1000
+shot c02-pick-colour
+# A colour field (row 2, column 7: yellow).
+click 310 128
+wait 1000
+shot c03-colour-field
+# Three strokes of one pixel each.
+click 40 120
+wait 1000
+click 44 124
+wait 1000
+click 80 160
+wait 1000
+shot c04-painted
+# Undo takes back the last stroke only.
+click 201 176
+wait 2000
+shot c05-undo
+# Ur-Wappen restores the crest picture.
+click 201 192
+wait 2000
+shot c06-original
+# Paint again and AENDERUNG SICHERN: PIC\88.VGA is written, the grid shows the new crest.
+click 40 120
+wait 1000
+click 77 65
+wait 2000
+shot c07-saved
+# Club 1, Iff-Bild laden: the scrolled view with the browser (C:\).
+# The pointer moves first: the hover display takes the iteration of a move.
+move 59 100
+wait 500
+click 59 100
+wait 2000
+click 201 160
+wait 2000
+shot c08-browser
+# Into the directory IFF (row 3). Positions in the scrolled view are mouse driver positions
+# (the pointer is drawn 87 rows higher); the DOSBox script lists its window positions.
+click 32 135
+wait 2000
+shot c09-iff-dir
+# CREST.IFF (row 2): first click picks the name, the second loads it.
+click 32 128
+wait 1000
+shot c10-file-picked
+click 32 128
+wait 3000
+shot c11-crop
+move 100 136
+wait 1000
+shot c12-crop-moved
+# Left button: the framed part becomes the working crest.
+click 100 136
+wait 2000
+shot c13-imported
+# Again: the browser starts in IFF; WIDE.IFF (336 wide) is refused.
+click 201 160
+wait 2000
+shot c14-browser-again
+click 32 142
+wait 1000
+click 32 142
+wait 2000
+shot c15-wrong-format
+wait 6000
+# PBM.LBM (8 planes, chunky); the right button cancels the crop.
+click 201 160
+wait 2000
+click 32 135
+wait 1000
+click 32 135
+wait 3000
+move 151 60
+wait 1000
+shot c16-crop-pbm
+rclick 151 60
+wait 2000
+shot c17-crop-cancelled
+# AENDERUNG SICHERN writes the imported crest to PIC\83.VGA.
+click 77 65
+wait 2000
+shot c18-saved-import

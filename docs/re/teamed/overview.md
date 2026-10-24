@@ -57,10 +57,12 @@ calls it (seven calls in `1579:0030`).
   from the pointer y to get view coordinates. Port: `gfx::Bitmap::origin` (always (0, 0)
   in BMMAIN) and `Gfx::with_origin`.
 * `vga_show_page` (`16b7:3231`) has a third mode (start address `0x1B30`, mouse range
-  87..328) for a scrolled view: the UEFA list (`12a5:233d`) shows rows 87..328 with it
-  (`Gfx::vga_show_page_teamed`, see `uefa.md`). Its other caller `12a5:2d39` is empty.
+  87..328) for a scrolled view: the UEFA list (`12a5:233d`) and the crest import
+  (`12a5:1b16`, browser and crop frame) show rows 87..328 with it
+  (`Gfx::vga_show_page_teamed`, see `uefa.md`, `crest.md`). Its other caller `12a5:2d39` is
+  empty.
 * Unlike BMMAIN's (`MUL BL`, rows wrap at 256), TEAMED's library computes VRAM row
-  addresses with a 16-bit multiply (`MUL BX`, e.g. `16b7:1f36`): `Gfx::row_mask`.
+  addresses with a 16-bit multiply (`MUL BX`, e.g. `16b7:1f36`, `24b2`): `Gfx::row_mask`.
 
 ## Screens and controls
 
@@ -159,6 +161,7 @@ Matched by instruction sequence (mnemonics, LCS similarity) against
 | `16b7:1ca0` vga_set_mode_x_320x240 | `45ac:1c80` (same code, other CRTC table) | `Gfx::vga_set_mode_x_teamed` |
 | `16b7:3231` vga_show_page (0.85, third mode) | `45ac:327d` | `Gfx::vga_show_page_teamed` |
 | `16b7` VRAM row address (`MUL BX` instead of `MUL BL`) | `45ac` | `Gfx::row_mask` |
+| `16b7:382b` ilbm_decode_body (TEAMED only) | – | `bmp_formats::iff::decode_body` |
 | `1a46:000c..01e5`, `028b`, `02b1`, `04ee..051e`, `05c6`, `05ff`, `06cc`, `07ad..0855`, `0c14` | `4930` file, font, rastport, palette, mouse wrappers (1.00) | `Gfx` rastport layer, `Host` |
 | `1a46:0215`, `02d0`, `038d`, `040d`, `044e`, `09a8`, `0878`, `0ae4` (0.82..0.90) | same `4930` wrappers plus the bitmap origin | `Gfx::with_origin` in the shared wrappers |
 | `1a46:0646` palette_load_rgb4 (0.87) | `4930:0624` without the palette-slot branch | `Gfx::palette_load_rgb4` |
@@ -170,7 +173,7 @@ Matched by instruction sequence (mnemonics, LCS similarity) against
 | `1000:088e` / `08c8` input_wait_click / input_poll_mouse (0.83/0.97) | `176b:0d0a` / `0319` | `Host::input_poll_mouse` |
 | `1000:1136` picture_load (0.89) | `176b:0356` | `Host::load_picture`, `Host::blank_bitmap` |
 | `1000:10e6`, `2446`, `2a2f` | `4091` long_abs_diff, text_to_upper_de, clamp_int | `bmp_game` helpers |
-| `12a5:0087` / `000a` (0.92 / 0.79) | `4091:123d` ui_register_icon_slot / `11cc` ui_hit_icon_slot | `gfx::Ui` (package crest) |
+| `12a5:0087` / `000a` (0.92 / 0.79) | `4091:123d` ui_register_icon_slot / `11cc` ui_hit_icon_slot | `game::widgets::TextButtons::register_on` / `hit` |
 | `1b1f` (whole segment) | `4a01` MSC CRT | Rust std |
 
 Editor-only code (to port): `1000:0000..0268`, `049e`, `04f1`, `0a7d..0d8c`, `0ee4`,
@@ -208,7 +211,7 @@ call them.
 * Files: `crates/bmp/src/teamed/club.rs`, `teamed/dialog.rs` (bodies of `message`,
   `text_input`); spec `docs/re/teamed/club.md`.
 
-### Package `crest` – crest editor and IFF import
+### Package `crest` – crest editor and IFF import (ported, see `crest.md`)
 
 * Functions: `1000:1d73` (`crest_editor_draw`, already ported by package club as
   `crest::draw_editor`), `12a5:1684..1fad` (painting, colour pick,

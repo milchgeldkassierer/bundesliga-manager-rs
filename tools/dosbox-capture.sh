@@ -137,7 +137,11 @@ while read -r cmd arg; do
       # Wait until DOSBox has finished writing the file (size stable).
       prev=-1; for _ in $(seq 30); do cur=$(stat -c %s "$WORK/cap/$newest" 2>/dev/null || echo 0); [ "$cur" -gt 0 ] && [ "$cur" = "$prev" ] && break; prev=$cur; sleep 0.2; done
       [ -n "$newest" ] && cp "$WORK/cap/$newest" "$OUT/$arg.png" && echo "captured $arg" ;;
-    fetch) cp "$GAME/$arg" "$OUT/$arg" && echo "fetched $arg" ;;
+    fetch)
+      # DOS names ignore case: take the file of any spelling.
+      src=$(cd "$GAME" && find . -ipath "./$arg" | head -1)
+      mkdir -p "$(dirname "$OUT/$arg")"
+      cp "$GAME/${src:-$arg}" "$OUT/$arg" && echo "fetched $arg" ;;
     audio)
       read -r what name <<<"$arg"
       DISPLAY=$DISP xdotool key --window "$WIN" ctrl+F6
