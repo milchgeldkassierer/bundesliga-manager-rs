@@ -222,7 +222,11 @@ pub fn status_row(
             )
         }
         4..=7 => {
-            let names: &[&[u8]] = if r < 6 { &SIZE_NAMES } else { &QUALITY_NAMES };
+            let names: &[&[u8]] = if Manager::stadium_item_is_quality(r - 1) {
+                &QUALITY_NAMES
+            } else {
+                &SIZE_NAMES
+            };
             let name = |v: i32| {
                 names
                     .get(v as u16 as usize)
@@ -609,9 +613,8 @@ fn choose_level(
 ) -> Run<i32> {
     let cur_m = current(state);
     let m = &state.managers[cur_m];
-    let [c, p] = m.stadium[aa - 1];
-    let cur = (c as u16).wrapping_add(p as u16) as i16;
-    let quality = aa > 5;
+    let cur = m.stadium_level(aa - 1);
+    let quality = Manager::stadium_item_is_quality(aa - 1);
     let names: &[&[u8]] = if quality { &QUALITY_NAMES } else { &SIZE_NAMES };
     let top = names.len() as i16 - 1;
     if top == cur {

@@ -349,6 +349,32 @@ impl Manager {
     pub fn name(&self) -> &[u8] {
         c_str(&self.name)
     }
+
+    /// Level of the level-type [`Manager::stadium`] item `item` (3..7,
+    /// 0-based): built + ordered, added as 16-bit words the way
+    /// `screen_stadium` 1000:0602 indexes its name tables with it.
+    pub fn stadium_level(&self, item: usize) -> i16 {
+        let [built, ordered] = self.stadium[item];
+        (built as u16).wrapping_add(ordered as u16) as i16
+    }
+
+    /// Whether the [`Manager::stadium`] item `item` (0-based) is a quality
+    /// item (5 and 6, condition and comfort) rather than a size item
+    /// (3 and 4, floodlight and scoreboard).
+    pub const fn stadium_item_is_quality(item: usize) -> bool {
+        item >= 5
+    }
+
+    /// Number of levels of the level-type [`Manager::stadium`] item `item`:
+    /// [`STADIUM_QUALITY_LEVELS`] for a quality item, else
+    /// [`STADIUM_SIZE_LEVELS`].
+    pub const fn stadium_item_levels(item: usize) -> usize {
+        if Self::stadium_item_is_quality(item) {
+            STADIUM_QUALITY_LEVELS
+        } else {
+            STADIUM_SIZE_LEVELS
+        }
+    }
 }
 
 record! {
@@ -1257,17 +1283,11 @@ impl GameState {
         for (m, man) in self.managers.iter().enumerate() {
             check("managers.team", m, usize::from(man.team) < clubs)?;
             for item in 3..man.stadium.len() {
-                let levels = if item < 5 {
-                    STADIUM_SIZE_LEVELS
-                } else {
-                    STADIUM_QUALITY_LEVELS
-                };
-                let [built, ordered] = man.stadium[item];
-                let level = (built as u16).wrapping_add(ordered as u16) as i16;
+                let levels = Manager::stadium_item_levels(item);
                 check(
                     "managers.stadium level",
                     m,
-                    usize::try_from(level).is_ok_and(|l| l < levels),
+                    usize::try_from(man.stadium_level(item)).is_ok_and(|l| l < levels),
                 )?;
             }
         }
