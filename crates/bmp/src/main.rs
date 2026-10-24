@@ -12,11 +12,13 @@ use video::{Mode, Vga, Window};
 
 const USAGE: &str = "usage: bmp [--data <dir>] [--version]
        bmp [--data <dir>] show-pic <name> [--palette <0..2>] [--screenshot <out.png>]
-       bmp [--data <dir>] run [--script <file> --shots <dir>] [--time <seconds>]
+       bmp [--data <dir>] run [--script <file> --shots <dir>] [--time <seconds>] [--time2 <seconds>]
        bmp compare <port.png> <reference.png> [--diff <out.png>] [--threshold <percent>]
   <name> is a file below PIC/, e.g. 47.CP or 120.VGA
   run starts the game; with --script it runs headless on a virtual clock
-  (see host::parse_script) and --time fixes the RNG seed time
+  (see host::parse_script); --time fixes the time of the first RNG seed and --time2
+  that of the second one, read when a new game starts (default: --time when given,
+  else the clock at that moment)
   compare exits 0 when at least <percent> (default 90) of the pixels match, 1 otherwise";
 
 struct Args {
@@ -155,12 +157,13 @@ fn run_game(args: &Args) -> Result<(), String> {
     let mut rest = args.rest[1..].to_vec();
     let script = take_opt(&mut rest, "--script")?;
     let shots = take_opt(&mut rest, "--shots")?.unwrap_or_else(|| ".".into());
-    let time = match take_opt(&mut rest, "--time")? {
-        Some(t) => t.parse::<i32>().map_err(|e| format!("--time: {e}"))?,
-        None => std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs() as i32),
+    let parse = |flag: &str, v: Option<String>| -> Result<Option<i32>, String> {
+        v.map(|t| t.parse::<i32>().map_err(|e| format!("{flag}: {e}")))
+            .transpose()
     };
+    let time = parse("--time", take_opt(&mut rest, "--time")?)?;
+    let time2 = parse("--time2", take_opt(&mut rest, "--time2")?)?.or(time);
+    let time = time.unwrap_or_else(game::time_now);
     let dir = data_dir(args)?;
     let mut host = match script {
         Some(path) => {
@@ -170,11 +173,7 @@ fn run_game(args: &Args) -> Result<(), String> {
         }
         None => host::Host::with_window(&dir, 3)?,
     };
-    match game::run(&mut host, time)? {
-        Ok(game::Exit::NewGame(state)) => eprintln!(
-            "new game: {} manager(s), end year {}, difficulty {}",
-            state.manager_count, state.scenario, state.level
-        ),
+    match game::run(&mut host, time, time2)? {
         Ok(game::Exit::EndOfTurn) => eprintln!("end of turn (the season loop is not ported yet)"),
         Err(host::Quit) => {}
     }

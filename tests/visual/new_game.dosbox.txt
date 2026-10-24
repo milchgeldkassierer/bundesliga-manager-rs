@@ -1,0 +1,35 @@
+# DOSBox side of the new-game scenario (tools/dosbox-capture.sh syntax, seconds).
+# Both RNG seeds are time(): the first when the title is left, the second after
+# the options dialog; recover them per reference set (see the port script).
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 40 220 240
+wait 1
+type adi
+key Return
+wait 1
+click 40 120 240
+wait 1
+shot r01-manager
+click 160 120 240 3
+wait 3
+shot r02-options
+click 160 120 240 3
+wait 3
+click 187 166 240
+wait 3
+click 187 166 240
+wait 3
+click 187 166 240
+wait 3
+click 187 166 240
+wait 6
+shot r03-office
+click 30 216 240
+wait 2
+click 107 132 240
+wait 4
+shot r04-squad

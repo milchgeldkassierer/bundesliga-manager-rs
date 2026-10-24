@@ -1,0 +1,42 @@
+# Port side of the new-game scenario (bmp run --script syntax, milliseconds):
+# start menu -> manager "ADI" with the centre club -> options (defaults: level 2,
+# endless game) -> right click -> office of the new game -> squad screen (sub icon 1
+# of "Mannschaft").
+# TODO(#27): the original shows the DFB-Pokal draw and the three European cup draws
+# first, each with an "An Alle" question that the DOSBox run answers with "KEIN
+# DANKE" (four clicks at 187 166). `dialog_two_choice` puts the pointer back where
+# it was, so the port leaves it at 160 120 and skips the clicks until #27 ports the
+# screens. The squad's skills differ until then as well: the European cup draws
+# before the start menu take about 150 random numbers that `NoCups` skips (with
+# them skipped by hand, the first rows match the original exactly).
+# Seed 1 was recovered from the carousel (unique among all 16-bit seeds). Seed 2
+# changes nothing in these frames; the value is an estimate (DOSBox time runs about
+# 1.5 times faster than the script's waits).
+# seed: 45817
+# seed2: 45841
+wait 500
+click 160 120
+wait 4000
+click 40 220
+wait 200
+type adi
+key enter
+wait 200
+click 40 120
+wait 300
+shot r01-manager
+rclick 160 120
+wait 500
+shot r02-options
+rclick 160 120
+wait 2000
+shot r03-office
+move 30 216
+wait 200
+click 30 216
+wait 500
+move 107 132
+wait 200
+click 107 132
+wait 1000
+shot r04-squad

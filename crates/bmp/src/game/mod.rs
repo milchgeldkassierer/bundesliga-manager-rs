@@ -54,10 +54,16 @@ impl Session {
 /// How [`run`] ended.
 #[derive(Debug)]
 pub enum Exit {
-    /// The player set up a new game; its first office turn is not ported yet.
-    NewGame(Box<GameState>),
-    /// A loaded game's office turn ended; the season loop is not ported yet.
+    /// The first office turn of a new or loaded game ended; the season loop is not
+    /// ported yet (#31).
     EndOfTurn,
+}
+
+/// `time(NULL)`: the seconds since the epoch, the source of both RNG seeds.
+pub fn time_now() -> i32 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i32)
 }
 
 /// The MANA.DAT of the game data.
@@ -129,7 +135,7 @@ fn finish_new_game(
     session: &mut Session,
     mana: &ManaDat,
     choices: &newgame::MenuChoices,
-    time: i32,
+    time2: i32,
 ) -> Result<(), String> {
     // TODO(#27): the cup draws; until then the games `NoCups` cannot finish are refused.
     if !NoCups::can_finish(choices) {
@@ -139,15 +145,13 @@ fn finish_new_game(
             choices.count
         ));
     }
-    // TODO(re): the original reads time() again for the second seed; the port reuses `time` so
-    // that scripted runs stay deterministic.
     newgame::new_game(
         world,
         &mut session.rt,
         &mut session.rng,
         mana,
         choices,
-        time,
+        time2,
         &mut NoCups,
     );
     Ok(())
@@ -162,11 +166,12 @@ fn load_main_pictures(host: &mut Host) -> Result<(), String> {
     Ok(())
 }
 
-/// `main`: title picture, club selection, then either a new game or a loaded game's
-/// first office turn.
+/// `main`: title picture, club selection, then the first office turn of a new or a
+/// loaded game. `time` is the first seed's `time()`; `time2` the second one's, read
+/// once the start menu has set up a new game (`None`: the clock at that moment).
 ///
 /// Origin: BMMAIN.EXE 18bc:0418 (main)
-pub fn run(host: &mut Host, time: i32) -> Result<Run<Exit>, String> {
+pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, String> {
     host.load_palette_slots()?;
     // TODO(#17): music. Without a sound card the original shows the title for the
     // `delay_ticks(150)` below only; with music it waits until the tune ends or the
@@ -210,22 +215,29 @@ pub fn run(host: &mut Host, time: i32) -> Result<Run<Exit>, String> {
         Ok(o) => o,
         Err(q) => return Ok(Err(q)),
     };
-    let mut state = match outcome {
+    let (mut state, resume) = match outcome {
         start_menu::Outcome::NewGame(choices) => {
-            finish_new_game(&mut world, &mut session, &mana, &choices, time)?;
-            // TODO(#31): the first office turn of the new game.
-            return Ok(Ok(Exit::NewGame(Box::new(world))));
+            // `bitmap_free(FAR:57d4)`: the icon sheet, reloaded by `office_load_bitmaps(2)`.
+            if let Some(icons) = host.ui.icons.take() {
+                host.g.free(icons);
+            }
+            let time2 = time2.unwrap_or_else(time_now);
+            // TODO(#27): the DFB-Pokal draw and the display of the European cup draws
+            // (`cup_draw_first_round(0, 0)`, `(1..3, 1)`) with their "An Alle" questions.
+            finish_new_game(&mut world, &mut session, &mana, &choices, time2)?;
+            (world, false)
         }
-        start_menu::Outcome::LoadGame(state) => state,
+        start_menu::Outcome::LoadGame(state) => (*state, true),
     };
-    let bitmaps = office::OfficeBitmaps::load(host, 1)?;
+    let bitmaps = office::OfficeBitmaps::load(host, if resume { 1 } else { 2 })?;
     // TODO(#7): tore_scene_open 24a4:0419 opens TORE\ANZAHL for the goal scenes.
-    Ok(season::season_main_loop_resume(
+    Ok(season::season_main_loop(
         host,
         &mut session,
         &pics,
         &bitmaps,
         &mut state,
+        resume,
     ))
 }
 

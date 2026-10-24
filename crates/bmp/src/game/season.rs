@@ -1,5 +1,5 @@
-//! The part of the season loop (segment 2a58) that leads into the office after a
-//! game was loaded. Spec: `docs/re/logic/season.md` §1.2 and §3.1.
+//! The part of the season loop (segment 2a58) that leads into the first office turn
+//! of a new or a loaded game. Spec: `docs/re/logic/season.md` §1.2 and §3.1.
 
 use bmp_game::state::GameState;
 
@@ -49,19 +49,20 @@ pub fn calendar_compute_date(state: &mut GameState, n: u16) {
     state.day_of_month = day;
 }
 
-/// `season_main_loop(resume = 1)` up to the first office turn of the stored
-/// current manager.
+/// `season_main_loop(resume)` up to the first office turn: of the stored current
+/// manager after a game was loaded (`resume`), of manager 0 in a new game.
 ///
-/// TODO(#31): the rest of the season loop (matches, day advance) is not ported;
-/// the turn ends the run.
+/// TODO(#31): the rest of the season loop (the other managers' turns, matches, day
+/// advance) is not ported; the turn ends the run.
 ///
 /// Origin: BMMAIN.EXE 2a58:3176 (season_main_loop)
-pub fn season_main_loop_resume(
+pub fn season_main_loop(
     host: &mut Host,
     session: &mut Session,
     pics: &Pictures,
     bitmaps: &OfficeBitmaps,
     state: &mut GameState,
+    resume: bool,
 ) -> Run<Exit> {
     let saved_mgr = state.current_manager;
     let n = state.manager_count.min(4) as i8;
@@ -78,7 +79,7 @@ pub fn season_main_loop_resume(
     // TODO(#24): league_init_or_ai(1) 1f9d:0697.
     if wf == 0 {
         // TODO(#31): DAY_ADVANCE before the first office turn (no shipped save
-        // stops on such a week).
+        // stops on such a week, and week 0 of a new game has a matchday).
         return Ok(Exit::EndOfTurn);
     }
     for m in 0..n {
@@ -87,9 +88,10 @@ pub fn season_main_loop_resume(
         state.lineup_state[mu][0] = state.lineup_state[mu][1];
         // TODO(#28): squad_weekly_update 2ecd:3360; TODO(#24): manager_ai_weekly 1f9d:0002.
     }
-    // OFFICE_B_TEST with resume: the stored manager gets the first turn.
-    state.current_manager = saved_mgr;
-    state.saved_manager = saved_mgr;
+    // OFFICE_B_TEST: manager 0 gets the first turn, after a load the stored manager.
+    let first = if resume { saved_mgr } else { 0 };
+    state.current_manager = first;
+    state.saved_manager = first;
     host.input_wait_release()?;
     if session
         .rng
