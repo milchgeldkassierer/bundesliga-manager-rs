@@ -548,6 +548,13 @@ impl Host {
         }
     }
 
+    /// `DS:018e`: the voice last started (0 = none, also without sound).
+    pub fn voice_current(&mut self) -> u8 {
+        let mut n = 0;
+        self.with_voices(|v| n = v.current);
+        n
+    }
+
     /// Origin: BMMAIN.EXE 176b:027d (sound_restart_loop_voice)
     pub fn voice_restart_loop(&mut self) {
         self.with_voices(|v| v.restart_loop());

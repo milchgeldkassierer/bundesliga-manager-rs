@@ -1,0 +1,63 @@
+# DOSBox side of the goal_scenes scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN, switches on the newspaper, the 2. Bundesliga half-time/full-time
+# fixtures and the goal scenes ("Torszenen") in the settings, ends the turn with a click on
+# the calendar sheet and plays the match day: the goal scene of the 6th minute (three frames
+# and the "TOR!" panel after it), the half-time fixtures, the goal scene of the 56th minute
+# with its panel, the missed chance of the 57th minute and the full-time fixtures.
+# The reference was taken from a run that shot the live view about every 0.25 s; the
+# "wait" lines between the shots stand for the dropped shots.
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+click 291 173 240
+wait 3
+click 161 132 240
+wait 5
+click 245 108 240
+wait 1
+click 187 43 240
+wait 1
+click 187 62 240
+wait 1
+click 129 108 240
+wait 1
+shot g00-settings
+click 293 213 240
+wait 5
+shot g01-office
+click 280 75 240
+wait 1
+wait 1.25
+shot g02-scene
+wait 3.5
+shot g03-scene
+wait 3
+shot g04-scene
+wait 1.5
+shot g05-goal
+wait 1
+wait 25
+shot g06-half-time
+click 293 213 240
+wait 1
+wait 2.25
+shot g07-scene
+wait 1.5
+shot g08-scene
+wait 1.25
+shot g09-goal
+wait 0.75
+shot g10-scene
+wait 2
+shot g11-chance
+wait 2.25
+wait 30
+shot g12-full-time

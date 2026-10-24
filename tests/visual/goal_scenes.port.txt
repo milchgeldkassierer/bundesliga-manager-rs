@@ -1,0 +1,83 @@
+# Port side of the goal_scenes scenario (bmp run --script syntax, milliseconds):
+# load 07072019.MAN, switch on the newspaper, the 2. Bundesliga half-time and full-time
+# fixtures and the goal scenes ("Torszenen") in the settings, end the turn with a click on
+# the calendar sheet and play the match day with the TORE\ scenes: three frames of the
+# goal scene of the 6th minute and the "TOR!" panel after it, the half-time fixtures, two
+# frames of the goal scene of the 56th minute, its panel, the missed chance of the 57th
+# minute and the full-time fixtures.
+# Seed 1151 was recovered from the reference's half-time fixtures (searched around the
+# seed expected from the capture time); with it every one of the 94 frames of the
+# reference run, all frames of the three scenes included, matched a port frame exactly.
+# The waits during the scenes are tuned to the reference's frames (the DOSBox timing is
+# not exact).
+# seed: 1151
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 161 132
+wait 100
+click 161 132
+wait 1000
+move 245 108
+wait 100
+click 245 108
+wait 300
+move 187 43
+wait 100
+click 187 43
+wait 300
+move 187 62
+wait 100
+click 187 62
+wait 300
+move 129 108
+wait 100
+click 129 108
+wait 300
+shot g00-settings
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot g01-office
+move 280 75
+wait 100
+click 280 75
+wait 2500
+shot g02-scene
+wait 3520
+shot g03-scene
+wait 3080
+shot g04-scene
+wait 1520
+shot g05-goal
+wait 77680
+shot g06-half-time
+move 293 213
+wait 100
+click 293 213
+wait 3180
+shot g07-scene
+wait 1840
+shot g08-scene
+wait 1020
+shot g09-goal
+wait 1380
+shot g10-scene
+wait 1920
+shot g11-chance
+wait 14760
+shot g12-full-time
+quit

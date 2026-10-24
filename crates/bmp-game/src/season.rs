@@ -1179,8 +1179,8 @@ pub fn match_ticker_events<U: SeasonUi + ?Sized>(
             player_injure(state, rng, m, pl);
             if !ui.auto_play() {
                 // The stretcher comes on with chance 1/16 (UI only).
-                rng.random_range(0, 15);
-                ui.substitution(state, rt, e.manager_or_kind, e.arg6);
+                let stretcher = rng.random_range(0, 15) == 0;
+                ui.substitution(state, rt, e.manager_or_kind, e.arg6, stretcher);
             }
         }
         _ => {}
@@ -1424,10 +1424,18 @@ pub trait SeasonUi {
     ) -> u8;
 
     /// Manager `m` may change the lineup after an injury in a live match (`cup_mode` is the
-    /// match's cup flag).
+    /// match's cup flag); before it the stretcher comes on when `stretcher` (the draw
+    /// `random_range(0, 15) == 0` at 2a58:1e2c), else the screen waits.
     ///
     /// Origin: BMMAIN.EXE 2a58:1f75 (match_substitution_screen)
-    fn substitution(&mut self, state: &mut GameState, rt: &mut Runtime, m: u8, cup_mode: u8);
+    fn substitution(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        m: u8,
+        cup_mode: u8,
+        stretcher: bool,
+    );
 
     /// A screen or dialog of [`season_end_messages`].
     fn season_end(&mut self, state: &GameState, event: SeasonEndEvent<'_>);
@@ -2873,7 +2881,14 @@ mod tests {
             self.scenes.push((goal, side, penalty));
             self.scene_result
         }
-        fn substitution(&mut self, _: &mut GameState, _: &mut Runtime, m: u8, cup_mode: u8) {
+        fn substitution(
+            &mut self,
+            _: &mut GameState,
+            _: &mut Runtime,
+            m: u8,
+            cup_mode: u8,
+            _: bool,
+        ) {
             self.substitutions.push((m, cup_mode));
         }
         fn season_end(&mut self, _: &GameState, event: SeasonEndEvent<'_>) {

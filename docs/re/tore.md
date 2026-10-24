@@ -283,6 +283,30 @@ counter, then reads a key; while the counter is below 3 and the key is `r` or `w
 the scene is played again (same file). Showing 2 (counter 1) starts 18 frames before
 the end in slow motion, showing 3 (counter 2) replays everything in slow motion.
 
+## Raw addresses and details found while porting the screens
+
+The functions above in raw (unpacked, load segment 0) addresses, as the screen crate cites
+them: `tore_scene_play` = `24a4:05ec` (`2000:502c`), `tore_read_anzahl` = `24a4:0419`,
+`tore_report_read_error` = `24a4:0574`, `tore_mirror_scene` = `24a4:0053`,
+`match_screen_load_pictures` = `24a4:01f9` (`2000:4c39`), `match_screen_restore_pictures` =
+`24a4:0347` (`2000:4d87`), `tore_play_frames` = `1c7c:0004` (`1000:c7c4`).
+
+* `tore_scene_play` starts with `mouse_pointer_hide(0)` (45ac:1a81) and sets `DS:07b2 = 1`
+  (no thousands separators in `format_long_thousands` from then on); every exit path ends
+  with `mouse_pointer_show()` (45ac:1ac7) and returns the E flag.
+* `match_screen_load_pictures` first frees the live view's `PIC\8.VGA` (`FAR:2e9e`) and
+  `PIC\38.VGA` (`FAR:57c4`); the strip is `vga_load_picture(0, 0x140, 0x4d, 5)` (a blank
+  bitmap). `match_screen_restore_pictures` frees the strip, `PIC\27`, `PIC\26` and `PIC\29`
+  in that order and loads `PIC\8` (`FAR:5798` = its bitmap) and `PIC\38` (`FAR:2eb4`).
+* In `tore_play_frames` the target of the window blit is the bitmap `FAR:2f28` (the
+  screen, drawn on the current draw page). `sound_restart_loop_voice` (176b:027d) runs once
+  before the loop, before every object, after the objects, in every timer wait and at the
+  end. The voice played last is remembered in `[bp-8]` (2..5); after the closing 7-tick
+  pause `sound_stop_voice` (176b:020f) is called when one was played and the voice last
+  started (`DS:018e`) is not the crowd (1).
+* Verified against DOSBox: every captured frame of three scenes (a goal, a goal and a missed
+  chance; seed 1151 of the `goal_scenes` exploration run) matches the port pixel for pixel.
+
 ## Reimplementation notes
 
 * `tore::parse_scene` / `Scene::to_bytes` round-trip all 94 shipped files byte for byte.

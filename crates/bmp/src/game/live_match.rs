@@ -104,6 +104,29 @@ pub struct LiveView {
     pending_injury: Option<TickerEvent>,
 }
 
+impl LiveView {
+    /// Frees the sprites (`PIC\\8.VGA`) and the score panel (`PIC\\38.VGA`) for a goal scene.
+    pub(crate) fn free_pictures(&mut self, g: &mut Gfx) {
+        for id in [self.sprites.take(), self.panel.take()]
+            .into_iter()
+            .flatten()
+        {
+            g.free(id);
+        }
+    }
+
+    /// Loads the sprites and the score panel again after a goal scene.
+    pub(crate) fn load_pictures(&mut self, host: &mut Host) {
+        self.sprites = host.load_picture(8).ok();
+        self.panel = host.load_picture(0x26).ok();
+    }
+
+    /// The y of the running event's panel (`ybase`), 0 without one.
+    pub(crate) fn event_base(&self) -> i16 {
+        (self.event_y - 1).max(0)
+    }
+}
+
 fn fill(host: &mut Host, x0: i16, y0: i16, x1: i16, y1: i16, color: u8) {
     ui_fill_rect(&mut host.g, &mut host.rp, x0, y0, x1, y1, color);
 }
@@ -749,8 +772,7 @@ pub fn ticker_event_start(
             voice(host, if e.kind == EVENT_GOAL { 2 } else { 5 })?;
         }
     }
-    // TODO(#16): with the goal-scene option the TORE scene (tore_scene_play 24a4:05ec) plays
-    // here, see SeasonUi::goal_scene.
+    // With the goal-scene option the logic plays the scene next (SeasonUi::goal_scene).
     Ok(())
 }
 
@@ -941,8 +963,8 @@ fn draw_injury(ui: &mut ScreenSeason<'_>, state: &GameState, e: &TickerEvent) ->
     Ok(())
 }
 
-/// The injury of a live match outside automatic play: its text, the wait (the stretcher
-/// animation is not shown), and the substitution screen.
+/// The injury of a live match outside automatic play: its text, the stretcher animation
+/// (when the logic's `random_range(0, 15)` drew 0) or a wait, and the substitution screen.
 ///
 /// Origin: BMMAIN.EXE 2a58:0ca3 (match_ticker_events, 2a58:1cf9..1f3d) and 2a58:1f75
 /// (match_substitution_screen)
@@ -952,15 +974,19 @@ pub fn injury_and_substitution(
     _rt: &mut Runtime,
     _m: u8,
     _cup_mode: u8,
+    stretcher: bool,
 ) -> Run<()> {
     // The logic has drawn the stretcher's random number already; the event is the last one.
     let Some(e) = ui.live.pending_injury.take() else {
         return Ok(());
     };
     draw_injury(ui, state, &e)?;
-    // TODO(#16): the stretcher animation (random_range(0, 15) == 0, 2a58:1e2c) needs the
-    // draw's result; the port always waits.
-    ui.host.delay_ticks(150)?;
+    if stretcher {
+        let (_, yb) = event_panel(&ui.live, e.home);
+        super::goal_scene::stretcher_animation(ui.host, ui.live.sprites, yb)?;
+    } else {
+        ui.host.delay_ticks(150)?;
+    }
     // TODO(#82): match_substitution_screen 2a58:1f75 (screen_squad_lineup during the match,
     // then the live screen is redrawn).
     Ok(())

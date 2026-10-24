@@ -259,22 +259,49 @@ impl SeasonUi for ScreenSeason<'_> {
     fn goal_scene(
         &mut self,
         _state: &GameState,
-        _rng: &mut Rng,
-        _goal: bool,
-        _side: u8,
-        _penalty: u8,
+        rng: &mut Rng,
+        goal: bool,
+        side: u8,
+        penalty: u8,
     ) -> u8 {
-        // TODO(#16): tore_scene_play 24a4:05ec (TORE\ scenes, their random draws (#82) and the
-        // replays); the scene is skipped.
-        0
+        self.sync_format();
+        if self.quitting() {
+            return penalty;
+        }
+        let ybase = self.live.event_base();
+        let auto = self.session.auto_play;
+        let r = super::goal_scene::goal_scene(
+            self.host,
+            &mut self.live,
+            rng,
+            auto,
+            goal,
+            side,
+            ybase,
+            penalty,
+        );
+        match r {
+            Ok(scene) => scene,
+            Err(q) => {
+                self.quit = Some(q);
+                penalty
+            }
+        }
     }
 
-    fn substitution(&mut self, state: &mut GameState, rt: &mut Runtime, m: u8, cup_mode: u8) {
+    fn substitution(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        m: u8,
+        cup_mode: u8,
+        stretcher: bool,
+    ) {
         self.sync_format();
         if self.quitting() {
             return;
         }
-        let r = super::live_match::injury_and_substitution(self, state, rt, m, cup_mode);
+        let r = super::live_match::injury_and_substitution(self, state, rt, m, cup_mode, stretcher);
         self.keep(r);
     }
 

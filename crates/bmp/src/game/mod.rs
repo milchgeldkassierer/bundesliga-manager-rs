@@ -5,6 +5,7 @@ pub mod contract;
 pub mod credits;
 pub mod cup_screens;
 pub mod disk;
+pub mod goal_scene;
 pub mod live_match;
 pub mod load_game;
 pub mod negotiation;
