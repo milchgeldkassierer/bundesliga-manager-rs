@@ -19,7 +19,7 @@ Everything else plays like version 1.0.0.
   - The port must still run unchanged with the original, unmodded data. Every existing test and
     visual scenario keeps passing against `~/Apps/bmp-pristine`.
   - Mod behaviour switches on only when the data directory contains the mod data. The detection
-    rule is decided in ticket 1, for example a marker file `MOD2026.DAT`.
+    rule: the marker file `MOD2026.DAT` in the data directory (MISSION.md, branch section).
 - **Data safety:**
   - Never write into `<repo>/BMP`. It is the owner's play directory.
   - The mod data directory is generated into `~/Apps/bmp-mod2026`, a full copy of

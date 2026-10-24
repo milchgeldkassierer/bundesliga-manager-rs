@@ -55,6 +55,34 @@ BMP Remake is not an "inspired by" remake and not a new football manager.
 - Embedding an x86/DOS emulator at runtime instead of reconstructed logic
 - Translating the in-game text into other languages before the German port is complete (the English edition is milestone M6, #118)
 
+## Branch `mod_2026` -- owner decision 2026-10-24
+
+Version 1.0.0 (tag `v1.0.0`) completes the 1:1 port. On the branch `mod_2026`, and only there,
+the owner opens the scope for the **Mod 2026** described in `docs/mod2026/PRD.md`. This branch is
+never merged into `main`.
+
+**Allowed on `mod_2026`**, as specified in the PRD, despite "Out of scope" above:
+- **Content:** updated squads, real player names, the 2026/27 season, the league structure
+  18/18/20, current club crests.
+- **Game mechanics:** only those the PRD names (league sizes, promotion and relegation as in 2026,
+  the start year).
+- **Graphics:** a 2x display layer with high-resolution crests and fonts.
+
+**Rules that still hold on `mod_2026`:**
+- **Mod switch:** mod behaviour switches on only when the data directory contains the mod marker
+  file `MOD2026.DAT`, written by the mod generator. Without it the port behaves exactly like
+  v1.0.0, and invariants 1 and 2 keep holding for the original data: every existing test and
+  DOSBox comparison stays green.
+- **Marking:** mod changes are marked `// MOD2026:` and listed in `docs/mod2026/CHANGES.md`.
+  Mod screens are verified with port-vs-port golden frames instead of DOSBox references.
+- **Real-world data:**
+  - Squads and market values come from Transfermarkt (transfermarkt.de), club logos from
+    Wikipedia/Wikimedia Commons or the clubs' sites.
+  - Every value records its source URL and fetch date.
+  - The data is for the owner's private use. The repository is private.
+  - The researched dataset (JSON) and converted crest and font images may be committed.
+  - Original game files never are (invariant 3).
+
 ## Hard invariants -- not tunable by any issue
 
 1. **Fidelity over elegance.** Where the original and "clean" code would differ, the original wins (rounding, overflow, RNG call order).
