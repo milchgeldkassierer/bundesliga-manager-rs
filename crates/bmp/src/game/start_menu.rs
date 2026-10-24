@@ -373,12 +373,19 @@ impl Screen<'_> {
     }
 }
 
-/// Single-line text input as used for the manager names: letters are upper-cased,
-/// Enter accepts, Esc clears, Backspace deletes; characters are accepted while the
-/// text stays within `max_width` pixels.
+/// Single-line text input as used for the manager names and the two fields of the
+/// file selector: letters are upper-cased, Enter accepts, Esc clears, Backspace
+/// deletes; characters are accepted while the text stays within `max_width` pixels
+/// (there is no character limit: the callers' buffers hold more than the pixel
+/// limit lets through, e.g. 58 narrow glyphs in the 0xaf-pixel directory field).
+///
+/// DEVIATION: Backspace on an empty text falls through to the "add a character"
+/// path in the original (176b:0911 jumps to 176b:0a0e) and appends the control
+/// character 8 to the text; the port ignores it.
 ///
 /// TODO(re): the cursor and erase rectangles are read from a damaged decompile of
-/// 176b:07d7 and may be off by a pixel; the numeric mode is not ported.
+/// 176b:07d7 and may be off by a pixel. The numeric mode is
+/// [`super::widgets::ui_input_number`].
 ///
 /// Origin: BMMAIN.EXE 176b:07d7 (ui_scroll_text_box, text mode)
 pub fn text_input(
@@ -422,7 +429,7 @@ pub fn text_input(
                 let up = key & 0xdf;
                 let c = if up.is_ascii_uppercase() { up } else { key };
                 let w = host.g.rastport_text_width(&host.rp, &[c]);
-                if w + host.g.rastport_text_width(&host.rp, &text) <= max_width && text.len() < 28 {
+                if w + host.g.rastport_text_width(&host.rp, &text) <= max_width {
                     Gfx::rastport_move_to(&mut host.rp, x, y);
                     Gfx::rastport_set_color(&mut host.rp, color);
                     host.g.rastport_draw_text(&host.rp, &[c]);
@@ -798,4 +805,34 @@ fn run_menu(
         }
     };
     Ok(Ok((end, loaded)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host::parse_script;
+
+    /// The directory field of the file selector (0xaf pixels, font 2) takes
+    /// characters up to its pixel width only: narrow glyphs fill it with more
+    /// than 28 characters, and Backspace on the empty text adds nothing.
+    #[test]
+    fn text_input_is_limited_by_pixels_only() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let typed = "1".repeat(80);
+        let script = parse_script(&format!(
+            "wait 100\nkey backspace\ntype {typed}\nkey enter\nwait 1000\n"
+        ))
+        .unwrap();
+        let shots = std::env::temp_dir();
+        let mut host = Host::with_script(&data, script, &shots, false).unwrap();
+        host.set_font(2);
+        let w = host.g.rastport_text_width(&host.rp, b"1");
+        assert!(w > 0);
+        let expected = (0xaf / w) as usize;
+        assert!(expected > 28, "the glyph is {w} pixels wide");
+        let text = text_input(&mut host, 0x3f, 0xaa, 0xaf, 1, 8).unwrap();
+        assert_eq!(text, vec![b'1'; expected]);
+    }
 }
