@@ -14,6 +14,7 @@
 use bmp_game::rng::{NumberFormat, format_long_thousands, ldiv, lmul};
 use bmp_game::state::GameState;
 
+use super::widgets::ui_dialog_box;
 use super::{GAME_OPTION_A, GAME_OPTION_B, Session};
 use crate::gfx::{
     BitmapId, ui_draw_frame, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow,
@@ -344,13 +345,6 @@ fn contract_draw_board(host: &mut Host, pics: &Pics, state: &GameState) {
     contract_info_line(host, 0, total, 0xf0, 0xd2, true, false);
 }
 
-/// Two-line message box.
-///
-/// TODO(#15): the box itself (176b:0e57) is not ported yet.
-fn ui_dialog_box(_host: &mut Host, _lines: [&[u8]; 2]) -> Run<()> {
-    Ok(())
-}
-
 /// Polls until the left button is released (`FAR:2ea2 == 2`).
 fn wait_left_up(host: &mut Host) -> Run<()> {
     while host.button != LEFT_UP {
@@ -424,7 +418,10 @@ pub fn screen_manager_contract(
             if x < 0x109 {
                 match accept_offer(state, kind, slot, offer) {
                     Accept::Signed => offer_mode = false,
-                    Accept::StillBound => ui_dialog_box(host, STILL_BOUND)?,
+                    Accept::StillBound => {
+                        let [a, b] = STILL_BOUND;
+                        ui_dialog_box(host, a, b)?;
+                    }
                 }
                 contract_draw_board(host, &pics, state);
             }

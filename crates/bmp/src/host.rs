@@ -157,6 +157,9 @@ pub struct Host {
     pub number_no_separators: bool,
     /// `DS:0210`: the office background (`PIC\22.CP`) is cached in VRAM page 2.
     pub office_bg_cached: bool,
+    /// `DS:05d4` (automatic play) as seen by the widgets that get no session, e.g.
+    /// `dialog_okay`. The office keeps it equal to `Session::auto_play`.
+    pub auto_play: bool,
     /// `DS:014a`: last `screen_fade` state.
     fade_state: u8,
     keys: VecDeque<u8>,
@@ -191,6 +194,7 @@ impl Host {
             number_pad: 0,
             number_no_separators: false,
             office_bg_cached: false,
+            auto_play: false,
             fade_state: 0xff,
             keys: VecDeque::new(),
             key_down: false,

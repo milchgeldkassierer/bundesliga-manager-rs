@@ -1,0 +1,43 @@
+# Port side of the add-manager scenario (bmp run --script syntax, milliseconds):
+# load 07072019.MAN from the start menu, open "Disk/Optionen" > "Neuer Manager" (sub icon
+# 5/5), add a second manager "BOB" with the club under the centre crest, then end the
+# first manager's turn: the new manager gets an office turn on the same day.
+# seed: 35372
+# The DOSBox capture aims at this seed (# aim-seed); r07-table (the club that took the new
+# manager's old Bundesliga slot) confirms it.
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+shot r01-office
+click 281 168
+wait 500
+shot r02-submenu
+click 150 165
+wait 1500
+shot r03-start-menu
+click 110 220
+wait 200
+type bob
+key enter
+wait 200
+click 110 130
+wait 300
+shot r04-chosen
+rclick 160 120
+wait 1500
+shot r05-office-first
+click 270 70
+wait 1500
+shot r06-office-second
+click 20 165
+wait 500
+click 92 122
+wait 1500
+shot r07-table

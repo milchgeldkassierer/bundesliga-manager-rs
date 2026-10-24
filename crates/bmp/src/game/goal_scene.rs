@@ -9,6 +9,7 @@ use bmp_formats::tore::{self, Anzahl, Scene, ToreError};
 use bmp_game::rng::Rng;
 
 use super::live_match::LiveView;
+use super::widgets::dialog_okay;
 use crate::gfx::BitmapId;
 use crate::host::{Host, Run};
 
@@ -135,10 +136,14 @@ pub fn tore_scene_play(
             ) => {
                 break None;
             }
-            // TODO(#16): tore_report_read_error 24a4:0574 shows a disk error box before the
-            // retry; no shipped file is short.
-            Err(_) if attempts < MAX_ATTEMPTS => continue,
-            Err(_) => break None,
+            // A short read closes the file and shows the disk error box before the retry
+            // (no shipped file is short).
+            Err(_) => {
+                tore_report_read_error(host)?;
+                if attempts >= MAX_ATTEMPTS {
+                    break None;
+                }
+            }
         }
     };
     if let Some(mut scene) = scene {
@@ -147,6 +152,26 @@ pub fn tore_scene_play(
     }
     host.g.mouse_pointer_show();
     Ok(force_e)
+}
+
+/// `LBL[307..310]` (`DS:4f34..4f42`): the lines of the goal-scene disk error box.
+const TORE_DISK_ERROR: [&[u8]; 4] = [
+    b"Ihre Torszenen-Diskette",
+    b"ist offenbar defekt.",
+    b"Bitte nach diesem",
+    b"Spiel austauschen !",
+];
+
+/// The box shown after a short read of a goal-scene file (the caller has the file closed
+/// already). The original switches to the second pointer image around the box
+/// (`ui_set_pointer_shape` 1, then 0); the pointer is hidden during a goal scene, so the
+/// port leaves the image alone.
+///
+/// Origin: BMMAIN.EXE 24a4:0574 (tore_report_read_error)
+fn tore_report_read_error(host: &mut Host) -> Run<()> {
+    let [a, b, c, d] = TORE_DISK_ERROR;
+    dialog_okay(host, a, b, c, d)?;
+    Ok(())
 }
 
 /// Waits for the timer deadline, restarting the crowd noise meanwhile.

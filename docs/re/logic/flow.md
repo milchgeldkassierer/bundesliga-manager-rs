@@ -577,6 +577,15 @@ FAR:304a = (u8)n0;
 ```
 (`[bp-4]` ends this path holding `DS:9438[3] = 5`; it is reused in §4.8, faithful quirk.)
 
+The forward range `DS:07a6[3]..DS:07a7[3]` = `0x6a..0x97` includes record 151, one past the pool (its
+owner byte is `FAR:6dd1`); the original takes it when that byte is 5 or the 1000 tries end on it. The
+port never takes it (see §13). The office reaches this path through sub icon 5/5 (§6.5); the port's
+screen side is `start_menu_add_managers` (slots `0..n0` show the existing managers' crests from the
+crest cache `FAR:5354` and their names; the header bar does not load with `allow_load = 0`), its logic
+side `newgame::add_managers`. Verified in DOSBox (scenario `add_manager`): the new manager's club slot,
+squad and finances match the original, and the season loop gives the new manager an office turn on the
+same day because its manager loops re-read `DS:07ab` (season.md §3).
+
 ### 4.8 Per-manager initialisation (label 18bc:3950)
 
 For `FAR:304a = n0 .. DS:07ab-1` (signed byte compare), `m = FAR:304a`, `FAR:5358 = m`:
@@ -1520,5 +1529,13 @@ the RNG stream when the flag is 0.
 6. `cup_draw_screen_open` sets `FAR:57c8` from a user dialog (it is only called for `c == 0` or
    `already != 0`, i.e. never for the three startup European draws); whether the draw is shown never affects the
    RNG, but the mouse polls inside the draw loops do not either (they only set `skip`).
-7. Sub-icon semantics of menu 5 icons 0x64/0x96 (4 = settings, 5 = new manager) were inferred from the
-   called functions; icon pictures were not checked.
+7. ~~Sub-icon semantics of menu 5 icons 0x64/0x96~~ (answered: 4 = settings, 5 = new manager; the
+   DOSBox scenario `add_manager` opens the start menu with sub icon 5/5, whose picture reads "NEU").
+
+## 13. Deviations
+
+Obvious original bugs the port fixes (MISSION.md invariant 1); each is marked `// DEVIATION:` in the code.
+
+| Where | Original | Port | Test |
+|---|---|---|---|
+| §4.7b, `add_manager_squads` (18bc:2184 add path) | the forward draw `random_range(0x6a, 0x97)` can return record 151, past the 151-record pool: its owner byte `FAR:6dd1` is read, and when it is 5 or the 1000 tries end on it the manager is written there and player 151 is inserted into the squad (memory corruption) | record 151 is never taken; the loop draws again (the random stream differs only where the original corrupts memory) | `newgame::tests::an_added_manager_never_gets_the_record_past_the_pool` |

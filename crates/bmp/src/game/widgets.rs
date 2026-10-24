@@ -272,15 +272,14 @@ fn dialog_panel(host: &mut Host, x: i16, w: i16) -> u8 {
 }
 
 /// Four-line message box with an "OKAY" button: waits for a left click on
-/// the button, then restores the background. Always returns `true`.
-///
-/// TODO(#15): the original also leaves at once while automatic play
-/// (`DS:05d4`) is on; the screens outside the season loop call this variant,
-/// which does not know the flag ([`dialog_okay_auto`] does).
+/// the button, then restores the background. While automatic play
+/// (`DS:05d4`, [`Host::auto_play`]) is on it ends after one poll. Always
+/// returns `true`.
 ///
 /// Origin: BMMAIN.EXE 4091:0e3a (dialog_okay)
 pub fn dialog_okay(host: &mut Host, l1: &[u8], l2: &[u8], l3: &[u8], l4: &[u8]) -> Run<bool> {
-    dialog_okay_auto(host, false, l1, l2, l3, l4)
+    let auto_play = host.auto_play;
+    dialog_okay_auto(host, auto_play, l1, l2, l3, l4)
 }
 
 /// [`dialog_okay`] that also ends after one poll while automatic play
@@ -505,4 +504,28 @@ pub fn number_value(digits: &[u8]) -> i32 {
         v.wrapping_mul(10)
             .wrapping_add(i32::from(d) - i32::from(b'0'))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host::parse_script;
+
+    /// `dialog_okay` waits for its OKAY button, but closes by itself after one poll while
+    /// automatic play (`DS:05d4`) is on.
+    #[test]
+    fn dialog_okay_closes_itself_during_automatic_play() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let shots = std::env::temp_dir();
+        for auto in [true, false] {
+            let script = parse_script("wait 100\n").unwrap();
+            let mut host = Host::with_script(&data, script, &shots, false).unwrap();
+            host.auto_play = auto;
+            let r = dialog_okay(&mut host, b"a", b"b", b"c", b"d");
+            // Without automatic play the script ends before any click: the run is quit.
+            assert_eq!(r.is_ok(), auto);
+        }
+    }
 }

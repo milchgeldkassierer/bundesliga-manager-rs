@@ -510,13 +510,15 @@ fn add_manager_squads(state: &mut GameState, rng: &mut Rng, n0: u8) {
                         i16::from(POOL_GROUP_BOUNDS[k + 1]),
                     ) as usize;
                     tries += 1;
-                    // TODO(re): record 151 lies past the table (FAR:6db0) in the original;
-                    // the port counts it as taken.
-                    let free = state
-                        .players
-                        .get(p)
-                        .is_some_and(|x| x.owner_manager == NO_OWNER);
-                    if free || tries >= 1000 {
+                    // DEVIATION: the forward range ends at 0x97, one record past the pool
+                    // (FAR:6db0). The original reads that record's owner byte, and when it
+                    // is 5 or the 1000 tries are used up it writes the manager into it and
+                    // inserts player 151 into the squad (corrupting the data behind the
+                    // pool). The port never takes record 151 and draws again instead; the
+                    // random stream differs only where the original would corrupt memory.
+                    let in_pool = p < state.players.len();
+                    let free = in_pool && state.players[p].owner_manager == NO_OWNER;
+                    if free || (in_pool && tries >= 1000) {
                         break p;
                     }
                 };
@@ -1278,6 +1280,45 @@ pub(crate) mod tests {
         let mut again = s.clone();
         squad_recalc_team_strength(&mut again, &rt, &mut rng, 1, false);
         assert_eq!(again, s);
+    }
+
+    #[test]
+    fn an_added_manager_never_gets_the_record_past_the_pool() {
+        // All forwards (records 0x6a..=0x96) are taken: the 1000-tries fallback must not end
+        // on record 151, which lies past the pool (DEVIATION, flow.md §4.7b).
+        let mana = synthetic_mana();
+        let (mut s, _) = full_game(
+            &mana,
+            21,
+            &choices(&[30], MODE_THREE_YEARS | MODE_HISTORICAL, 2, 0),
+            &mut NoCups,
+        );
+        for p in &mut s.players[0x6a..] {
+            if p.owner_manager == NO_OWNER {
+                p.owner_manager = 4;
+            }
+        }
+        let rules = LineupRules {
+            suspended_allowed: false,
+            max_lineup_slot: 15,
+        };
+        let new = ManagerChoice {
+            name: b"NEW".to_vec(),
+            team: 50,
+            slot: 2,
+        };
+        for seed in 0..20 {
+            let mut t = s.clone();
+            let mut rng = Rng::new(seed);
+            add_managers(
+                &mut t,
+                &mut Runtime::default(),
+                &mut rng,
+                std::slice::from_ref(&new),
+                rules,
+            );
+            assert_eq!(t.manager_count, 2);
+        }
     }
 
     /// Records the game state and the generator at each [`CupInit`] hook.

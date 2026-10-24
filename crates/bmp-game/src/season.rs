@@ -1717,7 +1717,8 @@ pub fn season_main_loop<U: SeasonUi + ?Sized>(
 ) -> Result<GameOver, U::Stop> {
     let mut resume = resume;
     let saved_mgr = state.current_manager;
-    let n = manager_loop_count(state);
+    // The office loops compare against `DS:07ab` itself (2a58:3b2f): managers added in the
+    // office (start menu, sub icon 5/5) get their turn on the same day.
     let mut wf = 0;
     let mut at = At::Top;
     loop {
@@ -1735,7 +1736,7 @@ pub fn season_main_loop<U: SeasonUi + ?Sized>(
                     At::Office
                 }
             }
-            At::SeasonEndOffice if state.current_manager < n => {
+            At::SeasonEndOffice if state.current_manager < manager_loop_count(state) => {
                 if resume {
                     state.current_manager = saved_mgr;
                     resume = false;
@@ -1753,7 +1754,7 @@ pub fn season_main_loop<U: SeasonUi + ?Sized>(
                 }
             }
             At::SeasonEndOffice => At::SeasonFinal,
-            At::Office if state.current_manager < n => {
+            At::Office if state.current_manager < manager_loop_count(state) => {
                 if resume {
                     state.current_manager = saved_mgr;
                     resume = false;
@@ -2737,6 +2738,8 @@ mod tests {
         highscore_inserts: Vec<i8>,
         winter_passes: u32,
         game_over: bool,
+        /// The office turn (1-based) in which a manager is added, as sub icon 5/5 does.
+        add_manager_at: u32,
     }
 
     #[derive(Debug, PartialEq, Eq)]
@@ -2767,6 +2770,7 @@ mod tests {
                 highscore_inserts: Vec::new(),
                 winter_passes: 0,
                 game_over: false,
+                add_manager_at: 0,
             }
         }
     }
@@ -2786,6 +2790,9 @@ mod tests {
         ) -> Result<(), Done> {
             self.turns += 1;
             self.office_turns.push((state.current_manager, arg));
+            if self.turns == self.add_manager_at {
+                state.manager_count += 1;
+            }
             if state.start_year != self.start_year || self.turns > self.stop_at {
                 return Err(Done);
             }
@@ -4473,6 +4480,26 @@ mod tests {
         );
         assert_eq!(ui.office_turns, [(1, 0xff)]);
         assert_eq!(s.day_counter, SEASON_LAST_DAY + 4);
+    }
+
+    #[test]
+    fn a_manager_added_in_the_office_gets_a_turn_the_same_day() {
+        // The office loop re-reads DS:07ab (2a58:3b2f) after every turn.
+        let mut s = two_managers();
+        s.season_week = 4;
+        s.week_competitions[4] = 1;
+        let mut ui = Headless::new(&s);
+        ui.stop_at = 2;
+        ui.add_manager_at = 1;
+        let end = season_main_loop(
+            &mut s,
+            &mut Runtime::default(),
+            &mut Rng::new(7),
+            &mut ui,
+            false,
+        );
+        assert_eq!(end, Err(Done));
+        assert_eq!(ui.office_turns, [(0, 4), (1, 4), (2, 4)]);
     }
 
     /// Two managers in the middle of the season end, with points in the all-time table.

@@ -8,6 +8,7 @@ use bmp_game::newgame::{
 use bmp_game::rng::format_long_thousands;
 use bmp_game::state::{Club, GameState, NO_TEAM};
 
+use super::disk::copy_protection;
 use super::{Session, load_game, office_show_cached_background};
 use crate::gfx::{
     BitmapId, Gfx, RastPort, ui_draw_text_at, ui_draw_text_centered_shadow, ui_fill_rect,
@@ -120,12 +121,14 @@ impl Screen<'_> {
     }
 
     /// §4.2, label 18bc:22ca.
-    fn full_redraw(&mut self, n0: u8) -> Run<()> {
+    fn full_redraw(&mut self, n0: u8, session: &mut Session) -> Run<()> {
         office_show_cached_background(self.host)?;
         let screen = self.host.screen();
         self.blit(self.frame, 0, 0, screen, 5, 0x28, 0x135, 0x41);
         self.blit(self.hdr, 0, 0, screen, 0, -3, 0x140, 0x2c);
-        // copy_protection_penalty: the protection is treated as passed (DS:05ac != 0).
+        // copy_protection_penalty: one RNG call after loading a save whose protection
+        // flag is clear.
+        copy_protection(self.host, session)?;
         for i in 0..4i16 {
             self.blit(
                 self.slot_frame,
@@ -581,22 +584,141 @@ pub fn start_menu_new_or_load(
     clubs: &[Club],
     session: &mut Session,
 ) -> Result<Run<Outcome>, String> {
-    let n0: u8 = 0;
+    let empty = std::array::from_fn(|m| ManagerChoice {
+        name: Vec::new(),
+        team: NO_TEAM,
+        slot: m as u8 + 1,
+    });
+    let (outcome, s) = match run_menu(host, pics, clubs, session, true, empty, 0)? {
+        Ok(v) => v,
+        Err(q) => return Ok(Err(q)),
+    };
+    s.free(host);
+    let outcome = match outcome {
+        MenuEnd::Loaded(state) => Outcome::LoadGame(state),
+        MenuEnd::Finished {
+            managers,
+            count,
+            pos,
+        } => {
+            host.set_font(1);
+            let (level, mode_flags) = match options_dialog(host)? {
+                Ok(v) => v,
+                Err(q) => return Ok(Err(q)),
+            };
+            Outcome::NewGame(MenuChoices {
+                managers,
+                count,
+                carousel_pos: pos,
+                options: GameOptions { level, mode_flags },
+            })
+        }
+    };
+    Ok(Ok(outcome))
+}
+
+/// The start menu opened from the office (`allow_load = 0`) with the managers of the running
+/// game in slots `0..n0`: returns the managers the player added in the free slots (possibly
+/// none). The caller hands them to [`bmp_game::newgame::add_managers`].
+///
+/// Origin: BMMAIN.EXE 18bc:2184 (start_menu_new_or_load(0), office sub icon 5/5)
+pub fn start_menu_add_managers(
+    host: &mut Host,
+    pics: &Pictures,
+    state: &GameState,
+    session: &mut Session,
+) -> Result<Run<Vec<ManagerChoice>>, String> {
+    let n0 = state.manager_count.min(4);
+    let current = std::array::from_fn(|m| {
+        let mgr = &state.managers[m];
+        ManagerChoice {
+            name: mgr.name().to_vec(),
+            team: mgr.team,
+            slot: mgr.slot,
+        }
+    });
+    let clubs = &state.clubs[..CAROUSEL_CLUBS];
+    let (outcome, s) = match run_menu(host, pics, clubs, session, false, current, n0)? {
+        Ok(v) => v,
+        Err(q) => return Ok(Err(q)),
+    };
+    s.free(host);
+    let added = match outcome {
+        MenuEnd::Finished {
+            managers, count, ..
+        } => managers[usize::from(n0)..usize::from(count.max(n0))].to_vec(),
+        // `allow_load = 0`: the header bar does not load.
+        MenuEnd::Loaded(_) => unreachable!("the office start menu cannot load a game"),
+    };
+    // §4.7b starts with screen_fade(0).
+    host.set_font(1);
+    if let Err(q) = host.screen_fade(0) {
+        return Ok(Err(q));
+    }
+    Ok(Ok(added))
+}
+
+/// The clubs of the carousel: indices 0..63.
+const CAROUSEL_CLUBS: usize = 0x40;
+
+/// How [`run_menu`] ended.
+enum MenuEnd {
+    Loaded(Box<GameState>),
+    /// Right click with every active slot holding a club (§4.6). The chosen crests are
+    /// already cached.
+    Finished {
+        managers: [ManagerChoice; 4],
+        count: u8,
+        /// `[bp-4]`, the carousel position.
+        pos: i16,
+    },
+}
+
+/// The pictures [`run_menu`] loaded; [`MenuPictures::free`] releases them.
+struct MenuPictures {
+    hdr: BitmapId,
+    strip: BitmapId,
+    frame: BitmapId,
+    slot_frame: BitmapId,
+}
+
+impl MenuPictures {
+    fn free(self, host: &mut Host) {
+        for bm in [self.slot_frame, self.frame, self.hdr, self.strip] {
+            host.g.free(bm);
+        }
+    }
+}
+
+/// §4.1..4.6 up to the options dialog / adding the managers: slots `0..n0` hold the
+/// existing managers (`managers`, `DS:07ab = n0`) and cannot be edited.
+#[allow(clippy::type_complexity)]
+fn run_menu(
+    host: &mut Host,
+    pics: &Pictures,
+    clubs: &[Club],
+    session: &mut Session,
+    allow_load: bool,
+    managers: [ManagerChoice; 4],
+    n0: u8,
+) -> Result<Run<(MenuEnd, MenuPictures)>, String> {
     host.set_font(2);
     let hdr = host.load_picture(4)?;
     let strip = host.blank_bitmap(0x135, 0x26, 0);
     let frame = host.load_picture(0x22)?;
     let slot_frame = host.load_picture(0x23)?;
+    let loaded = MenuPictures {
+        hdr,
+        strip,
+        frame,
+        slot_frame,
+    };
     let mut s = Screen {
         host,
         pics,
         clubs,
-        managers: std::array::from_fn(|m| ManagerChoice {
-            name: Vec::new(),
-            team: NO_TEAM,
-            slot: m as u8 + 1,
-        }),
-        count: 0,
+        managers,
+        count: n0,
         hdr,
         strip,
         frame,
@@ -604,10 +726,10 @@ pub fn start_menu_new_or_load(
     };
     // `[bp-4]` and `[bp-0xa]`: the carousel position and the club under the centre crest.
     let (mut pos, mut center) = (0i16, 3i16);
-    let mut result = || -> Run<Option<Outcome>> {
+    let mut result = || -> Run<Option<Box<GameState>>> {
         s.host.screen_fade(0)?;
         s.host.g.palette_load_slot(0, 0x100);
-        s.full_redraw(n0)?;
+        s.full_redraw(n0, session)?;
         let mut pending_swap = 0i16;
         loop {
             let ev = s.host.input_poll_mouse()?;
@@ -623,15 +745,15 @@ pub fn start_menu_new_or_load(
                 continue;
             }
             let (mx, my) = s.host.mouse_xy();
-            if my < 0x24 {
+            if my < 0x24 && allow_load {
                 office_show_cached_background(s.host)?;
-                // `FAR:304a` is 0 in the start menu: the first manager's name.
+                // FAR:304a is 0 in the start menu: the dialogs address the first slot.
                 let who = s.managers[0].name.clone();
                 if let Some(state) = load_game::screen_load_game(s.host, session, s.pics, 1, &who)?
                 {
-                    return Ok(Some(Outcome::LoadGame(state)));
+                    return Ok(Some(state));
                 }
-                s.full_redraw(n0)?;
+                s.full_redraw(n0, session)?;
                 continue;
             }
             if my > 0x2e && my < 0x69 {
@@ -646,11 +768,14 @@ pub fn start_menu_new_or_load(
         }
     };
     let result = result();
-    let outcome = match result {
-        Err(q) => return Ok(Err(q)),
-        Ok(Some(o)) => o,
+    let end = match result {
+        Err(q) => {
+            loaded.free(s.host);
+            return Ok(Err(q));
+        }
+        Ok(Some(state)) => MenuEnd::Loaded(state),
         Ok(None) => {
-            // §4.6: cache the chosen crests, then the options dialog.
+            // §4.6: cache the chosen crests of the new managers.
             let screen = s.host.screen();
             for i in n0..s.count {
                 let i = i16::from(i);
@@ -665,21 +790,12 @@ pub fn start_menu_new_or_load(
                     0x26,
                 );
             }
-            s.host.set_font(1);
-            let (level, mode_flags) = match options_dialog(s.host)? {
-                Ok(v) => v,
-                Err(q) => return Ok(Err(q)),
-            };
-            Outcome::NewGame(MenuChoices {
+            MenuEnd::Finished {
                 managers: s.managers.clone(),
                 count: s.count,
-                carousel_pos: pos,
-                options: GameOptions { level, mode_flags },
-            })
+                pos,
+            }
         }
     };
-    for bm in [slot_frame, frame, hdr, strip] {
-        s.host.g.free(bm);
-    }
-    Ok(Ok(outcome))
+    Ok(Ok((end, loaded)))
 }

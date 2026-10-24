@@ -294,6 +294,10 @@ them: `tore_scene_play` = `24a4:05ec` (`2000:502c`), `tore_read_anzahl` = `24a4:
 * `tore_scene_play` starts with `mouse_pointer_hide(0)` (45ac:1a81) and sets `DS:07b2 = 1`
   (no thousands separators in `format_long_thousands` from then on); every exit path ends
   with `mouse_pointer_show()` (45ac:1ac7) and returns the E flag.
+* `tore_report_read_error` 24a4:0574 `void (int fd)`: `file_close(fd)`, `ui_set_pointer_shape(1)`,
+  `dialog_okay("Ihre Torszenen-Diskette", "ist offenbar defekt.", "Bitte nach diesem",
+  "Spiel austauschen !")` (pointers `DS:4f34..4f42`), `ui_set_pointer_shape(0)`. The pointer is hidden
+  during the scene, so the shape switch has no visible effect.
 * In a replay (`DS:549a != 0`) only the first attempt skips the draw and opens the file
   named in `DS:a374` again; a failed `open` (24a4:0748) or a failed read after
   `tore_report_read_error` (24a4:07b3) jumps back to the draw at 24a4:0624, so a replay

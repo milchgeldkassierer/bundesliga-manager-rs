@@ -157,7 +157,8 @@ Counts: 34 slots with bit 0 (= the 34 Bundesliga rounds, DS:2262[0] = 34), 38 sl
 was loaded (the stored current manager FAR:304a then gets the first office turn). Never returns.
 
 Local `wf` (u8, [BP-0x34]) = slot flags; `saved_mgr` ([BP-2]). `n = DS:07ab` (number of human
-managers). In all manager loops the loop variable **is** FAR:304a (i8, compared signed against
+managers), read again at every loop test (e.g. 2a58:3b2f, 2a58:3ac6): a manager added in the office
+(flow.md §4.7b) gets an office turn on the same day. In all manager loops the loop variable **is** FAR:304a (i8, compared signed against
 `(u8)DS:07ab`).
 
 ```c

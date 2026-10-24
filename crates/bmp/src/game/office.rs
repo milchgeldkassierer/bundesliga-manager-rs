@@ -7,6 +7,7 @@ use bmp_game::league::{
     LEAGUE_ROUND_COUNT, RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
 };
 use bmp_game::matchsim::has_rescheduled_match_today;
+use bmp_game::newgame::add_managers;
 use bmp_game::rng::{NumberFormat, format_long_thousands};
 use bmp_game::season::calendar_compute_date;
 use bmp_game::squad::{LineupRules, auto_lineup};
@@ -24,7 +25,7 @@ use super::messages::screen_messages_inbox;
 use super::scorers::screen_top_scorers;
 use super::squad_screen::screen_squad_lineup;
 use super::stadium::screen_stadium;
-use super::start_menu::Pictures;
+use super::start_menu::{Pictures, start_menu_add_managers};
 use super::stats_screens::{screen_eternal_table, screen_manager_history, screen_statistics};
 use super::tables::{screen_fixtures, screen_league_table, screen_strength_table};
 use super::training::{screen_training, screen_training_camp};
@@ -398,6 +399,7 @@ fn office_handle_free_click(
     if my == 0 && mx == 0 && auto {
         ui_dialog_box(host, b"Spiele nicht", b"alleine !")?;
         session.auto_play = false;
+        host.auto_play = false;
         return Ok(0);
     }
     if !session.save_disabled && (auto || (mx > 0xf2 && my > 0x31 && mx < 0x132 && my < 0x66)) {
@@ -408,6 +410,7 @@ fn office_handle_free_click(
     if my == 1 && mx == 1 && !auto {
         ui_dialog_box(host, b"Spiele automatisch", b"weiter !")?;
         session.auto_play = true;
+        host.auto_play = true;
         state.match_options = 0x47;
         return Ok(0);
     }
@@ -424,10 +427,6 @@ fn office_handle_free_click(
 }
 
 /// One office turn of the current manager. Returns when the turn ends.
-///
-/// TODO(#15): only the "Tabellen" screens and the squad list behind the sub
-/// icons (§6.5) are ported; choosing another one redraws the office and
-/// reopens the submenu.
 ///
 /// Origin: BMMAIN.EXE 18bc:0b5f (office_menu_dispatcher)
 pub fn office_menu_dispatcher(
@@ -699,10 +698,20 @@ pub fn office_menu_dispatcher(
                         highscore_screen(host, session, state, HighscoreMode::Preview)?;
                     }
                     (5, 4) => screen_settings(host, session, state)?,
+                    // office_free_bitmaps(2) / office_load_bitmaps(2) around the call only
+                    // free memory.
+                    (5, 5) => {
+                        let save = state.current_manager;
+                        let added = start_menu_add_managers(host, pics, state, session)
+                            .expect("start menu pictures (fatal_error_exit in the original)")?;
+                        let mut rt = std::mem::take(&mut session.rt);
+                        add_managers(state, &mut rt, &mut session.rng, &added, rules);
+                        session.rt = rt;
+                        state.current_manager = save;
+                        state.saved_manager = save;
+                    }
                     _ => {}
                 }
-                // TODO(#15): (5, 5) is start_menu_new_or_load(0), adding managers.
-                // TODO(#15): the other screens of flow.md §6.5.
                 host.screen_fade(0)?;
                 host.g.palette_load_slot(0, 0x100);
                 host.ui.redraw_buttons(&mut host.g, &mut host.rp, 0x7f, 0);

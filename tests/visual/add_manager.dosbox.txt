@@ -1,0 +1,43 @@
+# DOSBox side of the add-manager scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN (shipped in both game copies), adds manager "BOB" from the office
+# (Disk/Optionen > Neuer Manager) and ends the first manager's turn.
+# aim-seed: 35372
+# The new manager's club slot is random: the port's "# seed:" is the seed recovered from
+# this capture (r07-table shows which club moved into the Bundesliga).
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+shot r01-office
+click 281 168 240
+wait 2
+shot r02-submenu
+click 150 165 240
+wait 4
+shot r03-start-menu
+click 110 220 240
+wait 1
+type bob
+key Return
+wait 1
+click 110 130 240
+wait 1
+shot r04-chosen
+click 160 120 240 3
+wait 5
+shot r05-office-first
+click 270 70 240
+wait 6
+shot r06-office-second
+click 20 165 240
+wait 2
+click 92 122 240
+wait 4
+shot r07-table

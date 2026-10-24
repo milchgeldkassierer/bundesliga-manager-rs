@@ -134,7 +134,7 @@ pub(crate) fn disk_error_dialog(host: &mut Host) -> Run<()> {
 /// The copy-protection trap every screen starts with.
 ///
 /// Origin: BMMAIN.EXE 16c7:09f9 (copy_protection_penalty)
-fn copy_protection(host: &mut Host, session: &mut Session) -> Run<()> {
+pub(crate) fn copy_protection(host: &mut Host, session: &mut Session) -> Run<()> {
     if !session.copy_protection_ok && session.rng.random_range(0, 100) == 0 {
         loop {
             let on = session.rng.random_range(0, 1) as u8;
