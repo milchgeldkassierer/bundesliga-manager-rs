@@ -491,7 +491,7 @@ Texts in quotes are the German in-game strings the function references, reproduc
 | 3277:1e38 | *transfer_market_init* | game-transfer | transfer market (re)initialisation | low | 825 | 2 |
 | 3277:2171 | `FUN_3277_2171` | game-transfer | called by screen_transfer_market; uses RNG | low | 255 | 1 |
 | 3277:2270 | `FUN_3277_2270` | game-transfer | called by contract_negotiation; uses RNG | low | 878 | 1 |
-| 3277:25de | *transfer_value_calc* | game-transfer | player value/price computation (RNG) | low | 1201 | 15 |
+| 3277:25de | *player_value_calc* | game-transfer | player value/price computation (RNG) | low | 1201 | 15 |
 | 3277:2a8f | *contract_negotiation* | game-transfer | contract negotiation (duration in seasons, salary per month) | medium | 4341 | 3 |
 | 362f:0004 | `FUN_362f_0004` | game-stats | called by start_menu_new_or_load, screen_settings; draws UI | low | 130 | 5 |
 | 362f:0086 | `FUN_362f_0086` | game-stats | called by screen_settings; draws UI | low | 306 | 2 |

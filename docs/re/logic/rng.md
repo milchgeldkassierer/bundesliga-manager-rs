@@ -139,7 +139,7 @@ code (INT 34h-3Dh) after `FUN_1f9d_11e0`, which Ghidra has not disassembled. The
 | 27c2 | 5 | `competition_init` 27c2:09e0 (3), `cup_round_setup` 27c2:13a2 (2) |
 | 2a58 | 11 | `match_ticker_events` 2a58:0ca3 (2), 2a58:20b2 (4), `special_date_events` 2a58:2a06 (3), `season_main_loop` 2a58:3176 (2) |
 | 2ecd | 2 | `screen_lineup` 2ecd:18bf (1), `transfer_list_add` 2ecd:37d8 (1) |
-| 3277 | 24 | 3277:000a (4), `screen_transfer_market` 3277:04a5 (2), `transfer_market_init` 3277:1e38 (9), 3277:2171 (3), 3277:2270 (2), `transfer_value_calc` 3277:25de (3), `contract_negotiation` 3277:2a8f (1) |
+| 3277 | 24 | 3277:000a (4), `screen_transfer_market` 3277:04a5 (2), `transfer_market_init` 3277:1e38 (9), 3277:2171 (3), 3277:2270 (2), `player_value_calc` 3277:25de (3), `contract_negotiation` 3277:2a8f (1) |
 | 362f | 2 | `mana_load_club_table` 362f:36ec (2), which runs before seeding (see §3) |
 | 3a41 | 1 | 3a41:1fec (1) |
 | 3e3a | 29 | 3e3a:0964 (1), `newspaper_template_text` 3e3a:0c0b (1), `christmas_text` 3e3a:0fdf (20), 3e3a:1b29 (5), `random_chance_pick` 3e3a:21ef (2) |
