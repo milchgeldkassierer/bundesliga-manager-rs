@@ -109,7 +109,7 @@ const EURO_WINNER: &[u8] = b"SIEGER ";
 const NOT_TAKING_PART: &[u8] = b"nicht im wettbewerb";
 /// `UI[120..127]` (`DS:24c0`): the DFB-Pokal stage texts by `stage & 7`
 /// (stage 0 reads the item before the table).
-const DFB_STAGES: [&[u8]; 8] = [
+pub(crate) const DFB_STAGES: [&[u8]; 8] = [
     b"AUSGABEN (GEH[LTER, REISEKOSTEN)",
     b"",
     b"1.Runde ",
@@ -120,7 +120,7 @@ const DFB_STAGES: [&[u8]; 8] = [
     b"DfB-Pokal",
 ];
 /// `UI[127..130]` (`DS:24dc`): competition names by `(stage >> 3) & 3`.
-const CUP_NAMES: [&[u8]; 4] = [
+pub(crate) const CUP_NAMES: [&[u8]; 4] = [
     b"DfB-Pokal",
     b"Pokal der Landesmeister",
     b"Pokal der Pokalsieger",

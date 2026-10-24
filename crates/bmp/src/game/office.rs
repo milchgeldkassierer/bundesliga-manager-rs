@@ -11,6 +11,7 @@ use bmp_game::state::{GameState, Manager, RESCHEDULED_GAMES_DAY};
 
 use super::contract::screen_manager_contract;
 use super::credits::screen_credits;
+use super::cup_screens::screen_cup_matches;
 use super::league::has_rescheduled_match_today;
 use super::season::calendar_compute_date;
 use super::squad_screen::screen_squad_lineup;
@@ -584,6 +585,7 @@ pub fn office_menu_dispatcher(
                     (3, 1) => {
                         screen_squad_lineup(host, session, state, rules, 0, 0xff, None)?;
                     }
+                    (4, 1..=4) => screen_cup_matches(host, session, state, (si - 1) as u8, 0)?,
                     _ => {}
                 }
                 // TODO(#29): (3, 2) is screen_squad_lineup(0x63, 0xff), which needs the

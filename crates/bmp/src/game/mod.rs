@@ -3,6 +3,7 @@
 
 pub mod contract;
 pub mod credits;
+pub mod cup_screens;
 pub mod league;
 pub mod load_game;
 pub mod office;

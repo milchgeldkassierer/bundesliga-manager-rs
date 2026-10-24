@@ -201,7 +201,7 @@ fn col(v: [u8; 4], cols: u8) -> i16 {
 /// League tier code of a club: 1 = Bundesliga, 2 = 2. Liga, 4 = any other club.
 ///
 /// Origin: BMMAIN.EXE 27c2:1bb5 (league_tier_of_team)
-fn league_tier_of_team(t: u8) -> u8 {
+pub(crate) fn league_tier_of_team(t: u8) -> u8 {
     if t < LEAGUE_FIRST_TEAM[1] {
         1
     } else if t < LEAGUE_FIRST_TEAM[2] {

@@ -1,0 +1,88 @@
+# Port side of the cups scenario (bmp run --script syntax, milliseconds):
+# load 07072019.MAN, open the four screens of the office "Pokal/Europa" submenu
+# (DFB-Pokal, Champions' Cup, Cup Winners' Cup, UEFA Cup quarter-finals), the
+# club info of a German home club, a foreign club and a German away club from
+# them, and return to the office.
+# seed: 35372
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+move 290 130
+wait 100
+click 290 130
+wait 500
+shot c01-submenu
+move 107 132
+wait 100
+click 107 132
+wait 1000
+shot c02-dfb
+move 60 72
+wait 100
+click 60 72
+wait 500
+shot c03-info-home
+move 121 220
+wait 100
+click 121 220
+wait 500
+shot c04-info-closed
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot c05-office
+move 107 174
+wait 100
+click 107 174
+wait 1000
+shot c06-champions
+move 200 99
+wait 100
+click 200 99
+wait 500
+shot c07-info-foreign
+move 121 220
+wait 100
+click 121 220
+wait 500
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 107 216
+wait 100
+click 107 216
+wait 1000
+shot c08-cupwinners
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 161 132
+wait 100
+click 161 132
+wait 1000
+shot c09-uefa
+move 200 99
+wait 100
+click 200 99
+wait 500
+shot c10-info-away
+move 121 220
+wait 100
+click 121 220
+wait 500
+move 293 213
+wait 100
+click 293 213
+wait 1000
+rclick 160 230
+wait 500
+shot c11-office

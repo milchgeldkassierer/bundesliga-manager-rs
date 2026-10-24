@@ -678,7 +678,7 @@ office), `0x78` (120) after the match day, or the live minute from `match_live_p
 Layout computation (all `u8` unless noted):
 
 ```
-r = DS:07d6[FAR:0008[c != 0]]; if r == 0: r = 1        // pairs
+r = DS:07d6[FAR:0008[c != 0]]; if r == 0: r = 1        // pairs (index 6 would read DS:07dc, the day counter)
 title = (day >= 315 && minute != 0) ? "Relegationsspiel" : "Pokalspiele"   // copied, never drawn
 copy_protection_penalty()
 rows (i16) = (c != 0)*r + 1
@@ -708,7 +708,8 @@ Body (font 2), `y = top + (3 - (c != 0))*8`, `n = 0`:
 
 ```
 for k = (c != 0 ? 6 : 1) .. 6:
-    if c == 0: ui_draw_text_centered_shadow(rp, cup_tier_pairing_label(k, buf), 0, 0x12b, y, 2, 0); y += 7; y_head = (u8)y
+    if c == 0: ui_draw_text_centered_shadow(rp, cup_tier_pairing_label(k, buf), 0, 0x12b, y, 2, 0)
+    y += 7; y_head = (u8)y                     // also for the European cups (27c2:2622): first row at top+0x17
     for j = 1 .. rows-1:
         if c == 0 && cat[j] != DS:0654[k] && cat[j] != DS:065c[k]: continue
         s = 2*(j-1); t0 = slot[c][s]; t1 = slot[c][s+1]
@@ -728,10 +729,11 @@ for k = (c != 0 ? 6 : 1) .. 6:
 Interaction: `screen_fade(1)`, then loop `hit = ui_hit_test_buttons(&rect_list, 2, 1)`. With `p =
 *(far*)FAR:6dc0`: if `hit == 1 && p[0] > top+5`: `side = p[1] > 0x82`, find the first `i < 32` with
 `row_y[i] - 6 < p[0] <= row_y[i]` (16-bit signed; unused entries are 0), and on a match call
-`screen_opponent_info(side ? list1[i] : list0[i], side, 0, 0)` (3a41:000e). The loop ends on `hit == 2`
+`screen_opponent_info(side ? list1[i] : list0[i], side, 0, 0)` (3a41:000e). Word 0 of `*FAR:6dc0` is the
+mouse y and word 1 the x (checked in DOSBox: a click at y 72 opens the club of the row drawn at y 74).
+The loop ends on `hit == 2`
 (OK icon at 0x10c,0xc1) or the abort flag `DS:05d4`. Exit: `ui_wait_with_highlight(0x10c, 0xc1)`,
-`screen_fade(0)`, `ui_redraw_buttons(0x7f, 0)`, `rastport_clear(rp, 0)`. No keyboard shortcuts. Note that
-word 0 of the FAR:6dc0 position is compared with row y values here (MEMORY_MAP calls it x).
+`screen_fade(0)`, `ui_redraw_buttons(0x7f, 0)`, `rastport_clear(rp, 0)`. No keyboard shortcuts.
 
 ### 6.1 `cup_tier_pairing_label(u8 k, char far *buf)` 27c2:1bf0 → `buf`
 
@@ -955,7 +957,8 @@ later (18bc:0888) `cup_draw_first_round(0, 0)` and `cup_draw_first_round(c, 1)` 
 6. MEMORY_MAP lists `016e` under DGROUP; every access in this area goes through a selector for `5238`,
    matching save block 49 (`FAR:016e`).
 7. Word 0 of the mouse-position struct `*FAR:6dc0` is compared against row y values in
-   `screen_cup_matches` while MEMORY_MAP calls it x; needs checking against `input_poll_mouse`.
+   `screen_cup_matches` while MEMORY_MAP calls it x. Resolved: word 0 is y, word 1 is x (DOSBox
+   scenario `cups`, ported as `crates/bmp/src/game/cup_screens.rs`).
 8. `team_swap_slots` 1310:0b24 was only skimmed (owned by the match/season area); the full list of
    swapped per-team tables must come from that spec. Resolved: full spec in match.md
    "1310:0b24 `team_swap_slots`", ported as `GameState::team_swap_slots`.

@@ -1,0 +1,56 @@
+# DOSBox side of the cups scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN and walks through the screens of the office "Pokal/Europa" submenu.
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+click 290 130 240
+wait 2
+shot c01-submenu
+click 107 132 240
+wait 4
+shot c02-dfb
+click 60 72 240
+wait 2
+shot c03-info-home
+click 121 220 240
+wait 2
+shot c04-info-closed
+click 293 213 240
+wait 4
+shot c05-office
+click 107 174 240
+wait 4
+shot c06-champions
+click 200 99 240
+wait 2
+shot c07-info-foreign
+click 121 220 240
+wait 2
+click 293 213 240
+wait 4
+click 107 216 240
+wait 4
+shot c08-cupwinners
+click 293 213 240
+wait 4
+click 161 132 240
+wait 4
+shot c09-uefa
+click 200 99 240
+wait 2
+shot c10-info-away
+click 121 220 240
+wait 2
+click 293 213 240
+wait 4
+click 160 230 240 3
+wait 2
+shot c11-office
