@@ -1,9 +1,10 @@
 # TEAMED.EXE – the team editor
 
 Status: reconnaissance of #158. Program flow, screens, data and library reuse are mapped;
-the start-up, the main screen with its hover display, the "LIGA" paging and the save
-question are ported (`crates/bmp/src/teamed/`, `bmp teamed`). The rest is split into the
-three feature packages at the end of this document.
+the start-up, the main screen with its hover display, the "LIGA" paging, the save
+question and package club (selecting and editing a club, `club.md`) are ported
+(`crates/bmp/src/teamed/`, `bmp teamed`). The rest is split into the feature packages at
+the end of this document.
 
 All addresses are Ghidra addresses in `/unpacked/TEAMED_unpacked.EXE` (load segment
 `0x1000`, see `docs/re/FUNCTION_MAP.md` §0). DGROUP is `2256`, the far data segment `1cb5`;
@@ -37,7 +38,7 @@ calls it (seven calls in `1579:0030`).
 | pictures | `picture_load` (`1000:1136`, = BMMAIN `176b:0356` without the CP path) of `PIC\63.VGA` (bar, `DS:0116`), `64` (`DS:011A`), `61` (crest editor, `DS:011E`), `60` (background, blitted 320x86 at (0,0), freed) | `Host::load_picture` |
 | data | `MANA.DAT` read block by block (`1000:1762`, see `docs/re/mana.md`) | `bmp_formats::mana::ManaDat::parse` |
 | crests | `grid_clear` (`1000:0000`), 64 crest pictures `PIC\<crest[i]>.VGA` (`DS:5698`), crests 0..31 blitted 38x38 at `((i%8)*39, (i/8)*39 + 12)` of the view | `crest_cell`, `clear_grid` |
-| copies | `far_memcpy`: names `0042->21CA`, `4742->371E` (0xF56 bytes, not file data, still unidentified), points `467C->57E4`, goals `364E->2058`, ranks `1E04->123E`, players `[5A02]->[213E]` | `Editor::copy` |
+| copies | `far_memcpy`: names `0042->21CA`, `4742->371E` (0xF56 bytes of BSS, a dead buffer: nothing else reads or writes it, see `club.md`), points `467C->57E4`, goals `364E->2058`, ranks `1E04->123E`, players `[5A02]->[213E]` | `Editor::copy` |
 | finish | bar blitted (8x155 at (0x138, 0xC) of the view), `mouse_pointer_show`, screen on | same |
 
 ### Video: 242 lines and bitmap origins
@@ -76,9 +77,9 @@ letters of the 20 player slots. Below: 8x4 crests and the bar "LIGA"/"UEFA" at x
 | pointer elsewhere | a club was shown, none selected | panel cleared (0x33,3)-(0x95,0x29) colour 0xC; the player list stays | `12a5:10d8` | main loop |
 | click bar, view y 12..89 | none selected | other page ("LIGA", clubs 32..63 / 0..31): screen off, `grid_draw_page` (`1000:2924`), screen on | `12a5:115d` | `draw_page` |
 | click bar, view y > 89 | none selected | UEFA screen (`12a5:233d`) | `12a5:1157` | stub `uefa::run` |
-| click on a crest | none selected | selects the club: crest into both boxes, crest editor in the lower half | `12a5:11b7` | stub `club::select` |
+| click on a crest | none selected | selects the club: crest into both boxes, crest editor in the lower half | `12a5:11b7` | `club::select` |
 | click PROGRAMM-ENDE | x 0x2B..0x6F, y 0x47..0x54, none selected | save question, see below | `12a5:12f6`, `22b8` | `end_program` |
-| click top-left pixel (0,0) | – | toggles `DS:0340` and paints (0x13D,0)-(0x13F,2) in colour `5 + 3*flag` (debug switch that also gates the duplicate-name message) | `12a5:04eb` | TODO club |
+| click top-left pixel (0,0) | – | toggles `DS:0340` (initially 1) and paints (0x13D,0)-(0x13F,2) in colour `3 * (flag + 5)` (debug switch that gates the duplicate-name checks) | `12a5:04eb` | `club::toggle_debug` |
 
 Before the loop the player names are upper-cased: `|` -> `\`, `{` -> `[`, `}` -> `]` in all
 1280 slots (`12a5:02ca`); the save therefore writes the converted names (`fix_player_names`).
@@ -91,7 +92,7 @@ colour 0x1D) and the buttons "MACH MAL !" / "OH NEIN !" (font 3, shadow). Return
 left, 0 for the right button, 9 for a click outside; `teamed_save_mana` (`1579:0030`) writes
 only on 1; the main loop goes on only on 9 (redraws the page) and otherwise ends.
 
-### Club selected: panel, players, crest editor (packages club and crest)
+### Club selected: panel, players, crest editor (packages club and crest; club: `club.md`)
 
 Clicking a crest selects the club (`DS:0336`): the crest appears in both boxes, the lower
 half becomes the crest editor (`crest_editor_draw` `1000:1d73`, `PIC\61.VGA`): the crest
@@ -188,7 +189,7 @@ extends `tests/visual/` with its own scenario (`teamed_<key>.*`). Shared stubs i
 `teamed/dialog.rs` (`message`, `text_input`) are implemented by package club; the others
 call them.
 
-### Package `club` – selecting a club and editing its data
+### Package `club` – selecting a club and editing its data (ported, `club.md`)
 
 * Functions: `12a5:11b7..12db` (select), `12a5:056b..07a1` and the swap sub-loop
   `0869..0a8f` (panel editing), `12a5:0aba..0d6e`, `0d9a..0ef2`, `0f18..0fd0` (players,
@@ -196,7 +197,7 @@ call them.
   `12a5:202e..22ab` (player name input), `12a5:04eb` (debug switch), `1000:0a7d..0d8c`
   (`text_input`), `1000:1a31` (`dialog_message`), `1000:207d` (`parse_pair`), `1000:26f1`
   (`panel_draw_selected`), `1000:012b` (`mem_swap`), `1000:0068`/`00b4` only if needed;
-  identify `DS:4742` (0xF56 bytes).
+  `DS:4742` (0xF56 bytes) is a dead buffer.
 * Screens: main screen with a selected club (panel, player list, both boxes).
 * Data: names, ranks, points, goals, player names and their copies.
 * Files: `crates/bmp/src/teamed/club.rs`, `teamed/dialog.rs` (bodies of `message`,
@@ -204,7 +205,8 @@ call them.
 
 ### Package `crest` – crest editor and IFF import
 
-* Functions: `1000:1d73` (`crest_editor_draw`), `12a5:1684..1fad` (painting, colour pick,
+* Functions: `1000:1d73` (`crest_editor_draw`, already ported by package club as
+  `crest::draw_editor`), `12a5:1684..1fad` (painting, colour pick,
   Undo, Ur-Wappen, preview), `1000:019c` (`crest_write_vga`, via `crest::save_crest`),
   `1579:1215` (`crest_import_dialog`), `1579:05b7` (`crest_import_browser`),
   `12a5:0087`/`000a` (icon slots), `1000:0268`, `049e`, `04f1` (IFF reading and conversion),

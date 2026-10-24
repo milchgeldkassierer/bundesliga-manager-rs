@@ -13,10 +13,10 @@
 //! ([`crate::gfx::Bitmap::origin`]): the crest grid draws through a view of the screen
 //! that starts at row 75.
 //!
-//! The skeleton ports the start-up, the main loop's hover display, the "LIGA" paging,
-//! "PROGRAMM-ENDE" with the save question and the `MANA.DAT` reader and writer. The
-//! remaining features plug in at the `TODO(#158)` stubs of [`club`], [`crest`] and
-//! [`uefa`].
+//! Ported: the start-up, the main loop's hover display, the "LIGA" paging,
+//! "PROGRAMM-ENDE" with the save question, the `MANA.DAT` reader and writer and the
+//! editing of a selected club ([`club`]). The crest editor ([`crest`]) and the UEFA
+//! list ([`uefa`]) plug in at their `TODO(#158)` stubs.
 
 pub mod club;
 pub mod crest;
@@ -80,6 +80,9 @@ pub fn league_group(club: u8) -> usize {
     usize::from(club > 0x11) + usize::from(club > 0x25) + usize::from(club > 0x39)
 }
 
+/// Size of the main loop's input buffer `[BP-AA]..[BP-58]`.
+pub const INPUT_BUF_LEN: usize = 0x52;
+
 /// Exit state of the main loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exit {
@@ -96,8 +99,10 @@ pub struct Editor {
     /// names in the far buffer `[5A02]`.
     pub mana: ManaDat,
     /// The copies made at start-up (`DS:21CA` names, `DS:57E4` points, `DS:2058` goals,
-    /// `DS:123E` ranks, `[213E]` players); `1000:26f1` shows the selected club from them.
-    /// TODO(#158) package club: which copy is the edit buffer and which the backup.
+    /// `DS:123E` ranks, `[213E]` players): the edit buffer. The panel and player inputs
+    /// write here, `1000:26f1` shows the selected club from here, "AENDERUNG SICHERN"
+    /// copies all of it back into [`Editor::mana`] (see `docs/re/teamed/club.md`). Only
+    /// those fields of this copy are used; its crests and strengths are never read.
     pub copy: ManaDat,
     /// Screen rastport (`DS:1E44`, the mouse library's rastport on the screen).
     pub screen: RastPort,
@@ -120,8 +125,16 @@ pub struct Editor {
     pub selected: u8,
     /// Crest page: clubs `page * 32 ..` (`[BP-D8]`).
     pub page: u8,
-    /// `DS:0340`: toggled by a click on the top-left pixel (TODO(#158) package club).
+    /// `DS:0340` (initially 1): enables the duplicate checks of club and player
+    /// names; toggled by a click on the top-left pixel ([`club::toggle_debug`]).
     pub debug_flag: u8,
+    /// `[BP-DA]` of the main loop: the crest of the selected club was edited, so
+    /// "AENDERUNG SICHERN" writes it (set by package crest, cleared on deselect).
+    pub crest_changed: bool,
+    /// The main loop's input buffer `[BP-AA]` (0x52 bytes) that every panel and player
+    /// input reuses. It is never cleared: `text_input` measures one stale byte past the
+    /// text (see [`dialog::text_input`]).
+    pub input_buf: [u8; INPUT_BUF_LEN],
     /// `random_range` of the CRT (`rand()` is never seeded: the MSC start state).
     pub rng: Rng,
 }
@@ -215,7 +228,9 @@ pub fn init(host: &mut Host) -> Result<Editor, String> {
         hovered: -1,
         selected: 0xff,
         page: 0,
-        debug_flag: 0,
+        debug_flag: 1,
+        crest_changed: false,
+        input_buf: [0; INPUT_BUF_LEN],
         rng: Rng::default(),
     };
     clear_grid(&mut host.g, &mut ed.grid);
@@ -236,8 +251,9 @@ pub fn init(host: &mut Host) -> Result<Editor, String> {
             CREST_SIZE,
         );
     }
-    // far_memcpy of the buffers into their copies (1000:1921..19cd); DS:4742 -> DS:371E
-    // (0xF56 bytes) is not part of MANA.DAT. TODO(#158) package club: identify it.
+    // far_memcpy of the buffers into their copies (1000:1921..19cd). DS:4742 -> DS:371E
+    // (0xF56 bytes, BSS) is copied here and back by "AENDERUNG SICHERN" but never read
+    // or written otherwise: a dead buffer (docs/re/teamed/club.md), not modelled.
     ed.copy = ed.mana.clone();
     host.g
         .blit_bitmap(ed.bar, 0, 0, ed.grid.bitmap, 0x138, 0xc, 8, 0x9b);
@@ -290,14 +306,19 @@ pub fn draw_page(g: &mut Gfx, ed: &mut Editor, page: u8) {
 ///
 /// Origin: TEAMED.EXE 1000:24be (panel_draw_hovered)
 pub fn draw_hover_panel(g: &mut Gfx, ed: &mut Editor, club: u8) {
-    let rp = &mut ed.screen;
+    draw_panel(g, &mut ed.screen, &ed.mana, club);
+}
+
+/// The panel of [`draw_hover_panel`] drawn from the given buffers: `1000:24be` reads the
+/// `MANA.DAT` buffers, `panel_draw_selected` (`1000:26f1`, the same code) their copies.
+pub fn draw_panel(g: &mut Gfx, rp: &mut RastPort, m: &ManaDat, club: u8) {
     gfx::ui_fill_rect(g, rp, 0x33, 3, 0x92, 0x27, 0xc);
     set_font(rp, 3);
     let c = usize::from(club);
-    let name = mana::c_str(&ed.mana.clubs[c].name).to_vec();
+    let name = mana::c_str(&m.clubs[c].name).to_vec();
     gfx::ui_draw_text_at(g, rp, &name, 0x35, 7, 0x1d);
     gfx::ui_draw_text_at(g, rp, LEAGUE_NAMES[league_group(club)], 0x35, 0xf, 0x1d);
-    let rank = format_number(i32::from(ed.mana.rank[c]));
+    let rank = format_number(i32::from(m.rank[c]));
     gfx::ui_draw_text_at(g, rp, &rank, 0x35, 0x17, 0x1d);
     let pair = |v: [u8; 2]| {
         let mut s = format_number(i32::from(v[0]));
@@ -305,8 +326,8 @@ pub fn draw_hover_panel(g: &mut Gfx, ed: &mut Editor, club: u8) {
         s.extend(format_number(i32::from(v[1])));
         s
     };
-    gfx::ui_draw_text_at(g, rp, &pair(ed.mana.points[c]), 0x35, 0x1f, 0x1d);
-    gfx::ui_draw_text_at(g, rp, &pair(ed.mana.goals[c]), 0x35, 0x27, 0x1d);
+    gfx::ui_draw_text_at(g, rp, &pair(m.points[c]), 0x35, 0x1f, 0x1d);
+    gfx::ui_draw_text_at(g, rp, &pair(m.goals[c]), 0x35, 0x27, 0x1d);
 }
 
 /// The player list of the club under the pointer: slots 0..9 at the left, 10..19 at
@@ -368,21 +389,19 @@ pub fn main_loop(host: &mut Host, ed: &mut Editor) -> Run<Exit> {
         let (x, y) = host.mouse_xy();
         let y_rel = y.wrapping_sub(GRID_ORIGIN_Y);
         if x == 0 && y == 0 && ev == LEFT_DOWN {
-            // TODO(#158) package club: 12a5:04eb toggles DS:0340 and marks it at the
-            // top right (ui_fill_rect(0x13D, 0, 0x13F, 2, 5 + 3 * flag)).
+            club::toggle_debug(&mut host.g, ed);
         }
-        if ed.selected != 0xff {
-            // TODO(#158) package club: 12a5:056b..07a1, editing the panel fields of the
-            // selected club (name, league swap, rank, points, goals) with the text input
-            // (1000:0a7d) and the checks of 1000:207d / 1000:1a31.
-            club::edit_panel(host, ed, x, y, ev)?;
+        // 12a5:0521..056a: the scroll-view switch (12a5:2d39), an empty function.
+        // The hover and bar checks read the pointer copies [BP-E2]/[BP-EA], which the
+        // league-swap prompt of the panel overwrites with its last pointer position.
+        let (mut hx, mut hy) = (x, y_rel);
+        if let Some(pos) = club::edit_panel(host, ed, x, y, ev)? {
+            (hx, hy) = pos;
         }
-        let in_grid = x < 0x137 && y_rel > 0xb && y_rel < 0xa8;
+        let in_grid = hx < 0x137 && hy > 0xb && hy < 0xa8;
         if in_grid {
-            let club =
-                x / CREST_PITCH + ((y_rel - 0xc) / CREST_PITCH) * 8 + i16::from(ed.page) * 32;
-            // With a club selected the hover is ignored (TODO(#158) package club: the
-            // grid then belongs to the crest editor).
+            let club = hx / CREST_PITCH + ((hy - 0xc) / CREST_PITCH) * 8 + i16::from(ed.page) * 32;
+            // With a club selected the hover is ignored (the grid shows the crest editor).
             if club != ed.hovered && ed.selected == 0xff {
                 ed.hovered = club;
                 draw_hover_panel(&mut host.g, ed, club as u8);
@@ -397,8 +416,8 @@ pub fn main_loop(host: &mut Host, ed: &mut Editor) -> Run<Exit> {
             gfx::ui_fill_rect(&mut host.g, &mut ed.screen, 0x33, 3, 0x95, 0x29, 0xc);
             ed.hovered = -1;
         }
-        if ev == LEFT_DOWN && y_rel > 0xb && x > 0x136 && ed.selected == 0xff {
-            if y_rel > 0x59 {
+        if ev == LEFT_DOWN && hy > 0xb && hx > 0x136 && ed.selected == 0xff {
+            if hy > 0x59 {
                 // "UEFA": the strength list of the foreign clubs.
                 uefa::run(host, ed)?;
             } else {
@@ -410,29 +429,24 @@ pub fn main_loop(host: &mut Host, ed: &mut Editor) -> Run<Exit> {
             draw_page(&mut host.g, ed, page);
             screen_set_visible(&mut host.g, true);
         }
-        if ev == LEFT_DOWN && ed.hovered != -1 {
-            if ed.selected == 0xff {
-                // TODO(#158) package club: 12a5:11b7..12db selects the club (crest into
-                // the left box, copies of its data).
-                club::select(host, ed)?;
-            }
+        let in_buttons_x = x > 0x2a && x < 0x70;
+        if ev == LEFT_DOWN && ed.hovered != -1 && ed.selected == 0xff {
+            // 12a5:11b7: a click on the crest under the pointer selects that club.
+            club::select(host, ed)?;
+        } else if ev == LEFT_DOWN && in_buttons_x && y > 0x46 && y < 0x55 && ed.selected == 0xff {
+            // "PROGRAMM-ENDE"
+            quit = true;
+        } else if ev == LEFT_DOWN && in_buttons_x && y > 0x2d && y < 0x55 && ed.selected != 0xff {
+            // 12a5:1361: "NICHT UEBERNEHMEN" / "AENDERUNG SICHERN" (the third row only
+            // deselects). They end the selection, so the crest editor and player checks
+            // that follow in the original (with y replaced by the row) never match.
+            club::buttons(host, ed, y)?;
         } else if ev == LEFT_DOWN {
-            let in_buttons_x = x > 0x2a && x < 0x70;
-            if in_buttons_x && y > 0x46 && y < 0x55 && ed.selected == 0xff {
-                // "PROGRAMM-ENDE"
-                quit = true;
-            } else if in_buttons_x && y > 0x2d && y < 0x55 && ed.selected != 0xff {
-                // TODO(#158) package club: 12a5:1361..1544 "NICHT UEBERNEHMEN" and
-                // "AENDERUNG SICHERN" (the latter also writes the crest, package crest).
-                club::buttons(host, ed, y)?;
-            } else {
-                // TODO(#158) package crest: 12a5:1684..1fad, the crest editor (painting
-                // in the enlarged crest, 1000:1d73) and its picture import (1579:05b7).
-                crest::click(host, ed, x, y)?;
-                // TODO(#158) package club: 12a5:202e..22ab, editing a player name of the
-                // selected club in the list.
-                club::edit_player(host, ed, x, y)?;
-            }
+            // TODO(#158) package crest: 12a5:1684..1fad, the crest editor (painting
+            // in the enlarged crest, 1000:1d73) and its picture import (1579:05b7).
+            crest::click(host, ed, x, y)?;
+            // 12a5:2028: editing a player name of the selected club in the list.
+            club::edit_player(host, ed, x, y)?;
         }
         if quit && let Some(exit) = end_program(host, ed, &mut quit)? {
             return Ok(exit);

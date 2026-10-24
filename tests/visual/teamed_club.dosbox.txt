@@ -1,0 +1,128 @@
+# DOSBox side of the team-editor club scenario (tools/dosbox-capture.sh syntax, seconds).
+# exe: TEAMED.EXE
+# The capture's pointer lands about one game pixel left in this 242-line mode, so x is one
+# higher than on the port side. The debug switch (a click on pixel (0, 0)) is not covered:
+# the capture never reports the pointer at (0, 0) in this mode.
+# At the end the editor saves ("MACH MAL !") and the written MANA.DAT is fetched.
+wait 5
+# Club 0 (1.FC KAISERSLAUTERN): crest in both boxes, the crest editor below. A click in
+# the same poll as the hover change only updates the panel, so the pointer moves first.
+move 21 100 242
+wait 1
+click 21 100 242
+wait 2
+shot c01-selected
+# Name (panel row 0).
+click 81 6 242
+wait 1
+type neuer name
+wait 1
+shot c02-name-typing
+key Return
+wait 1
+shot c03-name
+# A name that exists (the debug switch starts on): message for 90 ticks.
+click 81 6 242
+wait 1
+type hamburger sv
+key Return
+wait 1
+shot c04-name-exists
+wait 6
+# Rank 5 (HAMBURGER SV gets rank 1), then 25, which group 0 does not have.
+click 81 22 242
+wait 1
+type 5
+key Return
+wait 1
+shot c05-rank
+click 81 22 242
+wait 1
+type 25
+key Return
+wait 1
+shot c06-rank-error
+wait 6
+# Points; an odd sum is refused.
+click 81 30 242
+wait 1
+type 40:28
+key Return
+wait 1
+shot c07-points
+click 81 30 242
+wait 1
+type 41:28
+key Return
+wait 1
+shot c08-points-error
+wait 6
+# Goals.
+click 81 37 242
+wait 1
+type 70:30
+key Return
+wait 1
+shot c09-goals
+# Player slot 0, then slot 12 with a name that slot 0 of club 1 has.
+click 177 16 242
+wait 1
+type testspieler
+key Return
+wait 1
+shot c10-player
+click 261 30 242
+wait 1
+type aumann
+key Return
+wait 1
+shot c11-player-exists
+wait 6
+# AENDERUNG SICHERN.
+click 78 65 242
+wait 2
+shot c12-saved
+# Club 1: rename, then NICHT UEBERNEHMEN.
+move 60 100 242
+wait 1
+click 60 100 242
+wait 2
+click 81 6 242
+wait 1
+type weg damit
+key Return
+wait 1
+shot c13-club1-name
+click 78 52 242
+wait 2
+shot c14-discarded
+# Club 2: league swap with club 20 (BAYER 05 UERDINGEN).
+move 99 100 242
+wait 1
+click 99 100 242
+wait 2
+click 81 14 242
+wait 2
+shot c15-swap-prompt
+move 177 185 242
+wait 2
+shot c16-swap-hover
+click 177 185 242
+wait 2
+shot c17-swapped
+# Club 3: AENDERUNG SICHERN without edits also commits the discarded name of club 1.
+move 138 100 242
+wait 1
+click 138 100 242
+wait 2
+click 78 65 242
+wait 2
+move 60 100 242
+wait 1
+shot c18-discarded-name-committed
+# PROGRAMM-ENDE, MACH MAL !
+click 78 78 242
+wait 2
+click 113 191 242
+wait 1
+fetch MANA.DAT

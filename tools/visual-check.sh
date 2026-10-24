@@ -14,7 +14,9 @@
 # aims the capture's RNG seed at <n> (DOSBOX_SEED of tools/dosbox-capture.sh).
 # The port runs on a temporary copy of $BMP_DATA, so scenarios may save. A
 # "# compare-file: <name>" line compares the file <name> the port wrote with the
-# one the original wrote (fetched into the reference directory) byte for byte.
+# one the original wrote (fetched into the reference directory) byte for byte; an
+# "ignore=<from>-<to>" after the name leaves the byte range [from, to) out (C notation, e.g.
+# "# compare-file: MANA.DAT ignore=0x40-0x298" for a block another package still has to port).
 # A "# fixture: <generator> <file> [<seed> [<seed2>]]" line names a file (a save) that both
 # games start with: the port runs tests/visual/<generator> (with the seeds) on a fresh copy
 # of $BMP_DATA once and keeps the <file> it wrote in $BMP_HOLDOUT/fixtures/<scenario>/; that
@@ -107,10 +109,22 @@ PY
     printf '%s/%s: ' "$name" "$base"
     "$BIN" compare "$out/$base" "$shot" --diff "$out/diff-$base" || { status=1; echo "  diff: $out/diff-$base"; }
   done
-  for file in $(sed -n 's/^# compare-file: *\([^ ]*\).*/\1/p' "tests/visual/$name.port.txt"); do
+  while read -r file rest; do
+    ignore=""; [[ "$rest" == ignore=* ]] && ignore=${rest%% *} && ignore=${ignore#ignore=}
     printf '%s/%s: ' "$name" "$file"
-    if cmp -s "$data/$file" "$ref/$file"; then echo "identical"; else echo "DIFFERS"; status=1; fi
-  done
+    if python3 -I - "$data/$file" "$ref/$file" "$ignore" <<'PY'
+import sys
+try:
+    a, b = (open(p, "rb").read() for p in sys.argv[1:3])
+except OSError:
+    sys.exit(1)
+if sys.argv[3]:
+    lo, hi = (int(v, 0) for v in sys.argv[3].split("-"))
+    a, b = a[:lo] + a[hi:], b[:lo] + b[hi:]
+sys.exit(a != b)
+PY
+    then echo "identical${ignore:+ (except $ignore)}"; else echo "DIFFERS"; status=1; fi
+  done < <(sed -n 's/^# compare-file: *//p' "tests/visual/$name.port.txt")
   rm -rf "$data"
 done
 exit $status

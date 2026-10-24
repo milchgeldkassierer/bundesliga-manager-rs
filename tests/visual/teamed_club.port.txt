@@ -1,0 +1,128 @@
+# Port side of the team-editor club scenario (bmp teamed --script syntax, milliseconds):
+# selecting a club, every panel field with its error messages, player names,
+# "AENDERUNG SICHERN", "NICHT UEBERNEHMEN" (whose edits stay in the copies and are
+# committed by the next "AENDERUNG SICHERN"), the league swap and the save.
+# command: teamed
+# The strengths (0x40..0x298) are recomputed by the save, which package uefa ports.
+# compare-file: MANA.DAT ignore=0x40-0x298
+wait 2000
+# Club 0 (1.FC KAISERSLAUTERN): crest in both boxes, the crest editor below. A click in
+# the same poll as the hover change only updates the panel, so the pointer moves first.
+move 20 100
+wait 300
+click 20 100
+wait 500
+shot c01-selected
+# Name (panel row 0).
+click 80 6
+wait 300
+type neuer name
+wait 300
+shot c02-name-typing
+key enter
+wait 300
+shot c03-name
+# A name that exists (the debug switch starts on): message for 90 ticks.
+click 80 6
+wait 300
+type hamburger sv
+key enter
+wait 1000
+shot c04-name-exists
+wait 5000
+# Rank 5 (HAMBURGER SV gets rank 1), then 25, which group 0 does not have.
+click 80 22
+wait 300
+type 5
+key enter
+wait 300
+shot c05-rank
+click 80 22
+wait 300
+type 25
+key enter
+wait 1000
+shot c06-rank-error
+wait 5000
+# Points; an odd sum is refused.
+click 80 30
+wait 300
+type 40:28
+key enter
+wait 300
+shot c07-points
+click 80 30
+wait 300
+type 41:28
+key enter
+wait 1000
+shot c08-points-error
+wait 5000
+# Goals.
+click 80 37
+wait 300
+type 70:30
+key enter
+wait 300
+shot c09-goals
+# Player slot 0, then slot 12 with a name that slot 0 of club 1 has.
+click 176 16
+wait 300
+type testspieler
+key enter
+wait 300
+shot c10-player
+click 260 30
+wait 300
+type aumann
+key enter
+wait 1000
+shot c11-player-exists
+wait 5000
+# AENDERUNG SICHERN.
+click 77 65
+wait 500
+shot c12-saved
+# Club 1: rename, then NICHT UEBERNEHMEN.
+move 59 100
+wait 300
+click 59 100
+wait 500
+click 80 6
+wait 300
+type weg damit
+key enter
+wait 300
+shot c13-club1-name
+click 77 52
+wait 500
+shot c14-discarded
+# Club 2: league swap with club 20 (BAYER 05 UERDINGEN).
+move 98 100
+wait 300
+click 98 100
+wait 500
+click 80 14
+wait 500
+shot c15-swap-prompt
+move 176 185
+wait 500
+shot c16-swap-hover
+click 176 185
+wait 800
+shot c17-swapped
+# Club 3: AENDERUNG SICHERN without edits also commits the discarded name of club 1.
+move 137 100
+wait 300
+click 137 100
+wait 500
+click 77 65
+wait 500
+move 59 100
+wait 300
+shot c18-discarded-name-committed
+# PROGRAMM-ENDE, MACH MAL !
+click 77 78
+wait 500
+click 112 191
+wait 1000
