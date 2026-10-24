@@ -15,3 +15,17 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   affected.
 - **Mod switch** (`bmp_game::mod2026::is_active`): the game and the team editor read it once at
   start-up into `Host::mod2026`, the flag later mod behaviour switches on. Nothing reads it yet.
+
+## Euro sign
+
+- **Euro glyph** (`crates/bmp-formats/src/font.rs`, `crates/bmp-formats/data/euro_glyphs.txt`,
+  `crates/bmp/src/gfx.rs`, `crates/bmp/src/host.rs`): the mod's texts write the euro sign as
+  the byte code **0xd5** (`font::EURO`). 0xd5 is where IBM code page 858 puts the euro sign; in
+  CP437 it is a box-drawing character the game never prints, it is not printable ASCII and
+  none of the eight codes `map_char` translates, so v1.0.0 draws it as a space. The three
+  glyph fonts **micro4** (5 x 6 pixels), **flow** (7 x 8) and **newbold** (13 x 16) got a
+  euro glyph, new art in each font's style (its `C` with two bars), with the font's cell
+  height, descent row and spacing column. With the mod flag `Gfx::set_euro_glyphs` installs
+  them and text drawing and text widths use them for 0xd5; `map_char` and the font tables are
+  unchanged, and without the flag 0xd5 stays a space. `encode_cp437('€')` gives 0xd5.
+  `normal.font` stays a stub.

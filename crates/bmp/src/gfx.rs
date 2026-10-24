@@ -18,7 +18,7 @@
 
 #![allow(dead_code)]
 
-use bmp_formats::font::{Font, FontSet, map_char};
+use bmp_formats::font::{EURO, Font, FontSet, Glyph, map_char};
 use bmp_formats::vga::VgaImage;
 
 use crate::video::{Mode, Vga, WIDTH};
@@ -245,6 +245,9 @@ pub struct Gfx {
     pub pointer: Pointer,
     /// Fonts by library index (index 0, `normal.font`, has no glyph data).
     pub fonts: [Option<Font>; 4],
+    /// MOD2026: the euro glyph of each font, installed only with the mod flag
+    /// ([`Gfx::set_euro_glyphs`]); `None` everywhere is v1.0.0.
+    pub euro: [Option<Glyph>; 4],
     /// BIOS tick counter `0040:006C` (advanced by the host at 18.2 Hz).
     pub bios_ticks: u32,
     /// `CS:0038/003A`: timer deadline.
@@ -412,6 +415,7 @@ impl Gfx {
                 client_y: 0,
             },
             fonts: [None, None, None, None],
+            euro: [None, None, None, None],
             bios_ticks: 0,
             deadline: 0,
             bitmaps: Vec::new(),
@@ -435,6 +439,25 @@ impl Gfx {
         use bmp_formats::font::FontId;
         for id in FontId::ALL {
             self.fonts[id as usize] = Some(set.get(id).clone());
+        }
+    }
+
+    /// MOD2026: gives the three glyph fonts the mod's euro glyph for the byte code [`EURO`],
+    /// which v1.0.0 draws as a space (`docs/mod2026/CHANGES.md`).
+    pub fn set_euro_glyphs(&mut self) {
+        use bmp_formats::font::{FontId, euro_glyph};
+        for id in FontId::ALL {
+            self.euro[id as usize] = Some(euro_glyph(id));
+        }
+    }
+
+    /// The glyph of byte `c` in font `font`: [`map_char`]'s, or the euro glyph for [`EURO`]
+    /// when the mod installed one.
+    fn glyph<'a>(&'a self, font: u16, f: &'a Font, c: u8) -> &'a Glyph {
+        // MOD2026: the euro code has its own glyph only with the mod flag.
+        match self.euro.get(font as usize) {
+            Some(Some(g)) if c == EURO => g,
+            _ => &f.glyphs[map_char(c) as usize],
         }
     }
 
@@ -1485,7 +1508,7 @@ impl Gfx {
                 let gl = text
                     .iter()
                     .map(|&c| {
-                        let g = &f.glyphs[map_char(c) as usize];
+                        let g = self.glyph(font, f, c);
                         let w = g.width as usize;
                         let mut px = Vec::with_capacity(w * f.height as usize);
                         for row in 0..(f.height & 0xff) as usize {
@@ -1543,7 +1566,7 @@ impl Gfx {
     pub fn text_width(&self, font: u16, text: &[u8]) -> u16 {
         match self.fonts.get(font as usize).and_then(|f| f.as_ref()) {
             Some(f) => text.iter().fold(0u16, |a, &c| {
-                a.wrapping_add(f.glyphs[map_char(c) as usize].width as u16)
+                a.wrapping_add(self.glyph(font, f, c).width as u16)
             }),
             None => 0,
         }
@@ -2803,6 +2826,109 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Without the mod flag the euro code is v1.0.0's: in every font it draws the same
+    /// pixels as a space, transparently and opaquely, and has the space's width.
+    #[test]
+    fn euro_code_is_a_space_without_the_mod() {
+        let Some(dir) = bmp_formats::data_dir() else {
+            return;
+        };
+        let set = FontSet::load(&dir).expect("fonts");
+        for font in 1..=3u16 {
+            for mode in [0, 1] {
+                let draw = |text: &[u8]| {
+                    let (mut g, rp) = gfx_with_screen();
+                    g.set_fonts(&set);
+                    g.draw_text(rp.bitmap, 10, 20, font, 15, 4, mode, text);
+                    let x = g.draw_text(rp.bitmap, 40, 60, font, 15, 4, mode, text);
+                    let px: Vec<u8> = (0..200)
+                        .flat_map(|y| (0..320).map(move |x| (x, y)))
+                        .map(|(x, y)| screen_px(&g, x, y))
+                        .collect();
+                    (x, g.text_width(font, text), px)
+                };
+                assert!(draw(&[EURO]) == draw(b" "), "font {font} mode {mode}");
+            }
+        }
+    }
+
+    /// MOD2026: with the euro glyphs installed the euro code draws the mod's glyph, and
+    /// every other byte still draws v1.0.0's glyph.
+    #[test]
+    fn euro_code_draws_the_mod_glyph() {
+        let Some(dir) = bmp_formats::data_dir() else {
+            return;
+        };
+        let set = FontSet::load(&dir).expect("fonts");
+        for id in bmp_formats::font::FontId::ALL {
+            let font = id as u16;
+            let f = set.get(id);
+            let euro = bmp_formats::font::euro_glyph(id);
+            let (mut g, rp) = gfx_with_screen();
+            g.set_fonts(&set);
+            g.set_euro_glyphs();
+            assert_eq!(g.text_width(font, &[EURO]), euro.width as u16);
+            assert_eq!(g.text_width(font, b"1 DM"), f.text_length(b"1 DM"));
+            let top = 20 - (f.height - f.descent - 1) as i16;
+            let x = g.draw_text(rp.bitmap, 10, 20, font, 15, 4, 1, &[EURO]);
+            assert_eq!(x, 10 + euro.width as i16);
+            for row in 0..f.height as usize {
+                for col in 0..euro.width as usize {
+                    let want = if euro.pixel(col, row) { 15 } else { 4 };
+                    let got = screen_px(&g, 10 + col as i16, top + row as i16);
+                    assert_eq!(got, want, "{} {col},{row}", f.name);
+                }
+            }
+        }
+    }
+
+    /// Writes the euro glyph sample (`1.000.000 DM` and `1.000.000 €` without the mod on
+    /// the left, `1.000.000 €` with it on the right, in micro4, flow and newbold) as a PNG,
+    /// scaled 3x, to `$BMP_EURO_SAMPLE_OUT` when that is set (evidence aid).
+    #[test]
+    fn render_euro_sample() {
+        let Some(dir) = bmp_formats::data_dir() else {
+            return;
+        };
+        let Some(out) = std::env::var_os("BMP_EURO_SAMPLE_OUT") else {
+            return;
+        };
+        let set = FontSet::load(&dir).expect("fonts");
+        let (mut off, rp_off) = gfx_with_screen();
+        off.set_fonts(&set);
+        let (mut on, rp_on) = gfx_with_screen();
+        on.set_fonts(&set);
+        on.set_euro_glyphs();
+        let euro = bmp_formats::font::encode_cp437("1.000.000 €");
+        for (font, y, gap) in [(1u16, 10i16, 9i16), (2, 33, 11), (3, 68, 19)] {
+            off.draw_text(rp_off.bitmap, 6, y, font, 15, 0, 0, b"1.000.000 DM");
+            off.draw_text(rp_off.bitmap, 6, y + gap, font, 14, 0, 0, &euro);
+            on.draw_text(rp_on.bitmap, 166, y, font, 10, 0, 0, &euro);
+        }
+        let (w, h, scale) = (320usize, 92usize, 3usize);
+        let mut rgb = Vec::with_capacity(w * h * scale * scale * 3);
+        for y in 0..h * scale {
+            for x in 0..w * scale {
+                let (px, py) = ((x / scale) as i16, (y / scale) as i16);
+                let g = if px < 160 { &off } else { &on };
+                rgb.extend_from_slice(match screen_px(g, px, py) {
+                    0 if px == 160 => &[96, 96, 96],
+                    0 => &[0, 0, 48],
+                    10 => &[96, 255, 96],
+                    14 => &[255, 255, 96],
+                    _ => &[255, 255, 255],
+                });
+            }
+        }
+        crate::video::write_rgb_png(
+            std::path::Path::new(&out),
+            (w * scale) as u32,
+            (h * scale) as u32,
+            &rgb,
+        )
+        .expect("write sample");
     }
 
     /// Text drawn through the library matches the font crate's reference renderer.

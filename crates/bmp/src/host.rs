@@ -200,6 +200,11 @@ impl Host {
             format!("{}: {e}", String::from_utf8_lossy(kind))
         })?;
         g.set_fonts(&fonts);
+        let mod2026 = bmp_game::mod2026::is_active(data);
+        if mod2026 {
+            // MOD2026: the fonts get the euro glyph.
+            g.set_euro_glyphs();
+        }
         let rp = g.screen_open();
         g.mouse_open(true, true);
         let mut ui = Ui::new(rp.bitmap);
@@ -224,7 +229,7 @@ impl Host {
             vga: Vga::new(),
             card,
             fatal: None,
-            mod2026: bmp_game::mod2026::is_active(data),
+            mod2026,
         })
     }
 

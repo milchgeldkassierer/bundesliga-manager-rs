@@ -25,6 +25,15 @@ pub const GLYPH_COUNT: usize = 95;
 /// starts at `45ac:07ee`).
 pub const GLYPH_BUFFER_SIZE: usize = 0x07ee - 0x0406;
 
+/// MOD2026: the byte code of the euro sign in the mod's texts. It is 0xd5, where IBM code
+/// page 858 (CP850 with the euro sign) puts it. In CP437 0xd5 is a box-drawing character the
+/// game never prints, and it is none of the eight codes [`map_char`] translates, so v1.0.0
+/// shows it as a space. Only text drawing with the mod flag maps it to [`euro_glyph`].
+pub const EURO: u8 = 0xd5;
+
+/// MOD2026: the euro glyphs of the three fonts as text art (`docs/mod2026/CHANGES.md`).
+const EURO_GLYPHS: &str = include_str!("../data/euro_glyphs.txt");
+
 /// Screen width used by [`Font::draw_text`].
 pub const SCREEN_W: usize = 320;
 /// Screen height used by [`Font::draw_text`].
@@ -159,12 +168,14 @@ pub fn map_char(c: u8) -> u8 {
 }
 
 /// Encodes a Rust string to the CP437 bytes the game stores its text in. Only the
-/// characters the fonts can show are mapped (ASCII and the German umlauts/sharp s);
-/// anything else becomes 0x7f, which renders as a space.
+/// characters the fonts can show are mapped (ASCII and the German umlauts/sharp s, and
+/// the mod's euro sign to [`EURO`]); anything else becomes 0x7f, which renders as a space.
 pub fn encode_cp437(s: &str) -> Vec<u8> {
     s.chars()
         .map(|c| match c {
             '\u{20}'..='\u{7e}' => c as u8,
+            // MOD2026: only fonts with the mod's euro glyph show it; v1.0.0 shows a space.
+            '€' => EURO,
             'Ä' => 0x8e,
             'Ö' => 0x99,
             'Ü' => 0x9a,
@@ -175,6 +186,50 @@ pub fn encode_cp437(s: &str) -> Vec<u8> {
             _ => 0x7f,
         })
         .collect()
+}
+
+/// MOD2026: the euro glyph drawn for the mod in the style of font `id`
+/// (`data/euro_glyphs.txt`). Its height is the font's cell height and the last row is the
+/// descent, like the original glyphs.
+pub fn euro_glyph(id: FontId) -> Glyph {
+    let mut rows = Vec::new();
+    let mut found = false;
+    for line in EURO_GLYPHS.lines() {
+        let line = line.trim();
+        // Comments start with "# "; pixel rows hold only '#' and '.'.
+        if line.is_empty() || line.starts_with("# ") {
+            continue;
+        }
+        if let Some(name) = line.strip_prefix("font ") {
+            if found {
+                break;
+            }
+            found = name == id.name();
+        } else if found {
+            rows.push(line.as_bytes());
+        }
+    }
+    assert!(!rows.is_empty(), "no euro glyph for {}", id.name());
+    let width = rows[0].len();
+    assert!(
+        rows.iter()
+            .all(|r| r.len() == width && r.iter().all(|p| b"#.".contains(p)))
+            && (1..=0xff).contains(&width),
+        "ragged euro glyph for {}",
+        id.name()
+    );
+    let mut bits = vec![0u8; rows.len() * width.div_ceil(8)];
+    for (y, row) in rows.iter().enumerate() {
+        for (x, &p) in row.iter().enumerate() {
+            if p == b'#' {
+                bits[y * width.div_ceil(8) + x / 8] |= 0x80 >> (x % 8);
+            }
+        }
+    }
+    Glyph {
+        width: width as u8,
+        bits,
+    }
 }
 
 /// All glyph-carrying fonts of `BMMAIN.EXE`.
@@ -454,6 +509,73 @@ mod tests {
     #[test]
     fn cp437() {
         assert_eq!(encode_cp437("Mühle ß"), b"M\x81hle \xe1".to_vec());
+        assert_eq!(encode_cp437("1.000 €"), b"1.000 \xd5".to_vec());
+    }
+
+    /// `map_char` is v1.0.0's for every byte: the euro code stays a space without the mod.
+    #[test]
+    fn char_map_is_unchanged_for_every_byte() {
+        const PAIRS: [(u8, u8); 8] = [
+            (0x5c, 0x60),
+            (0x8e, 0x5b),
+            (0x99, 0x5c),
+            (0x9a, 0x5d),
+            (0x84, 0x7b),
+            (0x94, 0x7c),
+            (0x81, 0x7d),
+            (0xe1, 0x7e),
+        ];
+        for c in 0..=0xffu8 {
+            let want = match PAIRS.iter().find(|&&(from, _)| from == c) {
+                Some(&(_, to)) => to - 0x20,
+                None if (0x20..0x7f).contains(&c) => c - 0x20,
+                None => 0,
+            };
+            assert_eq!(map_char(c), want, "{c:#04x}");
+        }
+        assert_eq!(map_char(EURO), map_char(b' '));
+    }
+
+    /// MOD2026: the euro code is free: not printable ASCII and none of the translated codes.
+    #[test]
+    fn euro_code_is_free() {
+        assert!(!(0x20..=0x7e).contains(&EURO));
+        assert!(![0x5c, 0x8e, 0x99, 0x9a, 0x84, 0x94, 0x81, 0xe1].contains(&EURO));
+    }
+
+    /// MOD2026: every font's euro glyph has the font's cell height (`docs/re/font.md`), a
+    /// width within the font's original width range and at least one set pixel; its
+    /// spacing column and descent row are blank like the original glyphs'.
+    #[test]
+    fn euro_glyphs_fit_their_fonts() {
+        for (id, height, widths) in [
+            (FontId::Micro4, 6, 2..=6),
+            (FontId::Flow, 8, 3..=8),
+            (FontId::Newbold, 16, 5..=23),
+        ] {
+            let g = euro_glyph(id);
+            let w = g.width as usize;
+            assert!(widths.contains(&g.width), "{}", id.name());
+            assert_eq!(g.bits.len(), height * g.row_bytes(), "{}", id.name());
+            let set = |col, row| g.pixel(col, row);
+            assert!(
+                (0..height).any(|r| (0..w).any(|c| set(c, r))),
+                "{}",
+                id.name()
+            );
+            assert!((0..height).all(|r| !set(w - 1, r)), "{}", id.name());
+            assert!((0..w).all(|c| !set(c, height - 1)), "{}", id.name());
+        }
+        // The cell heights and width ranges above are the shipped fonts'.
+        let Some(f) = fonts() else { return };
+        for id in FontId::ALL {
+            let font = f.get(id);
+            let g = euro_glyph(id);
+            assert_eq!(g.bits.len(), font.height as usize * g.row_bytes());
+            let ws = font.glyphs.iter().map(|g| g.width);
+            let (lo, hi) = (ws.clone().min().unwrap(), ws.max().unwrap());
+            assert!((lo..=hi).contains(&g.width), "{}: {lo}..={hi}", id.name());
+        }
     }
 
     #[test]

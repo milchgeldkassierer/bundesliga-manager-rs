@@ -1,0 +1,42 @@
+# MOD2026: the euro sign of the three glyph fonts of BMMAIN.EXE (docs/mod2026/CHANGES.md).
+# New art drawn for the mod, not original data. Each block starts with `font <name>` and has
+# one row per pixel row of the font's cell (micro4 6, flow 8, newbold 16; the last row is the
+# descent). `#` is a set pixel, `.` a clear one; the row length is the advance width, with the
+# blank spacing column on the right like every original glyph. Each glyph is the font's `C`
+# with the two bars of the euro sign.
+
+font micro4.font
+.###.
+###..
+#....
+###..
+.###.
+.....
+
+font flow.font
+..####.
+.##..#.
+######.
+.##....
+######.
+.##..#.
+..####.
+.......
+
+font newbold.font
+.......####..
+.....#######.
+....########.
+...#########.
+...####....#.
+##########...
+##########...
+..####.......
+..####.......
+##########...
+##########...
+...####....#.
+....########.
+.....#######.
+.......####..
+.............
