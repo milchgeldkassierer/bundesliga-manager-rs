@@ -32,6 +32,8 @@ pub const SCREEN_H: i16 = 240;
 pub const TEAMED_SCREEN_H: i16 = 0x149;
 /// Lines TEAMED.EXE's CRTC table displays.
 pub const TEAMED_VISIBLE_LINES: i16 = 242;
+/// CRTC start of TEAMED.EXE's scrolled view (`vga_show_page(3)`): row 87.
+pub const TEAMED_SCROLLED_START: u16 = 0x1b30;
 /// Bytes per row and plane in Mode X.
 pub const ROW_BYTES: u16 = 80;
 /// Size of one 320x240 page in each plane (`0x4B00`).
@@ -229,6 +231,13 @@ pub struct Gfx {
     pub mode_x: bool,
     /// Lines the CRTC displays: 240 (BMMAIN's register table), 242 in TEAMED.EXE.
     pub visible_lines: i16,
+    /// Vertical range of the INT 33h driver (function 8) as TEAMED's `vga_show_page`
+    /// sets it; `None` (BMMAIN) leaves the pointer coordinates as the host gives them.
+    pub mouse_y_range: Option<(i16, i16)>,
+    /// Mask of the start row in the VRAM address computations: BMMAIN's library
+    /// multiplies the row byte by 80 (`MUL BL`, rows wrap at 256), TEAMED's the whole
+    /// word (`MUL BX`, e.g. `16b7:1f36`), which its 329-row screen needs.
+    pub row_mask: u16,
     /// VGA DAC, 6 bits per channel.
     pub dac: [[u8; 3]; 256],
     /// Screen palette arrays (`screen + 8`): R at 0..256, G at 0x100.., B at 0x200..
@@ -360,8 +369,8 @@ fn clip_fill(bw: i16, bh: i16, mut x: i16, mut y: i16, mut w: i16, mut h: i16) -
 
 /// VRAM byte offset of row `r` of a rect starting at `y0` and column `x` (as the
 /// planar loops compute it: `(y0 & 0xFF) * 80` by an 8-bit `MUL`, then `+80` per row).
-fn vram_off(base: u16, y0: i16, r: i16, x: i16) -> u16 {
-    base.wrapping_add((y0 as u16 & 0xff) * ROW_BYTES)
+fn vram_off(base: u16, y0: i16, r: i16, x: i16, row_mask: u16) -> u16 {
+    base.wrapping_add((y0 as u16 & row_mask).wrapping_mul(ROW_BYTES))
         .wrapping_add((r as u16).wrapping_mul(ROW_BYTES))
         .wrapping_add(x as u16 >> 2)
 }
@@ -383,6 +392,8 @@ impl Gfx {
             blanked: false,
             mode_x: false,
             visible_lines: SCREEN_H,
+            mouse_y_range: None,
+            row_mask: 0xff,
             dac: [[0; 3]; 256],
             palette: [0; 0x300],
             pointer: Pointer {
@@ -528,6 +539,49 @@ impl Gfx {
         let screen = self.pointer.screen;
         self.bitmap_mut(screen).height = TEAMED_SCREEN_H;
         self.visible_lines = TEAMED_VISIBLE_LINES;
+        self.row_mask = 0xffff;
+    }
+
+    /// TEAMED.EXE's `vga_show_page`: modes 0 and 2 are BMMAIN's; mode 1 shows and draws
+    /// page 0 and sets the driver's y range to 0..241; the extra mode 3 shows the screen
+    /// from row 87 (CRTC start `0x1B30`, the scrolled UEFA list), draws page 0 and sets
+    /// the y range to 87..328. The driver clamps the pointer into the new range without
+    /// calling the event handler, so the library's client position is not updated.
+    ///
+    /// Origin: TEAMED.EXE 16b7:3231 (vga_show_page)
+    pub fn vga_show_page_teamed(&mut self, n: u16) {
+        match n {
+            1 => {
+                self.draw_page = 0;
+                self.crtc_start = 0;
+                self.mouse_y_range = Some((0, 0xf1));
+            }
+            3 => {
+                self.draw_page = 0;
+                self.crtc_start = TEAMED_SCROLLED_START;
+                self.mouse_y_range = Some((0x57, 0x148));
+            }
+            _ => self.vga_show_page(n),
+        }
+    }
+
+    /// A driver y coordinate (script, DOSBox) clamped to the range set by
+    /// [`Gfx::vga_show_page_teamed`].
+    pub fn mouse_clamp_y(&self, y: i16) -> i16 {
+        match self.mouse_y_range {
+            Some((lo, hi)) => y.clamp(lo, hi),
+            None => y,
+        }
+    }
+
+    /// The driver y coordinate for a window row: on real hardware the pointer moves
+    /// relative and stays in the driver's range, which starts at the first row shown
+    /// (0 or 87), so a window row maps to `row + range start`.
+    pub fn mouse_window_y(&self, row: i16) -> i16 {
+        match self.mouse_y_range {
+            Some((lo, hi)) => row.wrapping_add(lo).clamp(lo, hi),
+            None => row,
+        }
     }
 
     /// Back to text mode via INT10.
@@ -943,7 +997,7 @@ impl Gfx {
                             let x = sx + c;
                             self.vram_read(
                                 x as usize & 3,
-                                vram_off(base.wrapping_add(page), sy, r, x),
+                                vram_off(base.wrapping_add(page), sy, r, x, self.row_mask),
                             )
                         }
                         None => {
@@ -962,7 +1016,7 @@ impl Gfx {
                     match dv {
                         Some(base) => {
                             let x = dx + c;
-                            let off = vram_off(base.wrapping_add(page), dy, r, x);
+                            let off = vram_off(base.wrapping_add(page), dy, r, x, self.row_mask);
                             self.vram_write(x as usize & 3, off, v);
                         }
                         None => {
@@ -1128,7 +1182,7 @@ impl Gfx {
         for r in 0..h {
             for c in 0..w {
                 let px = x + c;
-                let off = vram_off(0, y, r, px);
+                let off = vram_off(0, y, r, px, self.row_mask);
                 let v = self.vram_read(px as usize & 3, off.wrapping_add(src_base));
                 self.vram_write(px as usize & 3, off, v);
             }
@@ -1177,7 +1231,7 @@ impl Gfx {
                     }
                 }
                 // The descriptor offset is ignored: page base only.
-                let off = ((y as u16 & 0xff) * ROW_BYTES)
+                let off = ((y as u16 & self.row_mask).wrapping_mul(ROW_BYTES))
                     .wrapping_add(x as u16 >> 2)
                     .wrapping_add(self.page_add());
                 let old = self.vram_read(x as usize & 3, off);
@@ -1223,7 +1277,7 @@ impl Gfx {
                     return self.mem_get(self.pointer.background, self.pointer_buf_index(x, y))
                         as u16;
                 }
-                let off = ((y as u16 & 0xff) * ROW_BYTES)
+                let off = ((y as u16 & self.row_mask).wrapping_mul(ROW_BYTES))
                     .wrapping_add(x as u16 >> 2)
                     .wrapping_add(self.page_add());
                 self.vram_read(x as usize & 3, off) as u16
@@ -1327,7 +1381,7 @@ impl Gfx {
                 for r in 0..h {
                     for c in 0..w {
                         let px = x + c;
-                        let off = vram_off(base, y, r, px);
+                        let off = vram_off(base, y, r, px, self.row_mask);
                         let o = self.vram_read(px as usize & 3, off);
                         self.vram_write(px as usize & 3, off, op(o));
                     }
@@ -2363,6 +2417,31 @@ mod tests {
             .filter(|&(x, y)| screen_px(&g, x, y) == 1)
             .count();
         assert_eq!(n, 3 * 2);
+    }
+
+    #[test]
+    fn teamed_rows_beyond_255_and_the_scrolled_page() {
+        let mut g = Gfx::new();
+        // BMMAIN's library wraps the start row at 256 (MUL BL).
+        let bm = g.alloc(Bitmap::vram(SCREEN_W, 300, 0));
+        g.fill_rect(bm, 0, 260, 4, 1, 9);
+        assert_eq!(g.page_pixel(0, 0, 4), 9);
+        let mut g = Gfx::new();
+        g.vga_set_mode_x_teamed();
+        let bm = g.pointer.screen;
+        g.fill_rect(bm, 0, 300, 4, 1, 9);
+        assert_eq!(g.page_pixel(0, 0, 300), 9);
+        assert_eq!(g.page_pixel(0, 0, 44), 0);
+        g.vga_show_page_teamed(3);
+        assert_eq!(g.crtc_start, TEAMED_SCROLLED_START);
+        // Row 300 is visible line 213 of the scrolled view.
+        assert_eq!(g.page_pixel(g.crtc_start, 0, 300 - 87), 9);
+        assert_eq!(g.mouse_clamp_y(20), 87);
+        assert_eq!(g.mouse_clamp_y(400), 328);
+        assert_eq!(g.mouse_window_y(10), 97);
+        g.vga_show_page_teamed(1);
+        assert_eq!((g.crtc_start, g.mouse_window_y(10)), (0, 10));
+        assert_eq!(g.mouse_clamp_y(300), 0xf1);
     }
 
     #[test]

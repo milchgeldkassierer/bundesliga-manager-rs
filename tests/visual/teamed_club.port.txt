@@ -3,8 +3,7 @@
 # "AENDERUNG SICHERN", "NICHT UEBERNEHMEN" (whose edits stay in the copies and are
 # committed by the next "AENDERUNG SICHERN"), the league swap and the save.
 # command: teamed
-# The strengths (0x40..0x298) are recomputed by the save, which package uefa ports.
-# compare-file: MANA.DAT ignore=0x40-0x298
+# compare-file: MANA.DAT
 wait 2000
 # Club 0 (1.FC KAISERSLAUTERN): crest in both boxes, the crest editor below. A click in
 # the same poll as the hover change only updates the panel, so the pointer moves first.

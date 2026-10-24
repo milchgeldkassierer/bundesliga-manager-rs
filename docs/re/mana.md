@@ -118,6 +118,9 @@ term plus a term computed via the long-division helper `1b1f:1700`, presumably
 from goals scored), so they are most likely defence, midfield, attack (not yet
 confirmed from a BMMAIN consumer of team fields `+0x18..+0x1d`). Strengths of foreign clubs 64..199 are
 written back unchanged.
+The exact formula (bases 70/34/20 at `DS:0554`, league sizes 18/20/20 at `DS:033C`,
+seven `random_range` calls per random club) is in `docs/re/teamed/uefa.md`
+("Strength recomputation"); recomputing the shipped file reproduces its bytes.
 
 ### Block 3: points (`0x298`, 64 x 2 bytes)
 

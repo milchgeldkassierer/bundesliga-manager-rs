@@ -14,9 +14,9 @@
 //! that starts at row 75.
 //!
 //! Ported: the start-up, the main loop's hover display, the "LIGA" paging,
-//! "PROGRAMM-ENDE" with the save question, the `MANA.DAT` reader and writer and the
-//! editing of a selected club ([`club`]). The crest editor ([`crest`]) and the UEFA
-//! list ([`uefa`]) plug in at their `TODO(#158)` stubs.
+//! "PROGRAMM-ENDE" with the save question and the strength recomputation ([`save`]), the
+//! `MANA.DAT` reader and writer, the editing of a selected club ([`club`]) and the UEFA
+//! list ([`uefa`]). The crest editor ([`crest`]) plugs in at its `TODO(#158)` stubs.
 
 pub mod club;
 pub mod crest;
@@ -128,6 +128,8 @@ pub struct Editor {
     /// `DS:0340` (initially 1): enables the duplicate checks of club and player
     /// names; toggled by a click on the top-left pixel ([`club::toggle_debug`]).
     pub debug_flag: u8,
+    /// Page of the UEFA list (`DS:04CA`): clubs `64 + page * 68 ..`; kept between visits.
+    pub uefa_page: u8,
     /// `[BP-DA]` of the main loop: the crest of the selected club was edited, so
     /// "AENDERUNG SICHERN" writes it (set by package crest, cleared on deselect).
     pub crest_changed: bool,
@@ -231,6 +233,7 @@ pub fn init(host: &mut Host) -> Result<Editor, String> {
         debug_flag: 1,
         crest_changed: false,
         input_buf: [0; INPUT_BUF_LEN],
+        uefa_page: 0,
         rng: Rng::default(),
     };
     clear_grid(&mut host.g, &mut ed.grid);

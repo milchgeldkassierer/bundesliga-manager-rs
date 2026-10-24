@@ -66,6 +66,8 @@ pub enum ScriptStep {
 /// Parses a script: one step per line, `#` comments. Commands: `wait <ms>`,
 /// `click <x> <y>`, `rclick <x> <y>`, `move <x> <y>`, `press <x> <y>`, `release`, `type <text>`,
 /// `key enter|space|backspace|esc`, `shot <name>`, `quit`.
+/// Pointer coordinates are mouse driver coordinates; where a program sets a driver y range
+/// (TEAMED.EXE's scrolled UEFA list: 87..328) they are clamped to it.
 pub fn parse_script(text: &str) -> Result<Vec<ScriptStep>, String> {
     let mut steps = Vec::new();
     for (n, line) in text.lines().enumerate() {
@@ -301,8 +303,9 @@ impl Host {
                     match ev {
                         Event::Quit { .. } => return Err(Quit),
                         Event::MouseMotion { x, y, .. } => {
+                            let y = self.g.mouse_window_y(y.max(0) as i16);
                             self.g
-                                .mouse_event_handler(1, (x.max(0) * 2) as u16, y.max(0) as u16)
+                                .mouse_event_handler(1, (x.max(0) * 2) as u16, y as u16)
                         }
                         Event::MouseButtonDown {
                             mouse_btn, x, y, ..
@@ -318,11 +321,9 @@ impl Host {
                                 (MouseButton::Right, false) => 0x10,
                                 _ => 0,
                             };
-                            self.g.mouse_event_handler(
-                                mask | 1,
-                                (x.max(0) * 2) as u16,
-                                y.max(0) as u16,
-                            );
+                            let y = self.g.mouse_window_y(y.max(0) as i16);
+                            self.g
+                                .mouse_event_handler(mask | 1, (x.max(0) * 2) as u16, y as u16);
                         }
                         Event::KeyDown {
                             keycode: Some(k), ..
@@ -407,6 +408,7 @@ impl Host {
             match step {
                 ScriptStep::Wait(ms) => *next_ms = *now_ms + ms,
                 ScriptStep::Click { x, y, right } => {
+                    let y = self.g.mouse_clamp_y(y);
                     let down = if right { 8 } else { 2 };
                     self.g.mouse_event_handler(1, (x * 2) as u16, y as u16);
                     self.g.mouse_event_handler(down, (x * 2) as u16, y as u16);
@@ -415,9 +417,11 @@ impl Host {
                     steps.push_front(ScriptStep::Wait(60));
                 }
                 ScriptStep::Move { x, y } => {
+                    let y = self.g.mouse_clamp_y(y);
                     self.g.mouse_event_handler(1, (x * 2) as u16, y as u16);
                 }
                 ScriptStep::Press { x, y } => {
+                    let y = self.g.mouse_clamp_y(y);
                     self.g.mouse_event_handler(1, (x * 2) as u16, y as u16);
                     self.g.mouse_event_handler(2, (x * 2) as u16, y as u16);
                 }

@@ -2,7 +2,8 @@
 
 Status: reconnaissance of #158. Program flow, screens, data and library reuse are mapped;
 the start-up, the main screen with its hover display, the "LIGA" paging, the save
-question and package club (selecting and editing a club, `club.md`) are ported
+question, package club (selecting and editing a club, `club.md`) and package uefa (the
+UEFA strength list and the strength recomputation of the save, `uefa.md`) are ported
 (`crates/bmp/src/teamed/`, `bmp teamed`). The rest is split into the feature packages at
 the end of this document.
 
@@ -56,8 +57,10 @@ calls it (seven calls in `1579:0030`).
   from the pointer y to get view coordinates. Port: `gfx::Bitmap::origin` (always (0, 0)
   in BMMAIN) and `Gfx::with_origin`.
 * `vga_show_page` (`16b7:3231`) has a third mode (start address `0x1B30`, mouse range
-  87..328) for a scrolled view, but its only caller `12a5:2d39` is an empty function: the
-  screen never scrolls.
+  87..328) for a scrolled view: the UEFA list (`12a5:233d`) shows rows 87..328 with it
+  (`Gfx::vga_show_page_teamed`, see `uefa.md`). Its other caller `12a5:2d39` is empty.
+* Unlike BMMAIN's (`MUL BL`, rows wrap at 256), TEAMED's library computes VRAM row
+  addresses with a 16-bit multiply (`MUL BX`, e.g. `16b7:1f36`): `Gfx::row_mask`.
 
 ## Screens and controls
 
@@ -76,7 +79,7 @@ letters of the 20 player slots. Below: 8x4 crests and the bar "LIGA"/"UEFA" at x
 | pointer over a crest | x < 0x137, view y 12..167, no club selected, club changed | panel (`panel_draw_hovered` `1000:24be`: name, league by group `(i>17)+(i>37)+(i>57)`, rank, `points[0]:points[1]`, `goals[0]:goals[1]`, font 3 colour 0x1D on 0xC) and player list (`12a5:0fd3`, slots 0..9 at x 0xA3, 10..19 at x 0xF6, row y `7i+0x12`, colour 0xB on 0xD) from the `MANA.DAT` buffers | `12a5:07a1` | `draw_hover_panel`, `draw_hover_players` |
 | pointer elsewhere | a club was shown, none selected | panel cleared (0x33,3)-(0x95,0x29) colour 0xC; the player list stays | `12a5:10d8` | main loop |
 | click bar, view y 12..89 | none selected | other page ("LIGA", clubs 32..63 / 0..31): screen off, `grid_draw_page` (`1000:2924`), screen on | `12a5:115d` | `draw_page` |
-| click bar, view y > 89 | none selected | UEFA screen (`12a5:233d`) | `12a5:1157` | stub `uefa::run` |
+| click bar, view y > 89 | none selected | UEFA screen (`12a5:233d`, `uefa.md`) | `12a5:1157` | `uefa::run` |
 | click on a crest | none selected | selects the club: crest into both boxes, crest editor in the lower half | `12a5:11b7` | `club::select` |
 | click PROGRAMM-ENDE | x 0x2B..0x6F, y 0x47..0x54, none selected | save question, see below | `12a5:12f6`, `22b8` | `end_program` |
 | click top-left pixel (0,0) | – | toggles `DS:0340` (initially 1) and paints (0x13D,0)-(0x13F,2) in colour `3 * (flag + 5)` (debug switch that gates the duplicate-name checks) | `12a5:04eb` | `club::toggle_debug` |
@@ -118,13 +121,14 @@ enlarged 4x4 at the left, 32 colour fields, the buttons "Iff-Bild laden", "Undo"
   VERZEICHNIS !") and the IFF reader (`1000:0268`, `04f1`, `049e`; big-endian helpers
   `1000:0068`/`00b4`; "FALSCHES GRAFIKFORMAT.", "X<=320,Y<=200,256FARBEN").
 
-### UEFA screen (package uefa, `uefa_screen` `12a5:233d`)
+### UEFA screen (package uefa, ported, `uefa_screen` `12a5:233d`, spec `uefa.md`)
 
 Black screen, two columns of the 136 foreign clubs (64..199) with their three strengths
 under "A M S" (`docs/re/mana.md` block 2), the bar stays at the right. Clicking a value
-edits it (`text_input`); a value that makes the cup too easy is refused with
+edits the club's name and its three strengths (`text_input`); a value that makes the
+cup too easy (average of all foreign strengths below 79) is refused with
 "EINGABE NICHT ANGENOMMEN, / UEFA-CUP SONST ZU LEICHT." (`dialog_message_uefa`
-`1000:1bd2`, `uefa_club_ptr` `12a5:2ce0`).
+`1000:1bd2`, `uefa_strength_ok` `12a5:2ce0`).
 
 ## Data model
 
@@ -153,7 +157,8 @@ Matched by instruction sequence (mnemonics, LCS similarity) against
 |---|---|---|
 | `16b7` (whole segment, 1.00 except below) | `45ac` graphics/mouse library | `crate::gfx::Gfx` |
 | `16b7:1ca0` vga_set_mode_x_320x240 | `45ac:1c80` (same code, other CRTC table) | `Gfx::vga_set_mode_x_teamed` |
-| `16b7:3231` vga_show_page (0.85, third mode) | `45ac:327d` | not needed (never scrolls) |
+| `16b7:3231` vga_show_page (0.85, third mode) | `45ac:327d` | `Gfx::vga_show_page_teamed` |
+| `16b7` VRAM row address (`MUL BX` instead of `MUL BL`) | `45ac` | `Gfx::row_mask` |
 | `1a46:000c..01e5`, `028b`, `02b1`, `04ee..051e`, `05c6`, `05ff`, `06cc`, `07ad..0855`, `0c14` | `4930` file, font, rastport, palette, mouse wrappers (1.00) | `Gfx` rastport layer, `Host` |
 | `1a46:0215`, `02d0`, `038d`, `040d`, `044e`, `09a8`, `0878`, `0ae4` (0.82..0.90) | same `4930` wrappers plus the bitmap origin | `Gfx::with_origin` in the shared wrappers |
 | `1a46:0646` palette_load_rgb4 (0.87) | `4930:0624` without the palette-slot branch | `Gfx::palette_load_rgb4` |
@@ -186,7 +191,7 @@ Editor-only code (to port): `1000:0000..0268`, `049e`, `04f1`, `0a7d..0d8c`, `0e
 
 Each package owns its source file(s) and spec, plugs in at the `TODO(#158)` stubs and
 extends `tests/visual/` with its own scenario (`teamed_<key>.*`). Shared stubs in
-`teamed/dialog.rs` (`message`, `text_input`) are implemented by package club; the others
+`teamed/dialog.rs`: `message` and `text_input` were implemented by package club; the others
 call them.
 
 ### Package `club` – selecting a club and editing its data (ported, `club.md`)

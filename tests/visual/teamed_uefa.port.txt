@@ -1,0 +1,87 @@
+# Port side of the team-editor UEFA scenario (bmp teamed --script syntax, milliseconds).
+# command: teamed
+# compare-file: MANA.DAT
+# In the UEFA list the screen shows rows 87.. and the mouse driver's y range is 87..328:
+# pointer y values here are driver (screen bitmap) rows; list row r is y 93 + 7r .. 99 + 7r.
+wait 2000
+click 318 200
+wait 1000
+shot u01-list
+move 50 96
+wait 300
+shot u02-highlight
+# FC LIVERPOOL (club 64): new name, all three strengths 10.
+click 50 96
+wait 300
+shot u03-name-input
+type TESTCLUB
+wait 300
+shot u04-name-typed
+key enter
+wait 300
+type 10
+wait 300
+shot u05-strength-typed
+key enter
+type 10
+key enter
+type 10
+key enter
+wait 300
+shot u06-club-edited
+# Clubs 65 and 66: name kept, strengths 10 (the average stays >= 79).
+click 50 102
+wait 300
+key enter
+type 10
+key enter
+type 10
+key enter
+type 10
+key enter
+wait 300
+click 50 109
+wait 300
+key enter
+type 10
+key enter
+type 10
+key enter
+type 10
+key enter
+wait 300
+shot u07-three-edited
+# Club 67: A = 10 and M = 10 are refused; M then gets the old A value (93).
+click 50 117
+wait 300
+key enter
+type 10
+key enter
+wait 2000
+shot u08-refused
+wait 8000
+type 10
+key enter
+wait 9000
+key enter
+wait 500
+shot u09-after-refusal
+# The other page and back, then "LIGA" returns to the crest grid. The pointer moves to
+# the bar first (as in DOSBox, where the move removes the row highlight before the click).
+move 318 200
+wait 300
+click 318 200
+wait 1000
+shot u10-page2
+click 318 200
+wait 1000
+move 318 125
+wait 300
+click 318 125
+wait 1000
+shot u11-grid
+# PROGRAMM-ENDE, "MACH MAL !": MANA.DAT with the strengths of clubs 0..63 recomputed.
+click 77 78
+wait 500
+click 115 190
+wait 1000
