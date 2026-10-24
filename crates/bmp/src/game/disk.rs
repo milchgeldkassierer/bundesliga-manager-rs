@@ -187,8 +187,11 @@ pub fn screen_save_game(
         session.saves.last_name = name;
         path
     } else {
-        host.data
-            .join(String::from_utf8_lossy(fixed_name).to_string())
+        // DOS file names ignore case: "autosave.man" is the AUTOSAVE.MAN of the game.
+        let path = host
+            .data
+            .join(String::from_utf8_lossy(&text_to_upper_de(fixed_name)).to_string());
+        find_case_insensitive(&path).unwrap_or(path)
     };
     if let Err(e) = savegame_write_man(
         &path,

@@ -426,6 +426,24 @@ fn office_handle_free_click(
     Ok(0)
 }
 
+/// `DS:026b`: the name of the automatic save.
+pub(crate) const AUTOSAVE_NAME: &[u8] = b"autosave.man";
+
+/// The automatic save at the start of an office turn: when the month end
+/// (`finance_daily_processing` 212a:0a6d) requested one (`DS:5256`), the game
+/// is saved to `"autosave.man"` without the file selector, then the request
+/// is cleared (after the save, so the flag is still set while it is written;
+/// the flag itself is not part of the save).
+///
+/// Origin: BMMAIN.EXE 18bc:0b5f (office_menu_dispatcher, 18bc:0b74..0b8f)
+fn office_autosave(host: &mut Host, session: &mut Session, state: &mut GameState) -> Run<()> {
+    if state.autosave_pending != 0 {
+        screen_save_game(host, session, state, AUTOSAVE_NAME)?;
+        state.autosave_pending = 0;
+    }
+    Ok(())
+}
+
 /// One office turn of the current manager. Returns when the turn ends.
 ///
 /// Origin: BMMAIN.EXE 18bc:0b5f (office_menu_dispatcher)
@@ -439,7 +457,7 @@ pub fn office_menu_dispatcher(
 ) -> Run<()> {
     let mut reopen: i16 = 0;
     let mut warned = false;
-    // DS:5256 (autosave request) is 0: no autosave here.
+    office_autosave(host, session, state)?;
     state.saved_manager = state.current_manager;
     let mut day_saved = state.day_counter;
     host.screen_fade(0)?;
@@ -621,6 +639,10 @@ pub fn office_menu_dispatcher(
                             if sel >= 1 {
                                 draw_main_icon(host, sel - 1, 0);
                             }
+                            // 18bc:18cc: no main icon is selected any more, so the
+                            // same icon opens its submenu again and a click on the
+                            // desk opens the mail.
+                            sel = -1;
                             reopen = 0;
                             continue 'main;
                         }
@@ -743,6 +765,51 @@ mod tests {
         );
         // The empty labels stay empty.
         assert!(plain(INFO_PANEL_LABELS[3]).is_empty());
+    }
+
+    /// The autosave requested by the month end is written as AUTOSAVE.MAN at the start of
+    /// the office turn (no file selector, nothing to click) and the request is cleared;
+    /// without a request nothing is written.
+    #[cfg(unix)]
+    #[test]
+    fn a_pending_autosave_is_written_and_cleared() {
+        use bmp_formats::savegame::SaveGame;
+        use bmp_game::rng::Rng;
+        let (Some(data), Some(save)) = (
+            bmp_formats::data_dir(),
+            bmp_formats::save_files().into_iter().next(),
+        ) else {
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("bmp-autosave-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // The game data, linked, except a shipped autosave (the copy must stay untouched).
+        for e in std::fs::read_dir(&data).unwrap().flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if !name.eq_ignore_ascii_case("autosave.man") {
+                std::os::unix::fs::symlink(e.path(), dir.join(&name)).unwrap();
+            }
+        }
+        let mut state =
+            GameState::from_savegame(&SaveGame::parse(&std::fs::read(save).unwrap()).unwrap())
+                .unwrap();
+        let mut host = Host::with_script(&dir, Vec::new(), &dir, false).unwrap();
+        let mut session = Session::new(Rng::new(1));
+        let file = dir.join("AUTOSAVE.MAN");
+
+        office_autosave(&mut host, &mut session, &mut state).unwrap();
+        let skipped = file.exists();
+        state.autosave_pending = 1;
+        office_autosave(&mut host, &mut session, &mut state).unwrap();
+        let written = std::fs::read(&file).ok();
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        assert!(!skipped, "no request, no autosave");
+        assert_eq!(state.autosave_pending, 0);
+        let written = SaveGame::parse(&written.expect("AUTOSAVE.MAN written")).unwrap();
+        let loaded = GameState::from_savegame(&written).unwrap();
+        assert_eq!(loaded.managers[0].name(), state.managers[0].name());
+        assert!(!session.save_disabled, "the autosave does not block saving");
     }
 
     fn fmt() -> NumberFormat {

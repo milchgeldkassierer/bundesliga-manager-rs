@@ -1,0 +1,31 @@
+# DOSBox side of the office_reopen scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN from the start menu, opens the tables submenu, closes it with a right
+# click, opens it again with the same icon, closes it and clicks the desk (the empty mail).
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+click 30 173 240
+wait 2
+shot o01-submenu
+click 160 230 240 3
+wait 2
+shot o02-closed
+click 30 173 240
+wait 2
+shot o03-reopened
+click 160 230 240 3
+wait 2
+click 150 200 240
+wait 3
+shot o04-mail
+click 254 170 240
+wait 3
+shot o05-office

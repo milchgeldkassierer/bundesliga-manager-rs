@@ -1,0 +1,39 @@
+# Port side of the office_reopen scenario (bmp run --script syntax, milliseconds): after a
+# right click closes a submenu, no main icon is selected any more (18bc:18cc): the same main
+# icon opens its submenu again, and a click on the desk opens the mail (office_handle_free_click
+# 18bc:08f2 opens it only while no main icon is selected).
+# Load 07072019.MAN (no mail), open the tables submenu, close it with a right click, open it
+# again with the same icon, close it, then click the desk: "Keine Nachricht vorhanden.".
+# seed: 35372
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+click 30 173
+wait 500
+shot o01-submenu
+rclick 160 230
+wait 500
+shot o02-closed
+click 30 173
+wait 500
+shot o03-reopened
+rclick 160 230
+wait 500
+move 150 200
+wait 100
+click 150 200
+wait 1000
+shot o04-mail
+move 254 170
+wait 100
+click 254 170
+wait 1000
+shot o05-office
