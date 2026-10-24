@@ -19,7 +19,7 @@ use crate::league::POINTS_PER_WIN;
 use crate::news::{MessageArg, NO_FREE_SLOT, message_delete, message_post, team_slot_free_index};
 use crate::rng::{NumberFormat, Rng, clamp_int, ldiv, lmul, lrem, lshr};
 use crate::runtime::Runtime;
-use crate::state::{Credit, GameState, Manager};
+use crate::state::{Credit, GameState, Manager, TRANSFER_LIST};
 
 /// Days per month, DS:07b8 (no leap years).
 pub const DAYS_IN_MONTH: [i8; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -474,8 +474,8 @@ pub fn finance_monthly_expenses(state: &GameState) -> i32 {
     for player in &state.squads[m][..own] {
         expenses = expenses.wrapping_add(player.market_value);
     }
-    let pool = usize::from(state.squad_player_count(4));
-    for player in &state.squads[4][..pool] {
+    let pool = usize::from(state.squad_player_count(TRANSFER_LIST));
+    for player in &state.squads[TRANSFER_LIST][..pool] {
         if usize::from(state.players[usize::from(player.player_id)].owner_manager) == m {
             expenses = expenses.wrapping_add(player.market_value);
         }
@@ -1040,10 +1040,10 @@ mod tests {
         s.squads[0][2].player_id = 2;
         s.squads[0][2].market_value = 30_000;
         // Pool players are paid by the manager who owns them.
-        s.squads[4][0].player_id = 5;
-        s.squads[4][0].market_value = 1000;
-        s.squads[4][1].player_id = 6;
-        s.squads[4][1].market_value = 2000;
+        s.squads[TRANSFER_LIST][0].player_id = 5;
+        s.squads[TRANSFER_LIST][0].market_value = 1000;
+        s.squads[TRANSFER_LIST][1].player_id = 6;
+        s.squads[TRANSFER_LIST][1].market_value = 2000;
         s.players[5].owner_manager = 0;
         s.players[6].owner_manager = 1;
         let m = &mut s.managers[0];
