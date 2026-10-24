@@ -869,6 +869,7 @@ for (r = half*second + 1; r < half + half*second + 1; r++) {          // u8
             if (cur > r) {                          // a match not played: its new day
                 for (k = 0; k < 20; k++) { e = &FAR:5715[5k];
                     if (e[1] == r && e[2] == T && 2*e[3] == j) week = e[0]; }
+                // no break: the last record wins, also a freed one (day 0 keeps its keys)
             } else week = fixture_week_of_nth_match(code, r);           // 1000:2895
             matchday_refresh(week);                 // 1310:1190: sets FAR:2eba / FAR:2e8e
             ui_draw_text_centered_shadow(rp, fmt(FAR:2eba) + "." + fmt(FAR:2e8e + 1) + ".",

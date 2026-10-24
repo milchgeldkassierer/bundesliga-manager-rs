@@ -13,7 +13,9 @@ use bmp_game::league::{
 };
 use bmp_game::rng::{NumberFormat, format_long_thousands, long_abs_diff};
 use bmp_game::season::calendar_compute_date;
-use bmp_game::state::GameState;
+use bmp_game::state::{
+    GameState, RESCHEDULED_DAY, RESCHEDULED_PAIR, RESCHEDULED_ROUND, RESCHEDULED_TIER,
+};
 
 use super::widgets::{TextButtons, ui_wait_right_click_button};
 use super::{GAME_OPTION_A, GAME_OPTION_B, Session, append_ordinal_suffix, text_to_upper_de};
@@ -1027,6 +1029,24 @@ fn fixture_half(rounds: i8, second: bool) -> (u8, u8) {
     (start, half.wrapping_add(start))
 }
 
+/// The day stored for the match at byte offset `j` of `tier`'s round `r` in the rescheduled
+/// matches. All 20 records are searched without a break and freed records (day 0) keep their
+/// round, tier and pair, so the last record that matches wins, even a stale one.
+///
+/// Origin: BMMAIN.EXE 1000:28c4 (screen_team_fixtures, 1000:2d3f..2d8a)
+fn rescheduled_week(state: &GameState, r: u8, tier: usize, j: usize) -> Option<u8> {
+    state
+        .rescheduled_matches
+        .iter()
+        .rev()
+        .find(|e| {
+            e[RESCHEDULED_ROUND] == r
+                && usize::from(e[RESCHEDULED_TIER]) == tier
+                && usize::from(e[RESCHEDULED_PAIR]) * 2 == j
+        })
+        .map(|e| e[RESCHEDULED_DAY])
+}
+
 /// "RESTPROGRAMM" of the club info: the matches of club `t` in one half of the season (the
 /// half of round `DS:225a + offset`) with the opponent, its place and strength, and the
 /// result, or the date of a match still to come (a rescheduled match the date of its new
@@ -1112,10 +1132,8 @@ pub fn screen_team_fixtures(
                 let res = round_result(state, tier, r as i8, j - 2);
                 if res[0] == NOT_PLAYED || cur <= r {
                     if cur > r {
-                        if let Some(e) = state.rescheduled_matches.iter().find(|e| {
-                            e[2] == r && usize::from(e[3]) == tier && usize::from(e[4]) * 2 == j - 2
-                        }) {
-                            week = e[1];
+                        if let Some(w) = rescheduled_week(state, r, tier, j - 2) {
+                            week = w;
                         }
                     } else {
                         week = fixture_week_of_nth_match(&state.week_competitions, code, r as i8);
@@ -1312,6 +1330,18 @@ fn draw_opponent_info_body(host: &mut Host, state: &GameState, t: u8, side: u8, 
 mod tests {
     use super::*;
     use bmp_game::state::GameState;
+
+    #[test]
+    fn the_last_matching_rescheduled_record_gives_the_day() {
+        let mut s = Box::new(GameState::zeroed());
+        assert_eq!(rescheduled_week(&s, 5, 1, 4), None);
+        // A live record in slot 0 and a freed one (day 0) with the same match in slot 3.
+        s.rescheduled_matches[0] = [0, 0x30, 5, 1, 2];
+        assert_eq!(rescheduled_week(&s, 5, 1, 4), Some(0x30));
+        s.rescheduled_matches[3] = [0, 0, 5, 1, 2];
+        assert_eq!(rescheduled_week(&s, 5, 1, 4), Some(0));
+        assert_eq!(rescheduled_week(&s, 5, 1, 2), None);
+    }
 
     #[test]
     fn the_remaining_fixtures_show_one_half_of_the_rounds() {
