@@ -1629,7 +1629,7 @@ functions, `_aFl*` long helpers, `mem_alloc/mem_free`, `far_memcpy_bytes(src, ds
 | FAR:016e | u8 | `slot` | 49 |
 | FAR:0178/0179 | u8[4][2] | `mgr_sub_limits` | — |
 | FAR:0ecc+0x36*t | struct[64] | `team_stats` (T) | 16 |
-| FAR:1d14 | u8[4] | `mgr_played_this_slot` | — |
+| FAR:1d14 | u8[4] | `manager_plays_now`: manager m's team plays now; set by 2a58:20b2, cleared by 27c2:1226 (which also writes FAR:1d13 + r) and by the season loop, read by 1310:2ee5 and the news code | — |
 | FAR:1d1c | u8[4][6] | `mgr_sub_slots` (0x7f = empty) | — |
 | FAR:1d34 | u8[3][10] | `message_timer` | 44 |
 | FAR:1d52 | 20 x 58 bytes | high-score table | HIGH.XY |

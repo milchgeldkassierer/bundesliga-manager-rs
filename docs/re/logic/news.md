@@ -947,7 +947,7 @@ buf[4] = 0` ("12" becomes "1.20", "5" becomes "5."). It then draws
 | FAR:57af | u8 | read through the `%xD` defect | block 26 (FAR:57aa[5]) |
 | FAR:2e7e | u8[~16] | `news_template_list` | – |
 | FAR:4d3c | u8 at stride 8, 32 per manager | `player_match_grade[m][i]` | – |
-| FAR:1d14 | u8[4] | `manager_played_today` | – |
+| FAR:1d14 | u8[4] | `manager_plays_now`: manager m's team plays now; set by 2a58:20b2, cleared by 27c2:1226 (which also writes FAR:1d13 + r) and by the season loop, read by 1310:2ee5 and the news code | – |
 | FAR:5358 | u8 | `message_manager` / current manager for grading | block 4 |
 | FAR:774a | 0x34 x 25 x 5 | player squad records (+0x09, +0x0a, +0x0d, +0x0f, +0x10..+0x15) | block 18 |
 | FAR:57dd | 0x25 x 151 | player table (name at +0, flag at +0x1f = FAR:57fc) | block 17 |

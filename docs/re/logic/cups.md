@@ -85,8 +85,9 @@ The three European cups always advance in lockstep; code that needs "the" Europe
 | DS:2280 | `[95]` | 50 | per-week competition mask, see §0.4 |
 
 Non-saved working globals of this area: `FAR:57c8` (u16, "show the draw" flag), `FAR:57dc` (u8,
-relegation mode), `FAR:1d14..1d17` (per-manager "own team in a penalty shoot-out" flags, index
-`manager+1` via `FAR:1d13[r]`), `FAR:2e99` (u8, "a human team is in extra time"), `FAR:570e` (u16, lamp
+relegation mode), `FAR:1d14..1d17` (`manager_plays_now`, per-manager "own team plays now" flags; 27c2:1226 clears
+them and sets the byte again at index `manager+1` via `FAR:1d13[r]` for a human team whose DFB-Pokal tie
+is level and goes on), `FAR:2e99` (u8, "a human team is in extra time"), `FAR:570e` (u16, lamp
 animation phase), bitmaps `FAR:3058/305a`, `FAR:3062/3064`, `FAR:2ebe/2ec0`, `FAR:6db4/6db6` and their
 pixel pointers `FAR:a6d0`, `FAR:a6d4`, `FAR:0174`, `FAR:5158`.
 
@@ -904,7 +905,7 @@ later (18bc:0888) `cup_draw_first_round(0, 0)` and `cup_draw_first_round(c, 1)` 
 | FAR:4c7e[4][32] | u8 | `cup_match_goals` | 33 |
 | FAR:21c2[4][32] (rows 1..3 = FAR:21e2) | u8 | `cup_first_leg_goals` | 29 |
 | FAR:1d17[c] (c=1..3 → 1d18..1d1a) | u8 | `euro_second_leg_pending` | 31 |
-| FAR:1d14..1d17 (via FAR:1d13+r) | u8 | `manager_in_shootout` | not saved |
+| FAR:1d14..1d17 (via FAR:1d13+r) | u8 | `manager_plays_now`: manager m's team plays now; set by 2a58:20b2, cleared by 27c2:1226 (which also writes FAR:1d13 + r) and by the season loop, read by 1310:2ee5 and the news code | not saved |
 | FAR:57aa[3][6] (read as 57a4+c*6) | u8 | `euro_qualifiers` | 26 |
 | FAR:56fe[10] | u8 | `euro_qualified_list` | 25 |
 | FAR:2e74 | u8 | `euro_qualified_count` | not saved |
