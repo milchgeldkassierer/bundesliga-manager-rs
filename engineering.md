@@ -3,7 +3,7 @@
 See [factory workflow policy](factory/WORKFLOW_POLICY.md) for factory-specific shared-workflow requirements.
 
 ## Language
-- **All source code is English only**: identifiers, comments, doc comments, log/panic messages, test names, commit-relevant code text. No German in `.rs`, scripts or config comments.
+- **All source code and documentation are English only**: identifiers, comments, doc comments, log/panic messages, test names, commit-relevant code text. No German in `.rs`, scripts, config comments, docs, issues or PR text.
 - User-facing game text stays exactly as in the original (German), loaded from or matching the original data/executable.
 
 ## Fidelity

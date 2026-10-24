@@ -1,7 +1,7 @@
 # Holdout
 
-Hinweis: Diese Datei ist für den Builder lesbar und daher **kein** echter Holdout.
-Private Szenarien (z. B. DOSBox-Referenzbilder) liegen außerhalb des Repos unter `$BMP_HOLDOUT`.
+Note: this file is readable by the builder and therefore **not** a real holdout.
+Private scenarios (e.g. DOSBox reference frames) live outside the repo under `$BMP_HOLDOUT`.
 
-## H1 – Unbekannte Argumente
-`bmp --version --foo` darf nicht abstürzen (kein Panic, Exit-Code 0 oder 2).
+## H1 – Unknown arguments
+`bmp --version --foo` must not crash (no panic, exit code 0 or 2).
