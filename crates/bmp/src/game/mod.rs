@@ -254,6 +254,7 @@ pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, 
         }
         start_menu::Outcome::LoadGame(state) => (*state, true),
     };
+    host.sync_options(&state);
     let bitmaps = office::OfficeBitmaps::load(host, if resume { 1 } else { 2 })?;
     // TODO(#7): tore_scene_open 24a4:0419 opens TORE\ANZAHL for the goal scenes.
     Ok(season::season_main_loop(

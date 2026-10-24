@@ -3843,7 +3843,7 @@ mod tests {
                 1,
                 FinanceEvent::ConstructionFinished {
                     item: 5,
-                    shown: Some(text),
+                    shown: Some((text, _)),
                 },
             ),
         ] = &events[..]

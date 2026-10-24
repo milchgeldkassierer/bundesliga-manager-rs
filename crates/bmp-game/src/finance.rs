@@ -40,8 +40,10 @@ pub enum FinanceEvent {
         item: usize,
         /// The message the original shows at once and deletes again (in the
         /// winter break and after the season's last day); `None`: it went to
-        /// the inbox through [`message_queue_add`].
-        shown: Option<Vec<u8>>,
+        /// the inbox through [`message_queue_add`]. The second value is the
+        /// manager's message count `DS:0618[FAR:5358]` while it is shown (the
+        /// message itself included), which the viewer's "down" button reads.
+        shown: Option<(Vec<u8>, u8)>,
     },
     /// "Ihr Kredit von `<lender>` wurde heute fällig." The loan was repaid.
     LoanDue {
@@ -257,8 +259,10 @@ pub fn stadium_construction_daily(
             state.saved_manager = state.current_manager;
             let args = lines.map(MessageArg::Text);
             let msg = message_post(state, rng, fmt, true, SHOWN_TEMPLATE, &args);
+            let saved = usize::from(state.saved_manager as u8);
+            let count = state.message_counts.get(saved).copied().unwrap_or(0);
             message_delete(state, msg.pointer);
-            Some(msg.text)
+            Some((msg.text, count))
         } else {
             message_queue_add(state, rng, fmt, lines, 1, 0);
             None
@@ -908,7 +912,7 @@ mod tests {
             let [
                 FinanceEvent::ConstructionFinished {
                     item: 0,
-                    shown: Some(text),
+                    shown: Some((text, _)),
                 },
             ] = &events[..]
             else {

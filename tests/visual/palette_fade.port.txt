@@ -1,0 +1,49 @@
+# Port side of the palette_fade scenario (bmp run --script syntax, milliseconds): the
+# settings option "Blenden" (DS:060c) makes screen_fade 176b:1416 fade palette entries
+# 0..31 out and in instead of switching the screen off and on. Load 07072019.MAN, switch
+# "Blenden" on, leave the settings (the office fades in), open the high scores and go back.
+# The frames are taken after the fades ended: the colours must be the original ones again.
+# seed: 49505
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 161 132
+wait 100
+click 161 132
+wait 1000
+move 245 127
+wait 100
+click 245 127
+wait 500
+shot f01-fade-on
+move 293 213
+wait 100
+click 293 213
+wait 2000
+shot f02-office
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 216
+wait 100
+click 107 216
+wait 2000
+shot f03-highscore
+move 160 120
+wait 100
+click 160 120
+wait 2000
+shot f04-office

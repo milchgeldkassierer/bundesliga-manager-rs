@@ -410,6 +410,7 @@ pub fn screen_settings(host: &mut Host, session: &mut Session, state: &mut GameS
                     && (my as u16) < (y + 0x12) as u16
                 {
                     state.options[i] = u8::from(mx < x + 0x1a);
+                    host.sync_options(state);
                     settings_draw_toggle(host, pic, x, y, i16::from(state.options[i]));
                 }
             }

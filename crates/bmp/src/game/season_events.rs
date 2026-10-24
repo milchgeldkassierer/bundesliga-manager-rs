@@ -8,6 +8,7 @@ use bmp_game::rng::{NumberFormat, format_long_thousands, ldiv};
 use bmp_game::season::SpecialDate;
 use bmp_game::state::GameState;
 
+use super::messages::screen_messages;
 use super::office_show_cached_background;
 use super::widgets::{dialog_okay_auto, ui_draw_manager_header};
 use crate::gfx::{BitmapId, ui_draw_frame, ui_draw_text_centered_shadow, ui_fill_rect};
@@ -194,14 +195,15 @@ pub struct HeaderBitmaps {
     pub crests: BitmapId,
 }
 
-/// The dialogs of manager `m`'s day of finances: a loan that fell due is shown over the
-/// office background with the manager's header ("Ihr Kredit von <lender> wurde heute
-/// f{llig.").
+/// The screens of manager `m`'s day of finances, in the order of `events`:
 ///
-/// TODO(#82): a construction finished in the winter break or after the season's last day is
-/// shown at once by `message_find_owner` (4091:0a4e, the message viewer of
-/// `screen_messages` 4091:05c4); the port does not show it yet (the viewer is
-/// `messages::screen_messages`, called with the message).
+/// * a construction that finished in the winter break or after the season's last day
+///   (`stadium_construction_daily` 1000:20e1, 1000:2295..234c): the message is shown at once
+///   in the mail viewer over the office background with the manager's header
+///   (`message_post` with `show` set calls `screen_messages`), then the screen goes off and
+///   the buttons are removed;
+/// * a loan that fell due, shown over the office background with the manager's header
+///   ("Ihr Kredit von <lender> wurde heute f{llig.").
 ///
 /// Origin: BMMAIN.EXE 212a:0a6d (finance_daily_processing, 212a:0d1a..0e3e)
 pub fn finance_dialogs(
@@ -214,8 +216,22 @@ pub fn finance_dialogs(
 ) -> Run<()> {
     let mi = usize::from(m) & 3;
     for e in events {
-        let FinanceEvent::LoanDue { lender } = *e else {
-            continue;
+        let lender = match e {
+            FinanceEvent::LoanDue { lender } => *lender,
+            FinanceEvent::ConstructionFinished {
+                shown: Some((text, count)),
+                ..
+            } => {
+                office_show_cached_background(host)?;
+                let name = state.managers[mi].name().to_vec();
+                ui_draw_manager_header(host, mi, &name, bitmaps.portraits, bitmaps.crests);
+                let inbox = state.messages.get(mi).map_or(&[][..], Vec::as_slice);
+                screen_messages(host, inbox, *count, Some(text), auto)?;
+                host.screen_fade(0)?;
+                host.ui.redraw_buttons(&mut host.g, &mut host.rp, 0x7f, 0);
+                continue;
+            }
+            FinanceEvent::ConstructionFinished { shown: None, .. } => continue,
         };
         let who = if lender == BANK {
             b"der Bank".to_vec()
@@ -241,6 +257,41 @@ pub fn finance_dialogs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A construction finished in the winter break opens the mail viewer with its message;
+    /// a click on the exit button closes it and the screen goes off (1000:2295..234c).
+    /// Needs `BMP_DATA`.
+    #[test]
+    fn a_construction_shown_at_once_waits_in_the_mail_viewer() {
+        use crate::host::parse_script;
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let script = parse_script("wait 300\nshot unused\nclick 254 170\nwait 300\n").unwrap();
+        let shots = std::env::temp_dir().join(format!("bmp-construction-{}", std::process::id()));
+        std::fs::create_dir_all(&shots).unwrap();
+        let mut host = Host::with_script(&data, script, &shots, false).unwrap();
+        let pics = super::super::start_menu::Pictures::load(&mut host).unwrap();
+        let bitmaps = HeaderBitmaps {
+            portraits: pics.portraits,
+            crests: pics.crest_cache,
+        };
+        let mut state = GameState::program_start();
+        state.manager_count = 1;
+        let text = b"Mo 01.12.1993^Die Stadionrenovierung^ist abgeschlossen.^ ^".to_vec();
+        let events = [FinanceEvent::ConstructionFinished {
+            item: 5,
+            shown: Some((text, 1)),
+        }];
+        finance_dialogs(&mut host, &state, 0, &events, bitmaps, false).unwrap();
+        assert_eq!(
+            host.script_clicks_left(),
+            0,
+            "the viewer waited for the click"
+        );
+        assert!(host.g.blanked, "screen_fade(0) after the viewer");
+        std::fs::remove_dir_all(&shots).unwrap();
+    }
 
     #[test]
     fn the_christmas_bonus_lines_split_the_bonus_by_tier() {

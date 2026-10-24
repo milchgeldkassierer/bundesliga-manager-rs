@@ -27,6 +27,10 @@ const TICKS_PER_SECOND: f64 = 1_193_182.0 / 65_536.0;
 
 /// Virtual milliseconds that pass per [`Host::pump`] call in the scripted backend.
 const SCRIPT_MS_PER_PUMP: u64 = 1;
+/// The refresh rate of VGA mode X: one DAC upload of a palette fade per retrace.
+const VRETRACE_HZ: f64 = 70.0;
+/// `GameState::options` index of "Blenden" (`DS:060c` = `DS:05fe + 14`).
+pub const PALETTE_FADE_OPTION: usize = 14;
 
 /// The game's font numbers (`ui_set_font` 176b:0c91) map to library indices: the
 /// name table at `DS:012a` lists `flow`, `micro4`, `newbold` for game fonts 1..3,
@@ -162,6 +166,9 @@ pub struct Host {
     pub auto_play: bool,
     /// `DS:014a`: last `screen_fade` state.
     fade_state: u8,
+    /// `DS:060c`: the settings option "Blenden" (`GameState::options[14]`), mirrored here
+    /// because `screen_fade` reads it. [`Host::sync_options`] keeps it equal to the state.
+    pub palette_fade: bool,
     keys: VecDeque<u8>,
     /// A key went down that produced no character (e.g. a cursor key); read by
     /// [`Host::key_hit`].
@@ -196,6 +203,7 @@ impl Host {
             office_bg_cached: false,
             auto_play: false,
             fade_state: 0xff,
+            palette_fade: false,
             keys: VecDeque::new(),
             key_down: false,
             raw_video: false,
@@ -605,22 +613,68 @@ impl Host {
 
     // ----- screen -----------------------------------------------------------------------
 
-    /// Turns the screen off (0) or on (1) when the state changes. With the palette
-    /// fade option `DS:060c` set (default 0, not modelled yet) the original fades
-    /// palette entries 0..31 instead.
+    /// Turns the screen off (0) or on (1) when the state changes. With the option
+    /// "Blenden" (`DS:060c`, [`Host::palette_fade`]) set, palette entries 0..31 are faded
+    /// out to black before the screen goes off, or faded in from black after it went on;
+    /// the screen palette keeps its colours either way.
     ///
     /// Origin: BMMAIN.EXE 176b:1416 (screen_fade)
     pub fn screen_fade(&mut self, on: u8) -> Run<()> {
-        if on != self.fade_state {
-            self.fade_state = on;
+        if on == self.fade_state {
+            return Ok(());
+        }
+        self.fade_state = on;
+        if !self.palette_fade {
+            self.g.vga_wait_vretrace();
             if on == 0 {
                 self.g.video_screen_off();
             } else {
                 self.g.video_screen_on();
             }
-            self.pump()?;
+            return self.pump();
         }
+        let mut words = [0u16; 32];
+        for (i, w) in words.iter_mut().enumerate() {
+            *w = self.g.palette_get_rgb4(i as u8);
+            if on != 0 {
+                self.g.palette_set_entry(i as u8, 0, 0, 0);
+            }
+        }
+        if on == 0 {
+            self.palette_fade_frames(&words, false)?;
+            self.g.video_screen_off();
+        } else {
+            self.g.video_screen_on();
+            self.palette_fade_frames(&words, true)?;
+        }
+        self.g.palette_load_rgb4(&words, 32);
+        self.pump()
+    }
+
+    /// Runs `vga_set_palette_rgb4`'s fade and shows each of its 30 DAC uploads for one
+    /// vertical retrace (1/70 s): the routine waits for the retrace before every upload.
+    ///
+    /// Origin: BMMAIN.EXE 45ac:33ca (vga_set_palette_rgb4)
+    fn palette_fade_frames(&mut self, words: &[u16; 32], fade_in: bool) -> Run<()> {
+        let frames = self.g.vga_set_palette_rgb4(words, fade_in);
+        let last = self.g.dac;
+        let start = self.now_secs();
+        for (k, f) in frames.iter().enumerate() {
+            for (e, c) in f.iter().enumerate() {
+                self.g.dac[e] = [c[0] & 0x3f, c[1] & 0x3f, c[2] & 0x3f];
+            }
+            let until = start + (k + 1) as f64 / VRETRACE_HZ;
+            while self.now_secs() < until {
+                self.pump()?;
+            }
+        }
+        self.g.dac = last;
         Ok(())
+    }
+
+    /// Mirrors the options of `state` that the host itself reads (`DS:060c`).
+    pub fn sync_options(&mut self, state: &bmp_game::state::GameState) {
+        self.palette_fade = state.options[PALETTE_FADE_OPTION] != 0;
     }
 
     /// Stores the three palettes of `PIC\1.PAL` in off-screen VRAM (plane `i` at
@@ -744,6 +798,42 @@ mod tests {
                 ScriptStep::Quit,
             ]
         );
+    }
+
+    /// With "Blenden" set, `screen_fade` fades palette entries 0..31 over 30 retraces
+    /// (about 0.43 s) and leaves the colours as they were; without it, it only switches
+    /// the screen. Needs `BMP_DATA` (the fonts).
+    #[test]
+    fn screen_fade_fades_the_palette_with_the_option() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let steps = parse_script("wait 100000\n").unwrap();
+        let mut host = Host::with_script(&data, steps, &data, false).unwrap();
+        // Multiples of 4: `palette_load_rgb4` restores 4-bit channels.
+        for i in 0..32u8 {
+            host.g
+                .palette_set_entry(i, (i % 16) * 4, 0x3c - (i % 16) * 4, 0x20);
+        }
+        let colours = host.g.dac;
+        let t0 = host.now_secs();
+        host.screen_fade(1).unwrap();
+        assert!(host.now_secs() - t0 < 0.01, "no fade without the option");
+        host.palette_fade = true;
+        let t0 = host.now_secs();
+        host.screen_fade(0).unwrap();
+        assert!(host.g.blanked);
+        let t1 = host.now_secs();
+        assert!(
+            (0.42..0.45).contains(&(t1 - t0)),
+            "fade out took {}",
+            t1 - t0
+        );
+        assert_eq!(host.g.dac, colours);
+        host.screen_fade(1).unwrap();
+        assert!(!host.g.blanked);
+        assert!((0.42..0.45).contains(&(host.now_secs() - t1)));
+        assert_eq!(host.g.dac, colours);
     }
 
     #[test]

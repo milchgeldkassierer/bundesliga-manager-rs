@@ -506,7 +506,11 @@ pub fn period_start(
     ui.live.cup_mask = cup_mask;
     ui.live.shown = rt.live_match_shown != 0;
     if !ui.live.shown {
-        ui.host.screen_fade(1)?;
+        // The screen comes back without the palette fade (`DS:060c` cleared around the call).
+        let fade = std::mem::replace(&mut ui.host.palette_fade, false);
+        let on = ui.host.screen_fade(1);
+        ui.host.palette_fade = fade;
+        on?;
     } else {
         match_draw_live_screen(ui, state, rt, cup_mask != 0)?;
         state.ticker_slots = ui.live.slots;

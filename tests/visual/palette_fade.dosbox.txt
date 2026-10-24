@@ -1,0 +1,32 @@
+# DOSBox side of the palette_fade scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN, switches the settings option "Blenden" on, leaves the settings,
+# opens the high scores and goes back to the office; every frame after the fades ended.
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+click 291 173 240
+wait 3
+click 161 132 240
+wait 5
+click 245 127 240
+wait 3
+shot f01-fade-on
+click 293 213 240
+wait 5
+shot f02-office
+click 291 173 240
+wait 3
+click 107 216 240
+wait 6
+shot f03-highscore
+click 160 120 240
+wait 5
+shot f04-office

@@ -649,6 +649,8 @@ pub fn screen_load_game(
     };
     session.saves.last_name = name;
     session.copy_protection_ok = state.ds_05fa[0] != 0;
+    // The save sets `DS:060c` ("Blenden") with the other options.
+    host.sync_options(&state);
     let screen_crest = pics.crest_cache;
     for m in 0..usize::from(state.manager_count).min(4) {
         let team = state.managers[m].team as usize;
