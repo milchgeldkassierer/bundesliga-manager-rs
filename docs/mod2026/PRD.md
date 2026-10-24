@@ -46,7 +46,7 @@ Everything else plays like version 1.0.0.
   - The team editor recomputes the strengths from that table.
 - **Crests:** `PIC/<n>.VGA` with n = 80..143, selected by block 1 of MANA.DAT. Format:
   `docs/re/vga.md`.
-- **3. Liga:** it has 20 clubs, which fits the third group (20 slots) exactly.
+- **3. Liga:** it has 20 clubs, which fits the third group, the original "Amateur-Oberliga" (20 slots, 38 match days), exactly.
 - **2. Bundesliga:** it has 18 clubs today, but the game's second group has 20. This is the only
   league-size mismatch.
 
@@ -62,12 +62,62 @@ Everything else plays like version 1.0.0.
     the 2. Bundesliga.
   - 2. Bundesliga: 17th and 18th go down; the 16th plays the play-off against the 3rd of the
     3. Liga. The 1st and 2nd go up.
-  - 3. Liga: 1st and 2nd go up; the 17th to 20th go down. They are replaced the way the original
-    replaces relegated amateur clubs. Ticket 1 finds out how that works.
-- Ticket 1 checks every place that hard-codes 18/20/20, 38 or 58: league order lists, fixture
-  generator, tables, newspaper, cup qualification, statistics and save games. It lists them in
-  `docs/mod2026/league-structure.md` before any code changes.
-- With the original data the game keeps 18 / 20 / 20.
+  - 3. Liga: 1st and 2nd go up; the 17th to 20th go down into the Regionalliga pool.
+- **Club slots** (owner decision 2026-10-24):
+
+  | tier | club slots | clubs | match days | relegated directly | relegation play-off |
+  |---|---|---|---|---|---|
+  | Bundesliga | 0..17 | 18 | 34 | 2 | 16th vs 3rd of the 2. Bundesliga |
+  | 2. Bundesliga | 18..35 | 18 | 34 | 2 | 16th vs 3rd of the 3. Liga |
+  | 3. Liga | 36..55 | 20 | 38 | 4 | none |
+  | Regionalliga pool | 56..63 | 8 | none | none | none |
+
+  The original keeps these values in tables: team count `DS:225e`, rounds `DS:2262`, relegated
+  `DS:2266`, play-off flag `DS:226a`, first rank `DS:226e`, id ranges `DS:2272`. The mod sets them
+  to the values above. The original's tier 3, "everything above 58", becomes the pool 56..63.
+- **Regionalliga pool:**
+  - 8 real Regionalliga clubs of 2026/27, with squads and crests, for example the leaders of the
+    five Regionalligen.
+  - The 4 clubs relegated from the 3. Liga swap places with 4 pool clubs, so no club leaves the
+    game.
+  - The pool clubs that go up are chosen the way the original picks replacement clubs (#177):
+    the same rule, applied to the pool.
+- **Relegation play-off 2. Bundesliga vs 3. Liga:** the original only has the play-off between
+  tiers 0 and 1. The mod plays the second pairing the same way: the same logic, screens and
+  newspaper, with the tier numbers changed.
+- **Texts:** the third tier is called "3. LIGA" in every text: tables, newspaper, statistics,
+  history, manager offers and the start menu. In the original it is "AMATEUR-OBERLIGA" or
+  "AMATEURLIGA".
+- **Inventory:** #176 lists every place that hard-codes 18/20/20, 38 or 58: league order lists,
+  fixture generator, tables, newspaper, cup qualification, statistics and save games. All of them
+  must follow the mod values.
+- **Original data:** without `MOD2026.DAT` the game keeps 18 / 20 / 20 and every original rule.
+
+### R1b Three-point rule (mod data only)
+
+- A win gives 3 points, a draw 1 and a loss 0. Tables show the points as a single number, as is
+  usual today, instead of the original's "plus:minus" pair, if the column fits. Otherwise the
+  "plus:minus" layout stays with the 3-point values.
+- **Ranking:** points, then goal difference, then goals scored, as the original ranks apart from
+  the points.
+- **Everywhere:** every place that computes, stores or shows league points follows the rule:
+  tables, newspaper, statistics, eternal table, manager history, season-end ceremonies and the AI
+  and finance logic that reads points.
+- **Saves:** mod saves keep the save format. The points fields hold the 3-point values.
+
+### R1c Real names of the European cups (mod data only)
+
+- **Renames:** in every text that names a European cup (statistics, history, newspaper, draws,
+  match day, titles, the manager's trophy cabinet, offers):
+  - "Pokal der Landesmeister" / "LANDESMEISTER" → "Champions League" / "CHAMPIONS LEAGUE";
+  - "Pokal der Pokalsieger" / "POKALSIEGER" → "Europa League" / "EUROPA LEAGUE";
+  - "UEFA-Pokal" / "UEFA-Cup" → "Conference League" / "CONFERENCE LEAGUE".
+  Abbreviated forms, for example "POKAL DER LANDESM.", get matching short forms ("CHAMPIONS L.",
+  "EUROPA L.", "CONFERENCE L.") that fit the same widths.
+- **Format:** the competitions keep the original's format and qualification. Only the names
+  change.
+- **Text widths:** every renamed text must fit its original field. Where it does not, a shorter
+  form is used and recorded in `docs/mod2026/CHANGES.md`.
 
 ### R2 Season 2026/27
 
@@ -87,8 +137,10 @@ Everything else plays like version 1.0.0.
 - Clubs promoted into the 3. Liga for 2026/27 take their Regionalliga rank.
 - Strengths are recomputed from the table as the team editor does. 3. Liga clubs get table-based
   strengths too instead of the purely random ones.
-- **Points:** the table holds the 2-point values the format expects. Converting 3-point data to
-  that form is documented.
+- **Points:** MANA.DAT block 3 holds a [plus, minus] pair, and the strength recomputation reads
+  it as 2-point values. The generator converts the real 2025/26 table into that pair
+  (2 x wins + draws, 2 x losses + draws), so the recomputation keeps its meaning. The 3-point
+  rule (R1b) applies to the game played in the mod.
 
 ### R4 Squads
 
@@ -166,5 +218,6 @@ Beside it, when the mod data is active, the SDL host keeps a second indexed **di
 ## Out of scope for now
 
 - Foreign UEFA clubs (they keep the 1992 data).
-- The 3-point rule and other modern rule changes, unless the owner asks for them.
+- Modern rule changes other than R1, R1b and R1c, unless the owner asks for them.
+- The format of the European cups (only their names change, R1c).
 - The English edition (#118).
