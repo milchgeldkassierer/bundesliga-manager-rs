@@ -4,6 +4,9 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use bmp_formats::font::encode_cp437;
+use bmp_formats::mana::{self, ManaDat};
+
 fn bmp<const N: usize>(args: [&OsStr; N]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_bmp"))
         .args(args)
@@ -24,12 +27,12 @@ fn build(from: &Path, out: &Path) -> Output {
     ])
 }
 
-/// A fresh directory below the system temp directory holding a single file `MANA.DAT`.
+/// A fresh directory below the system temp directory holding a single, zeroed `MANA.DAT`.
 fn source(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("bmp-mod2026-cli-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("MANA.DAT"), [1]).unwrap();
+    std::fs::write(dir.join("MANA.DAT"), vec![0; mana::FILE_SIZE]).unwrap();
     dir
 }
 
@@ -86,7 +89,11 @@ fn build_writes_the_copy_and_the_marker() {
     let output = build(&from, &out);
 
     assert!(output.status.success(), "{output:?}");
-    assert_eq!(std::fs::read(out.join("MANA.DAT")).unwrap(), [1]);
+    let mana = ManaDat::parse(&std::fs::read(out.join("MANA.DAT")).unwrap()).unwrap();
+    assert_eq!(
+        mana.clubs[0].name_bytes(),
+        encode_cp437("FC BAYERN MÜNCHEN")
+    );
     assert!(out.join("MOD2026.DAT").is_file());
     std::fs::remove_dir_all(&from).unwrap();
     std::fs::remove_dir_all(&out).unwrap();

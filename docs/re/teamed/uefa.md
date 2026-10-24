@@ -1,6 +1,6 @@
 # TEAMED.EXE – package `uefa`: the UEFA strength list and the save
 
-Status: ported (`crates/bmp/src/teamed/uefa.rs`, `teamed/save.rs`; `text_input` in
+Status: ported (`crates/bmp/src/teamed/uefa.rs`, `teamed/save.rs`, `crates/bmp-game/src/strength.rs`; `text_input` in
 `teamed/dialog.rs` is shared with package club), scenario `tests/visual/teamed_uefa.*` (11 frames at 100 %, `MANA.DAT`
 identical to the file the original writes). Addresses are Ghidra addresses in
 `/unpacked/TEAMED_unpacked.EXE` (see `overview.md`); `DS` is DGROUP `2256`.

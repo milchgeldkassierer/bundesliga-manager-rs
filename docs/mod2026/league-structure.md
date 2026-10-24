@@ -60,7 +60,7 @@ the category sections below list only the sites that use them.
 | Season end | `crates/bmp-game/src/cups.rs:832`, 835 | `season_promotion_relegation` | DS:2278 | 58 | first non-league club id (58..63 are the non-league German clubs); the port computes it as the sum of the tier counts |
 | Fixture generator | `crates/bmp-game/src/league.rs:57` | `PAIRINGS` | DS:06fc, DS:0744 | 17, 19, 37 | round permutations: strings 1..17 for 18-club tiers, 19..37 for 20-club tiers |
 | League order lists | `crates/bmp/src/teamed/club.rs:20`, 23 | `GROUP_FIRST`, `GROUP_RANKS` | TEAMED.EXE DS:0338, DS:033c | 0, 18, 38, 58 / 18, 20, 20, 20 | team editor: first club and highest rank per league group (group 3 = clubs 58..63) |
-| Tables | `crates/bmp/src/teamed/save.rs:50`, 52 | `GROUP_BASE`, `GROUP_SIZE` | TEAMED.EXE DS:0554, DS:033c | 70, 34, 20 / 18, 20, 20 | team editor: base strength and clubs per league for the strength recomputation (rank term `size - rank`) |
+| Tables | `crates/bmp-game/src/strength.rs:36` | `ORIGINAL` | TEAMED.EXE DS:0554, DS:033c | 70, 34, 20 / 18, 20, 20 | team editor: base strength and clubs per league per group of the strength recomputation (rank term `size - rank`) |
 | League order lists | `crates/bmp-game/src/state.rs:785` | `GameState::league_teams` | FAR:535a | 20 | order list `[tier][20]`; the stride 20 is the largest tier |
 | Fixture generator | `crates/bmp-game/src/state.rs:719` | `GameState::league_results` | FAR:6ddc | 38, 20 | results `[tier][38][20]`; stride of 38 rounds and 20 slots |
 
@@ -68,7 +68,8 @@ The same values are defined more than once in the port: `league.rs` (`LEAGUE_*`)
 (`TIER_*` and the `Runtime` copies), `cups.rs` and `tables.rs` (`RELEGATION_PLACES`),
 `finance.rs` (`RELEGATION_PLAYOFF`), `highscore.rs` (`TIER_BASE`) and `scorers.rs`
 (`TIER_RANGE`), and in the team editor `teamed/club.rs` (`GROUP_FIRST`, `GROUP_RANKS`),
-`teamed/save.rs` (`GROUP_SIZE`, `strength_group`) and `teamed/mod.rs` (`league_group`). A change
+`teamed/mod.rs` (`league_group`), and its strength recomputation in `bmp-game` `strength.rs`
+(`ORIGINAL`, and the generator's `MOD2026`, which repeats the slot table of `clubs.json`). A change
 of a league size has to change all of them, or first make them one definition.
 
 ## League order lists
@@ -154,8 +155,7 @@ of a league size has to change all of them, or first make them one definition.
 | Tables | `crates/bmp/src/game/tables.rs:565` | `EURO_PLACES` / `screen_league_table` | DS:226d (3a41:214c at 3a41:259b) | 4 | European places marked in the Bundesliga table | reader |
 | Tables | `crates/bmp/src/game/tables.rs:567` | `RELEGATION_PLACES` / `screen_league_table` | DS:2266 (3a41:214c at 3a41:25ed) | 3, 4, 4 | relegation places marked at the bottom of the table | reader |
 | Tables | `crates/bmp/src/game/tables.rs:575` | `PROMOTION_PLACES` / `screen_league_table` | DS:2265 + L (3a41:214c at 3a41:2630) | 0, 3, 4 | promotion places of league L read as DS:2266[L - 1] | reader |
-| Tables | `crates/bmp/src/teamed/save.rs:55`, 56 | `strength_group` | TEAMED.EXE 1579:006d | 0x11, 0x25 | strength group of German club `i`: `(i > 37) + (i > 17)`, the amateurs and clubs 58..63 share group 2 | hex |
-| Tables | `crates/bmp/src/teamed/save.rs:77`, 96, 97, 118 | `recompute_strengths` | TEAMED.EXE 1579:006d (DS:0554, DS:033c) | 70, 34, 20 / 18, 20, 20 | per-group averages and the rank term `size - rank` of the strength recomputation when the editor saves | reader |
+| Tables | `crates/bmp-game/src/strength.rs:36` | `ORIGINAL` / `recompute_strengths` | TEAMED.EXE 1579:006d (DS:0554, DS:033c) | 18, 38, 64 / 70, 34, 20 / 18, 20, 20 | group ends `(i > 37) + (i > 17)` (the amateurs and clubs 58..63 share group 2), per-group averages and the rank term `size - rank` of the strength recomputation when the editor saves | reader |
 
 ## Newspaper
 
@@ -249,6 +249,6 @@ the original data as the default leaves them valid; tests of the mod data need t
 | Cup qualification | `crates/bmp/src/game/cup_screens.rs:764`, 801 | `quarter_final`, `dfb_list_groups_the_pairings_by_league` | 27c2:1ccb | 17 | test fixture or assertion of the original value |
 | Statistics | `crates/bmp/src/game/stats_screens.rs:906`, 981, 982, 984, 986, 987, 988 | `eternal_order_and_rows`, `graph_bars_hang_from_the_rank` | 362f:18e7, 362f:390e | 19, 20, 57, 58, 64 | test fixture or assertion of the original value |
 | Fixture generator, Tables | `crates/bmp/src/game/tables.rs:1348`, 1349, 1350, 1351, 1352, 1460, 1466, 1468 | `the_remaining_fixtures_show_one_half_of_the_rounds`, `strength_order_sorts_by_the_selected_parts` | 1000:28c4, DS:2262, 3a41:3891, DS:225e, DS:2272 | 17, 18, 19, 20, 34, 38 | test fixture or assertion of the original value |
-| League order lists, Tables | `crates/bmp/src/teamed/save.rs:155`, 156, 157, 158, 159, 182, 192 | `groups`, `shipped_strengths_reproduce`, `random_clubs_use_seven_calls_from_the_msc_start_state` | TEAMED.EXE 1579:006d | 17, 18, 37, 38, 63, 64 | test fixture or assertion of the original value |
+| League order lists, Tables | `crates/bmp-game/src/strength.rs:194`, 195, 196, 197, 198, 227, 237 | `groups`, `shipped_strengths_reproduce`, `random_clubs_use_seven_calls_from_the_msc_start_state` | TEAMED.EXE 1579:006d | 17, 18, 37, 38, 63, 64 | test fixture or assertion of the original value |
 | League order lists | `crates/bmp/src/teamed/club.rs:477`, 485 | `rank_swaps_within_the_bundesligas` | TEAMED.EXE 12a5:0e7a (DS:033c) | 19, 21 | test fixture or assertion of the original value |
 | League order lists | `crates/bmp/src/teamed/mod.rs:555`, 556, 557, 558, 559, 560, 561, 562 | `league_groups` | TEAMED.EXE 1000:24be | 17, 18, 37, 38, 57, 58, 63 | test fixture or assertion of the original value |

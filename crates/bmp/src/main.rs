@@ -41,8 +41,8 @@ const USAGE: &str = "usage: bmp [--data <dir>] [--version]
   play-sound plays the title tune or digitised voice 1..5 (1 crowd, 2 goal, 3 whistle,
   4 injury, 5 miss) on the default audio device
   mod2026 build writes the Mod 2026 data directory <out> (it must not exist or be empty;
-  never <repo>/BMP or the --from directory): a copy of the data in <from> plus the marker
-  MOD2026.DAT, which switches mod behaviour on
+  never <repo>/BMP or the --from directory): a copy of the data in <from> with the mod
+  clubs in MANA.DAT, plus the marker MOD2026.DAT, which switches mod behaviour on
   compare exits 0 when at least <percent> (default 90) of the pixels match, 1 otherwise";
 
 struct Args {

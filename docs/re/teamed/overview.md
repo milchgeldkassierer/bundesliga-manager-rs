@@ -231,9 +231,9 @@ call them.
 
 * Functions: `12a5:233d` (`uefa_screen`), `12a5:2ce0`, `1000:1bd2`
   (`dialog_message_uefa`), the strength recomputation in `1579:006d..04b5`
-  (`save::recompute_strengths`, seven `random_range` calls, `crt_afldiv` `1b1f:1700`),
+  (`bmp_game::strength::recompute_strengths`, seven `random_range` calls, `crt_afldiv` `1b1f:1700`),
   `bmp_formats::mana` round trip.
 * Screens: UEFA list; the save question is done.
 * Data: strength block (all 200 clubs), points/goals/ranks as inputs.
-* Files: `crates/bmp/src/teamed/uefa.rs`, `teamed/save.rs`; spec `docs/re/teamed/uefa.md`;
+* Files: `crates/bmp/src/teamed/uefa.rs`, `teamed/save.rs`, `crates/bmp-game/src/strength.rs`; spec `docs/re/teamed/uefa.md`;
   a scenario that saves with "MACH MAL !" and compares `MANA.DAT` (`# compare-file:`).

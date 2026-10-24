@@ -15,6 +15,7 @@ pub mod season;
 pub mod squad;
 pub mod state;
 pub mod stats;
+pub mod strength;
 #[cfg(test)]
 mod test_saves;
 pub mod transfer;

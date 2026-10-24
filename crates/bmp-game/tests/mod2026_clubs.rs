@@ -5,6 +5,7 @@ use std::collections::HashSet;
 
 use bmp_formats::font::encode_cp437;
 use bmp_formats::mana::{CLUB_NAME_LEN, GERMAN_CLUB_COUNT};
+use bmp_game::strength::MOD2026;
 use serde_json::Value;
 
 const CLUBS_JSON: &str = include_str!("../../../docs/mod2026/data/clubs.json");
@@ -85,6 +86,18 @@ fn slot_order(club: &Value) -> (usize, i64, &str) {
     let from = text(club, "table_league");
     let (from_league, _) = table_league(from).unwrap();
     (tier(from_league), int(&club["table_2025_26"], "rank"), from)
+}
+
+/// The generator's strength grouping has its own copy of the slot table: each club is in the
+/// group of its league, and its rank stays inside the group's rank term `size - rank`.
+#[test]
+fn mod_strength_grouping_follows_the_slot_table() {
+    for (slot, club) in clubs().iter().enumerate() {
+        let group = MOD2026.group(slot);
+        assert_eq!(group, tier(text(club, "league")), "{}", label(club));
+        let rank = int(&club["table_2025_26"], "rank");
+        assert!(rank <= i64::from(MOD2026.0[group].size), "{}", label(club));
+    }
 }
 
 #[test]

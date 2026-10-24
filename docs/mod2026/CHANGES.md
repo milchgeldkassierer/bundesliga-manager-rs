@@ -8,11 +8,26 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
 
 - **`bmp mod2026 build --from <dir> --out <dir>`** (`crates/bmp/src/main.rs`,
   `crates/bmp-game/src/mod2026.rs`): writes the mod data directory, a deterministic copy of
-  every file below `--from` plus the marker `MOD2026.DAT` with fixed content. The original data
-  is copied unchanged for now. `--out` must not exist or be an empty directory, and is never
+  every file below `--from` plus the marker `MOD2026.DAT` with fixed content. Into the copy of
+  `MANA.DAT` it writes the 64 German club slots from the dataset `docs/mod2026/data/`
+  (`clubs.json`, `squads.json`, embedded in the program): the name, the crest picture number,
+  the 20 player names (slots without a player all zero bytes, as in the original), the 2025/26
+  table as the 2-point pair `[2W+D, 2L+D]`, the goals and the rank, and the strengths (below).
+  The 136 foreign clubs keep their bytes; an invalid `MANA.DAT` or a dataset entry that does
+  not fit it (a name too long, more than 20 players, a number above 255) is refused before
+  anything is written; the dataset's own rules are checked by its tests. `--out` must not exist or be an empty directory, and is never
   the `--from` directory (or inside it) nor `<repo>/BMP` (or inside it); these are refused with a
   non-zero exit code before anything is written. A new command, so the original game is not
   affected.
+- **Strength grouping** (`crates/bmp-game/src/strength.rs`, `strength::MOD2026`): the team
+  editor's strength recomputation moved unchanged from `bmp` to `bmp-game`, with its league
+  grouping as a parameter. The generator runs it with the groups 0..17 / 18..35 / 36..55 /
+  56..63 (Bundesliga, 2. Bundesliga, 3. Liga, pool), base strengths 70 / 34 / 20 / 20 and
+  league sizes 18 / 18 / 20 / 20 for the rank term `size - rank`, and no random group: unlike
+  the original's amateurs (group 2, random strengths), the 3. Liga and the pool get strengths
+  from their 2025/26 table. Ranks are used as stored (a promoted club's rank in its 2025/26
+  league). The 2. Bundesliga scaling is unchanged; the RNG starts at the MSC start state
+  (`srand(1)`), so the output is deterministic. The team editor keeps the original grouping.
 - **Mod switch** (`bmp_game::mod2026::is_active`): the game and the team editor read it once at
   start-up into `Host::mod2026`, the flag mod behaviour switches on.
 
