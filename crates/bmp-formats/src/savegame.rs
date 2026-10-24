@@ -272,7 +272,13 @@ pub struct SaveGame {
     /// `DS:0618[i]`).
     pub strings: Vec<Vec<StringEntry>>,
     /// Raw tail: DS:05f6 (4 bytes), FAR:2e7a (4 bytes), FAR:2e94 (4 bytes).
+    /// Bytes missing from a short file are 0 here.
     pub tail: [u8; 12],
+    /// How many tail bytes the file held (0..=12). The loader reads the three
+    /// tail longs with unchecked `file_read` calls, except that a short read of
+    /// the first one (fewer than 4 bytes, see [`SaveGame::tail_short`]) skips the
+    /// other two. Always 12 for files the game writes.
+    pub tail_len: usize,
 }
 
 struct Reader<'a> {
@@ -359,10 +365,13 @@ impl SaveGame {
         }
 
         check(1, r.byte()?, cipher.sum)?;
-        let tail: [u8; 12] = r.take(12)?.try_into().unwrap();
-        if r.pos != data.len() {
-            return Err(Error::TrailingData(data.len() - r.pos));
-        }
+        // The loader reads the tail with three 4-byte `file_read` calls and
+        // never checks for the end of the file: a file may be shorter than the
+        // full tail, and bytes after it are ignored.
+        let rest = &data[r.pos..];
+        let tail_len = rest.len().min(12);
+        let mut tail = [0u8; 12];
+        tail[..tail_len].copy_from_slice(&rest[..tail_len]);
         Ok(SaveGame {
             signature,
             version,
@@ -372,7 +381,17 @@ impl SaveGame {
             blocks,
             strings,
             tail,
+            tail_len,
         })
+    }
+
+    /// True when the file ended before the first tail long (DS:05f6) was read
+    /// in full. The loader then calls 1cb5:0000, which sets the copy-protection
+    /// flag DS:05ac to 1 (passed), and skips the other two tail reads.
+    ///
+    /// Origin: BMMAIN.EXE 422b:1d28 (screen_load_game), 1cb5:0000
+    pub fn tail_short(&self) -> bool {
+        self.tail_len < 4
     }
 
     /// Encodes the save game exactly as the game writes it, recomputing both
@@ -738,6 +757,7 @@ mod tests {
                 vec![entry(b"A", 1), entry(b"BC", 2)],
             ],
             tail: [1; 12],
+            tail_len: 12,
         };
         let bytes = save.to_bytes().unwrap();
         assert_eq!(SaveGame::parse(&bytes).unwrap(), save);

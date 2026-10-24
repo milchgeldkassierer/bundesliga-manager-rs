@@ -403,6 +403,8 @@ impl<'a> TextFlow<'a> {
     /// Inserts blanks after the words of the line, round-robin from the
     /// left, until the line is `width` pixels wide. The end of the last word
     /// is no gap.
+    ///
+    /// Origin: BMMAIN.EXE 3e3a:06df (news_text_flow), 3e3a:0919 (str_insert_space)
     fn justify(&mut self, width: i16) {
         let mut i: i8 = 0;
         if self.words != 0 {

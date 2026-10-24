@@ -442,6 +442,8 @@ pub fn file_selector(
 
 /// `dos_delete_file(name)` in the selector's directory (DOS names ignore case);
 /// a failure is ignored like the original's.
+///
+/// Origin: BMMAIN.EXE 45ac:3690 (dos_delete_file)
 fn delete_file(dir: &Path, name: &[u8]) {
     let path = dir.join(String::from_utf8_lossy(name).to_string());
     if let Some(path) = find_case_insensitive(&path) {
@@ -509,6 +511,7 @@ pub fn read_save(saves: &mut SaveSession, path: &Path) -> Result<GameState, Load
         Err(savegame::Error::Checksum { .. }) => return Err(LoadError::Checksum),
         Err(_) => return Err(LoadError::Disk),
     };
+    let tail_short = save.tail_short();
     let result = GameState::from_savegame(&save).map_err(|e| match e {
         StateError::PositionCode { .. }
         | StateError::SquadPlayerId { .. }
@@ -523,7 +526,18 @@ pub fn read_save(saves: &mut SaveSession, path: &Path) -> Result<GameState, Load
     if matches!(result, Err(LoadError::Corrupt)) {
         saves.loaded_ids = history;
     }
-    result
+    // A file that ends before the first tail long counts as having passed the
+    // copy protection: the loader calls 1cb5:0000 (`DS:05ac = 1`) after taking
+    // `DS:05ac` from block 54. The caller copies `ds_05fa[0]` into the flag,
+    // and the next save writes `ds_05fa[0]` from the flag again, so setting it
+    // here is the same.
+    // Origin: BMMAIN.EXE 422b:1d28 (screen_load_game), 1cb5:0000
+    result.map(|mut state| {
+        if tail_short {
+            state.ds_05fa[0] = 1;
+        }
+        state
+    })
 }
 
 /// The endless "DER GROSSE MOGELGURU" screen shown for a manipulated save.
@@ -1091,6 +1105,35 @@ mod tests {
             assert_eq!(result.err(), Some(want), "{} bytes", bytes.len());
         }
         assert!(saves.loaded_ids.is_empty());
+    }
+
+    /// The tail is read without end-of-file checks: a save cut inside the first
+    /// tail long still loads and counts as having passed the copy protection
+    /// (1cb5:0000), one cut after it keeps the saved flag, and bytes after the
+    /// tail are ignored.
+    #[test]
+    fn short_tail_loads_and_passes_the_copy_protection() {
+        let dir = std::env::temp_dir().join(format!("bmp-short-tail-{}", std::process::id()));
+        // write_corrupt_save stores the protection flag as failed (0).
+        let Some(file) = write_corrupt_save(&dir, |_| {}) else {
+            return;
+        };
+        let full = std::fs::read(&file).unwrap();
+        let tail_start = full.len() - 12;
+        let cases: [(usize, bool, u8); 4] =
+            [(0, false, 1), (3, false, 1), (4, false, 0), (12, true, 0)];
+        for (kept, extra, want) in cases {
+            let mut bytes = full[..tail_start + kept].to_vec();
+            if extra {
+                bytes.extend_from_slice(b"JUNK");
+            }
+            let path = dir.join(format!("TAIL{kept}.MAN"));
+            std::fs::write(&path, &bytes).unwrap();
+            let state = read_save(&mut SaveSession::default(), &path)
+                .unwrap_or_else(|e| panic!("{kept} tail bytes: {e:?}"));
+            assert_eq!(state.ds_05fa[0], want, "{kept} tail bytes");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// The [`LoadError::Corrupt`] arm end to end: the file selector returns

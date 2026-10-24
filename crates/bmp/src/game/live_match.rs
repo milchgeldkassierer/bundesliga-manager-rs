@@ -112,6 +112,8 @@ pub struct LiveView {
 
 impl LiveView {
     /// Frees the sprites (`PIC\\8.VGA`) and the score panel (`PIC\\38.VGA`) for a goal scene.
+    ///
+    /// Origin: BMMAIN.EXE 1310:2253 (match_live_free_pictures)
     pub(crate) fn free_pictures(&mut self, g: &mut Gfx) {
         for id in [self.sprites.take(), self.panel.take()]
             .into_iter()
@@ -121,7 +123,10 @@ impl LiveView {
         }
     }
 
-    /// Loads the sprites and the score panel again after a goal scene.
+    /// Loads the sprites and the score panel again after a goal scene (the original loads
+    /// the panel first; both are plain file loads).
+    ///
+    /// Origin: BMMAIN.EXE 1310:2285 (match_live_load_pictures)
     pub(crate) fn load_pictures(&mut self, host: &mut Host) {
         self.sprites = host.load_picture(8).ok();
         self.panel = host.load_picture(0x26).ok();

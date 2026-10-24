@@ -1075,6 +1075,7 @@ macro_rules! decode_blocks {
                 blocks,
                 strings: self.messages.clone(),
                 tail,
+                tail_len: 12,
             }
         }
 

@@ -1655,8 +1655,8 @@ Consequences for a port:
 
 `char far *file_selector(...)` (callers `screen_save_game`, `screen_load_game`): directory
 listing of `"*.*"` filtered to `".MAN"`, pages (`UI[146] "SEITE: "`), header `UI[144]
-"VERZEICHNIS: "`, name input `UI[145] "FILENAME      :"` (characters filtered by
-`text_filter_filename_char` 176b:0d56, `".MAN"` appended), delete with confirmation `LBL[211]
+"VERZEICHNIS: "`, name input `UI[145] "FILENAME      :"` (no character filter:
+`text_filter_filename_char` 176b:0d56 has no caller, see audit/uncited.md; `".MAN"` appended), delete with confirmation `LBL[211]
 "WIRKLICH L|SCHEN ?"` / `LBL[212] "MACH SCHON!"` / `LBL[213] "OH NEIN!"`. Pure UI; draw
 details in Appendix A.
 

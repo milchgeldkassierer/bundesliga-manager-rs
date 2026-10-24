@@ -429,6 +429,8 @@ impl Host {
     }
 
     /// Blocks until a key is available (`dos_getch`, INT21 AH=07).
+    ///
+    /// Origin: BMMAIN.EXE 45ac:326b (dos_getch)
     pub fn getch(&mut self) -> Run<u8> {
         loop {
             if let Some(k) = self.keys.pop_front() {
@@ -467,6 +469,8 @@ impl Host {
 
     /// Reads a pending key without waiting (`dos_direct_console_io`, INT 21h
     /// AH=06h DL=FFh); 0 when none is pending.
+    ///
+    /// Origin: BMMAIN.EXE 45ac:3272 (dos_direct_console_io)
     pub fn read_key_nowait(&mut self) -> u8 {
         self.keys.pop_front().unwrap_or(0)
     }

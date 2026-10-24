@@ -163,12 +163,16 @@ const TORE_DISK_ERROR: [&[u8]; 4] = [
 ];
 
 /// The box shown after a short read of a goal-scene file (the caller has the file closed
-/// already). The original switches to the second pointer image around the box
-/// (`ui_set_pointer_shape` 1, then 0); the pointer is hidden during a goal scene, so the
-/// port leaves the image alone.
+/// already).
 ///
 /// Origin: BMMAIN.EXE 24a4:0574 (tore_report_read_error)
 fn tore_report_read_error(host: &mut Host) -> Run<()> {
+    // DEVIATION: the original sets the arrow pointer (`ui_set_pointer_shape` 1,
+    // 176b:02a3: image DS:085e, the same 11x11 arrow as the library default) for
+    // the box and afterwards shape 0 (DS:0876: a single transparent pixel). Nothing
+    // ever sets shape 1 again, so after a damaged goal-scene file the pointer stays
+    // invisible for the rest of the session (original bug, invariant 1). The port
+    // keeps the arrow.
     let [a, b, c, d] = TORE_DISK_ERROR;
     dialog_okay(host, a, b, c, d)?;
     Ok(())
