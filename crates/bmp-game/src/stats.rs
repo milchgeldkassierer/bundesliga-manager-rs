@@ -313,9 +313,13 @@ fn is_foreign(team: u8) -> bool {
 /// `player_value_calc` sign-extends the slot (`CBW`), so a pool index of 128 or
 /// more is a negative slot and reads a record *before* the squad table (in the
 /// player table); the record offset is 16-bit and wraps inside the segment.
+/// The far data is read as it stands at the call: a record in the player table
+/// overlaps club bytes (`P[q][0x24]`) that earlier moves of the same reshuffle
+/// have already rewritten.
 ///
 /// Origin: BMMAIN.EXE 3277:25de (player_value_calc, record address 3277:25eb..2603)
-fn pool_value_byte(state: &GameState, img: &[u8], rng: &mut Rng, p: u8) -> u8 {
+fn pool_value_byte(state: &GameState, rng: &mut Rng, p: u8) -> u8 {
+    let img = state.far_data_image();
     let at = pool_record_offset(state.current_manager, p);
     let read = |at: u16, len: usize| -> Vec<u8> {
         (0..len)
@@ -372,8 +376,6 @@ pub fn player_pool_season_shuffle(state: &mut GameState, rng: &mut Rng) -> [i16;
             foreign += 1;
         }
     }
-    // The moves below only change club indices, which the value never reads.
-    let img = state.far_data_image();
     let moves = rng.random_range(5, 15) as u8;
     for _ in 0..moves {
         let p = loop {
@@ -381,7 +383,7 @@ pub fn player_pool_season_shuffle(state: &mut GameState, rng: &mut Rng) -> [i16;
             let old = state.players[p as usize].team;
             if foreign > 4 && is_foreign(old) {
                 foreign -= 1;
-                let v = pool_value_byte(state, &img, rng, p);
+                let v = pool_value_byte(state, rng, p);
                 state.players[p as usize].team = pick_team_for_player(state, rng, v, false);
                 p = 0;
             }
@@ -389,7 +391,7 @@ pub fn player_pool_season_shuffle(state: &mut GameState, rng: &mut Rng) -> [i16;
                 break p;
             }
         };
-        let v = pool_value_byte(state, &img, rng, p);
+        let v = pool_value_byte(state, rng, p);
         state.players[p as usize].team = pick_team_for_player(state, rng, v, false);
     }
     for player in &state.players[1..] {
@@ -594,29 +596,61 @@ mod tests {
         );
     }
 
+    /// Writes `bytes` at far address `at` inside the player table FAR:57dd.
+    fn poke_players(s: &mut GameState, at: usize, bytes: &[u8]) {
+        for (k, &b) in bytes.iter().enumerate() {
+            let o = at + k - PLAYERS_FAR;
+            let q = o / Player::LEN;
+            let mut raw = s.players[q].to_bytes();
+            raw[o % Player::LEN] = b;
+            s.players[q] = Player::from_bytes(&raw).unwrap();
+        }
+    }
+
     #[test]
     fn pool_value_byte_reads_a_negative_slot_before_the_squads() {
         let mut s = GameState::zeroed();
         s.manager_count = 1;
         s.current_manager = 1;
+        let mut rng = Rng::new(1);
+        let empty = pool_value_byte(&s, &mut rng, 138);
         // The record at slot -118 of manager 1 lies in the player table; make it a player
         // record of id 5 (age 24) with some skill and stamina so its value is not the empty one.
-        let mut img = s.far_data_image();
         let at = usize::from(pool_record_offset(1, 138));
         let mut rec = SquadPlayer::zeroed();
         rec.player_id = 5;
         rec.skills = [60, 60, 60];
-        img[at..at + SquadPlayer::LEN].copy_from_slice(&rec.to_bytes());
-        img[PLAYERS_FAR + 5 * Player::LEN + 0x1a] = 24;
-        let mut rng = Rng::new(1);
-        let negative = pool_value_byte(&s, &img, &mut rng, 138);
-        let empty = pool_value_byte(&s, &s.far_data_image(), &mut rng, 138);
+        poke_players(&mut s, at, &rec.to_bytes());
+        s.players[5].age = 24;
+        let negative = pool_value_byte(&s, &mut rng, 138);
         assert_ne!(negative, empty);
         assert_eq!(
             rng,
             Rng::new(1),
             "a mode-0 value draws nothing for an unlisted record"
         );
+    }
+
+    #[test]
+    fn pool_value_byte_sees_clubs_moved_earlier_in_the_reshuffle() {
+        // Slot -118 of manager 1 starts 27 bytes into player 86, so the record's status
+        // byte (+0x09) is player 86's club (+0x24). The reshuffle moves players one by one
+        // and the original reads the live far data, so a club set by an earlier move counts.
+        assert_eq!(
+            usize::from(pool_record_offset(1, 138)) + 0x09,
+            PLAYERS_FAR + 86 * Player::LEN + 0x24
+        );
+        let mut s = GameState::zeroed();
+        s.manager_count = 1;
+        s.current_manager = 1;
+        s.players[86].team = 0x10;
+        let mut rng = Rng::new(7);
+        pool_value_byte(&s, &mut rng, 138);
+        assert_eq!(rng, Rng::new(7), "German club: not listed, no draw");
+        // A foreign club >= 0x80 sets the "listed" bit 7, which draws the offer percent.
+        s.players[86].team = 0xc0;
+        pool_value_byte(&s, &mut rng, 138);
+        assert_ne!(rng, Rng::new(7));
     }
 
     /// Players 1..=150 belong to no club; `team` gets the given players.
@@ -1101,17 +1135,15 @@ mod tests {
         h[0xb8..0xb8 + SquadPlayer::LEN].copy_from_slice(&rec.to_bytes());
         s.match_history = crate::state::MatchHistory::from_bytes(&h).unwrap();
         s.current_manager = 1;
-        let img = s.far_data_image();
         let mut rng = Rng::new(1);
-        let v = pool_value_byte(&s, &img, &mut rng, 116);
+        let v = pool_value_byte(&s, &mut rng, 116);
         let expected = ldiv(player_value_of(&mut Rng::new(1), &rec, 21, 0), 10000) as u8;
         assert_eq!(v, expected);
         assert_ne!(v, 0);
         // Inside the table the record is the squad slot itself.
         s.squads[4][10] = rec.clone();
         s.current_manager = 0;
-        let img = s.far_data_image();
-        assert_eq!(pool_value_byte(&s, &img, &mut rng, 110), expected);
+        assert_eq!(pool_value_byte(&s, &mut rng, 110), expected);
     }
 
     fn stadium_state(items: [i32; 7]) -> GameState {

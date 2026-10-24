@@ -825,6 +825,11 @@ reads record `25 * FAR:304a + p - 256`, before the squad table (in the player ta
 `season_two` scenario: with an unsigned slot the move of pool player 138 read a record of 0xff
 bytes (value byte 138, no club matches, 502 draws), while the original read a player-table record
 (value byte 34..54, an early match), which shifted every later random draw of the new season.
+Such a record overlaps the club bytes `P[q][0x24]` of the player table (for example the status
+byte `+0x09` of slot -118 of manager 1 is player 86's club, and bit 7 of it draws the offer
+percent). The reshuffle writes each move's club at once (24a4:18e5, 24a4:194f) and
+`player_value_calc` reads the live far data, so a later value sees the clubs of earlier moves; the
+port rebuilds its far image for every value instead of taking one snapshot before the moves.
 
 ### 3.4 Club strength and player value
 
