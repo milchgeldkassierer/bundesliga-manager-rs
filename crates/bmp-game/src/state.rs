@@ -466,6 +466,80 @@ impl SquadPlayer {
 }
 
 record! {
+    /// Newspaper match record of one human manager, 0x9a bytes at
+    /// FAR:90ca + m * 0x9a (not saved). Zero-filled and partly set at kickoff
+    /// by the match-day driver 2a58:20b2, filled during the match by
+    /// `news_record_match_event` 3e3a:223e (`docs/re/logic/news.md` §2).
+    pub struct NewsRecord {
+        /// +0x00 own goals at the moment of the biggest deficit (`%2`).
+        pub deficit_own: u8,
+        /// +0x01 opponent goals at that moment (`%3`).
+        pub deficit_opp: u8,
+        /// +0x02 own goals at the moment of the biggest lead (`%4`).
+        pub lead_own: u8,
+        /// +0x03 opponent goals at that moment (`%5`).
+        pub lead_opp: u8,
+        /// +0x04 own goals (`%0`).
+        pub goals_own: u8,
+        /// +0x05 opponent goals (`%1`).
+        pub goals_opp: u8,
+        /// +0x06 number of chances and goals; clamped to 3..=10 by the
+        /// newspaper.
+        pub n_events: i8,
+        /// +0x07 `FAR:0efa[0x36 * opponent]`, set at kickoff, not read here.
+        pub opponent_0efa: u8,
+        /// +0x08 not written in this area.
+        pub unknown_08: u8,
+        /// +0x09 `goals_own - goals_opp` after the last goal.
+        pub goal_diff: i8,
+        /// +0x0a most negative goal difference reached (<= 0).
+        pub min_diff: i8,
+        /// +0x0b most positive goal difference reached (>= 0).
+        pub max_diff: i8,
+        /// +0x0c 1-based squad index of the hero (`%c`), 0 = none.
+        pub hero: u8,
+        /// +0x0d 1-based squad index of the loser (`%d`), 0 = none.
+        pub loser: u8,
+        /// +0x0e own club index (`%a`).
+        pub club_a: u8,
+        /// +0x0f opponent club index (`%b`).
+        pub club_b: u8,
+        /// +0x10 not written in this area.
+        pub unknown_10: u8,
+        /// +0x11 0 = draw, 1 = ahead/won, 2 = behind/lost after the last goal.
+        pub result: u8,
+        /// +0x12 1 if the home stadium was sold out.
+        pub sold_out: u8,
+        /// +0x13 minute of each goal.
+        pub goal_minute: [u8; 20],
+        /// +0x27 0-based squad index of each scorer, 0x64 = opponent goal.
+        pub goal_player: [u8; 20],
+        /// +0x3b minute of each chance.
+        pub chance_minute: [u8; 20],
+        /// +0x4f 0-based squad index of each chance, 0x64 = opponent.
+        pub chance_player: [u8; 20],
+        /// +0x63 fourth argument of each goal event (not read here).
+        pub goal_arg4: [u8; 20],
+        /// +0x77 fourth argument of each chance event (not read here).
+        pub chance_arg4: [u8; 20],
+        /// +0x8b used entries of the goal arrays (unbounded).
+        pub n_goals: u8,
+        /// +0x8c used entries of the chance arrays (unbounded).
+        pub n_chances: u8,
+        /// +0x8d 0-based squad indices of the booked players.
+        pub yellow: [u8; 6],
+        /// +0x93 1-based squad index of the player sent off, 0 = none.
+        pub red: u8,
+        /// +0x94 used entries of `yellow` (unbounded).
+        pub n_yellow: u8,
+        /// +0x95 not written in this area.
+        pub unknown_95: u8,
+        /// +0x96 spectators (`%9`); 0 means away match.
+        pub spectators: i32,
+    }
+}
+
+record! {
     /// League table record of a German club, 0x36 bytes at FAR:0ecc + t * 0x36
     /// (save block 16). Index 0 of each 4-byte group is the home value, 1 the
     /// away value, 2/3 a saved copy (`3a41:1ef4` copies slot a to slot b).
@@ -1100,6 +1174,27 @@ pub(crate) mod tests {
         assert_eq!(bytes.len(), savegame::MAN_FILE_LEN);
         let back = GameState::from_savegame(&SaveGame::parse(&bytes).unwrap()).unwrap();
         assert_eq!(back, s);
+    }
+
+    #[test]
+    fn news_record_layout() {
+        assert_eq!(NewsRecord::LEN, 0x9a);
+        let bytes: Vec<u8> = (0..0x9a).collect();
+        let r = NewsRecord::from_bytes(&bytes).unwrap();
+        assert_eq!(r.n_events, 0x06);
+        assert_eq!(r.goal_diff, 0x09);
+        assert_eq!(r.hero, 0x0c);
+        assert_eq!(r.club_b, 0x0f);
+        assert_eq!(r.result, 0x11);
+        assert_eq!(r.goal_minute[0], 0x13);
+        assert_eq!(r.goal_player[0], 0x27);
+        assert_eq!(r.chance_arg4[19], 0x8a);
+        assert_eq!(r.n_goals, 0x8b);
+        assert_eq!(r.yellow[0], 0x8d);
+        assert_eq!(r.red, 0x93);
+        assert_eq!(r.n_yellow, 0x94);
+        assert_eq!(r.spectators, i32::from_le_bytes([0x96, 0x97, 0x98, 0x99]));
+        assert_eq!(r.to_bytes(), bytes);
     }
 
     #[test]

@@ -6,7 +6,7 @@
 //! after program start (`docs/re/logic/state.md` §5, `docs/re/logic/ai.md` §5). Fields are added
 //! when a ported function needs them.
 
-use crate::state::MANAGER_SLOTS;
+use crate::state::{Layout, MANAGER_SLOTS, NewsRecord};
 
 /// DS:226e: first club index of each league tier.
 pub const TIER_FIRST: [u8; 3] = [0, 18, 38];
@@ -46,10 +46,16 @@ pub struct Runtime {
     /// FAR:515c `[tier][slot][goal]`: goal minutes of the league fixtures, 0 = none.
     pub league_goal_minutes: [[[u8; 8]; 20]; 3],
     /// FAR:4d3c (= FAR:433c + 10 * 256) `[cup row][slot][goal]`: goal minutes of the cup
-    /// fixtures, 0 = none.
+    /// fixtures, 0 = none. After a match, byte 0 of `[m][i]` also holds the newspaper grade
+    /// 1 (best)..6 of squad slot `i` of human manager `m` (`docs/re/logic/news.md` §3).
     pub cup_goal_minutes: [[[u8; 8]; 32]; 4],
     /// FAR:4bf0 (count), FAR:305c, FAR:0028: the matches shown in the live view.
     pub live_matches: Vec<LiveMatch>,
+    /// FAR:90ca: newspaper match record of each human manager.
+    pub news_records: [NewsRecord; MANAGER_SLOTS],
+    /// FAR:1d14: non-zero when the manager's club played today (written by the match-day
+    /// driver 2a58:20b2).
+    pub manager_played_today: [u8; MANAGER_SLOTS],
 }
 
 impl Default for Runtime {
@@ -72,6 +78,8 @@ impl Default for Runtime {
             league_goal_minutes: [[[0; 8]; 20]; 3],
             cup_goal_minutes: [[[0; 8]; 32]; 4],
             live_matches: Vec::new(),
+            news_records: Layout::zeroed(),
+            manager_played_today: [0; MANAGER_SLOTS],
         }
     }
 }

@@ -12,6 +12,7 @@
 //!
 //! Full documentation with addresses: `docs/re/logic/squad.md`.
 
+use crate::news::message_delete;
 use crate::rng::{Rng, long_abs_diff};
 use crate::state::{
     BOARD_UNPLACED, GameState, LOAN_PRICE_MODE, Layout, SQUAD_COUNT, SQUAD_SCAN, SquadPlayer,
@@ -383,10 +384,11 @@ pub fn auto_lineup(state: &mut GameState, rules: LineupRules) {
     lineup_renumber_starters(state);
 }
 
-/// Removes record `idx` from the current group by moving records
-/// `idx + 1..=count` down one place; record `count` keeps its stale bytes
-/// except for the cleared player id. Returns `false` (and changes nothing)
-/// when the player is owned by another manager and `any_owner` is not set.
+/// Removes record `idx` from the current group, deleting its pending
+/// message, by moving records `idx + 1..=count` down one place; record
+/// `count` keeps its stale bytes except for the cleared player id. Returns
+/// `false` (and changes nothing) when the player is owned by another manager
+/// and `any_owner` is not set.
 ///
 /// # Panics
 /// When `count` is above 24 or `idx` above 24.
@@ -403,8 +405,7 @@ pub fn squad_remove_player(state: &mut GameState, idx: u8, any_owner: bool, coun
     {
         return false;
     }
-    // TODO(re): message_remove 4091:0044 is not ported; the record's message
-    // entry stays in GameState::messages.
+    message_delete(state, state.squads[g][idx as usize].message_ptr);
     let squad = &mut state.squads[g];
     for k in idx as usize..count as usize {
         squad[k] = squad[k + 1].clone();
@@ -948,7 +949,14 @@ mod tests {
         assert_eq!(s, before);
         assert!(squad_remove_player(&mut s, 3, false, 24)); // empty record
 
+        s.squads[0][0].message_ptr = 0x1234_5678;
+        s.messages = vec![vec![bmp_formats::savegame::StringEntry {
+            old_pointer: 0x1234_5678,
+            bytes: b"X\0".to_vec(),
+        }]];
+        s.message_counts[0] = 1;
         assert!(squad_remove_player(&mut s, 0, true, 24));
+        assert_eq!((s.messages[0].len(), s.message_counts[0]), (0, 0));
         let ids: Vec<u8> = s.squads[0].iter().map(|r| r.player_id).collect();
         assert_eq!(&ids[..3], &[7, 9, 0]);
         assert_eq!((ids[23], ids[24]), (99, 0));

@@ -4,6 +4,7 @@ pub mod ai;
 pub mod finance;
 pub mod league;
 pub mod matchsim;
+pub mod news;
 pub mod rng;
 pub mod runtime;
 pub mod squad;

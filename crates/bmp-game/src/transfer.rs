@@ -16,6 +16,7 @@
 //! Full documentation with addresses: `docs/re/logic/transfer.md`.
 
 use crate::league::{LEAGUE_ROUND_COUNT, league_team_ids};
+use crate::news::message_delete;
 use crate::rng::{Rng, clamp_int, ldiv, lmul, lshl, uldiv};
 use crate::squad::{InsertRejected, group, squad_insert_player, squad_remove_player};
 use crate::state::{
@@ -517,20 +518,19 @@ pub fn contract_decision(
     }
     if hit != ContractHit::NothingEntered {
         let cool_down = rng.random_range(0x0a, 0x12) as u8;
-        let p = record_mut(state, slot);
-        if p.negotiation > 0x63 {
-            message_remove(p);
+        if record_mut(state, slot).negotiation > 0x63 {
+            message_remove(state, group(state), slot);
         }
-        p.negotiation = cool_down;
+        record_mut(state, slot).negotiation = cool_down;
     }
     (hit, dialog)
 }
 
-/// Stand-in for `message_remove` 4091:0044 on a record's pending message.
-fn message_remove(rec: &mut SquadPlayer) {
-    // TODO(re): message_remove is not ported; only the record's pointer is
-    // cleared.
-    rec.message_ptr = 0;
+/// `rec.msg = message_remove(rec.msg)` on record `slot` of `squad`: the
+/// pending message leaves the inbox and the record's pointer is cleared.
+fn message_remove(state: &mut GameState, squad: usize, slot: u8) {
+    let ptr = std::mem::take(&mut state.squads[squad][usize::from(slot)].message_ptr);
+    message_delete(state, ptr);
 }
 
 /// The compensation `transfer_offer_received` deducts from an accepted
@@ -587,7 +587,7 @@ pub fn answer_squad_player_offer(
     let p = record_mut(state, slot);
     let pid = p.player_id as usize;
     p.status ^= OFFER_FOR_SQUAD_PLAYER;
-    message_remove(p);
+    message_remove(state, group(state), slot);
     if !sell {
         return;
     }
@@ -618,10 +618,11 @@ pub fn answer_listed_player_offer(
     let rec = market_mut(state, slot);
     let pid = rec.player_id as usize;
     rec.status ^= OFFER_FOR_LISTED_PLAYER;
-    message_remove(rec);
+    message_remove(state, TRANSFER_LIST, slot);
     if !sell {
         return;
     }
+    let rec = market_mut(state, slot);
     let to = std::mem::take(&mut rec.sale_club);
     let avg = rec.average_skill();
     state.players[pid].team = to;
@@ -1205,10 +1206,16 @@ mod tests {
         let mut s = base.clone();
         s.squads[0][0].negotiation = 103;
         s.squads[0][0].message_ptr = 0x1234_5678;
+        s.messages = vec![vec![bmp_formats::savegame::StringEntry {
+            old_pointer: 0x1234_5678,
+            bytes: b"X\0".to_vec(),
+        }]];
+        s.message_counts[0] = 1;
         let got = contract_decision(&mut s, &mut Rng::new(11), 0, true, offer(0, 0, 3), true);
         assert_eq!(got, (NewContract, None));
         assert_eq!(terms(&s), (3, 5_000, cool_down(11, 0)));
         assert_eq!(s.squads[0][0].message_ptr, 0);
+        assert_eq!((s.messages[0].len(), s.message_counts[0]), (0, 0));
         // Late season, nothing entered: cancelled with a cool-down.
         let mut s = base.clone();
         s.day_counter = 322;
