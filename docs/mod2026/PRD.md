@@ -76,12 +76,16 @@ Everything else plays like version 1.0.0.
   `DS:2266`, play-off flag `DS:226a`, first rank `DS:226e`, id ranges `DS:2272`. The mod sets them
   to the values above. The original's tier 3, "everything above 58", becomes the pool 56..63.
 - **Regionalliga pool:**
-  - 8 real Regionalliga clubs of 2026/27, with squads and crests: the **clubs with the most fans
-    or the longest tradition** (owner decision 2026-10-24). Candidates are the first teams that
-    play in one of the five Regionalligen in 2026/27. Tradition clubs come first: clubs that
-    played in the Bundesliga, the old Oberliga (before 1963) or the DDR-Oberliga. Inside each
-    group the average home attendance of 2025/26 decides. Each pick records its sources
-    (attendance figure, league history) with the fetch date.
+  - 8 real Regionalliga clubs of 2026/27, with squads and crests: the **clubs with the most fans,
+    the most followers and the most relevance** (owner decision 2026-10-24). Candidates are the
+    first teams that play in one of the five Regionalligen in 2026/27. **BFC Dynamo is excluded**
+    (owner decision). Each candidate is ranked in three measures:
+    - fans: average home attendance 2025/26;
+    - followers: combined followers on Instagram, Facebook, X and TikTok as of October 2026;
+    - relevance: league history (seasons in the Bundesliga, 2. Bundesliga, old Oberliga before
+      1963 or DDR-Oberliga) and major titles.
+    The 8 clubs with the best average rank over the three measures form the pool. Each value
+    records its source and fetch date.
   - The 4 clubs relegated from the 3. Liga swap places with 4 pool clubs, so no club leaves the
     game.
   - The pool clubs that go up are chosen the way the original picks replacement clubs (#177):
@@ -164,7 +168,7 @@ Everything else plays like version 1.0.0.
   3. Liga 2026/27 (VfB Stuttgart II, TSG Hoffenheim II) is replaced by the next first team in
   sporting order: the clubs relegated from the 3. Liga 2025/26 with the most points that are not
   already in the 3. Liga (Erzgebirge Aue, SSV Ulm 1846). The pool is then filled by the pool rule
-  of R1 (fans and tradition), which only takes first teams.
+  of R1 (fans, followers, relevance), which only takes first teams.
 - Strengths are recomputed from the table as the team editor does. 3. Liga clubs get table-based
   strengths too instead of the purely random ones.
 - **Points:** MANA.DAT block 3 holds a [plus, minus] pair, and the strength recomputation reads
