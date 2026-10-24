@@ -7,7 +7,7 @@ use bmp_game::league::{
 };
 use bmp_game::rng::{NumberFormat, format_long_thousands};
 use bmp_game::squad::{LineupRules, auto_lineup};
-use bmp_game::state::{GameState, Manager};
+use bmp_game::state::{GameState, Manager, RESCHEDULED_GAMES_DAY};
 
 use super::league::has_rescheduled_match_today;
 use super::season::calendar_compute_date;
@@ -134,7 +134,7 @@ pub fn office_banner(
             max_lineup_slot = 15;
             cup_day = true;
             EURO_CUP.to_vec()
-        } else if rescheduled(state) && wk & 0x80 != 0 {
+        } else if rescheduled(state) && wk & RESCHEDULED_GAMES_DAY != 0 {
             RESCHEDULED.to_vec()
         } else {
             NO_MATCH_TODAY.to_vec()
@@ -639,8 +639,14 @@ mod tests {
         s.event_state[2] = 30;
         let b = banner(&s, 0, false);
         assert_eq!((b.text.as_slice(), b.cup_day), (EURO_CUP, true));
-        assert_eq!(banner(&state_with(0x80, 1), 0, true).text, RESCHEDULED);
-        assert_eq!(banner(&state_with(0x80, 1), 0, false).text, NO_MATCH_TODAY);
+        assert_eq!(
+            banner(&state_with(RESCHEDULED_GAMES_DAY, 1), 0, true).text,
+            RESCHEDULED
+        );
+        assert_eq!(
+            banner(&state_with(RESCHEDULED_GAMES_DAY, 1), 0, false).text,
+            NO_MATCH_TODAY
+        );
     }
 
     #[test]

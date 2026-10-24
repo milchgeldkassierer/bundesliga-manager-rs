@@ -33,8 +33,8 @@
 // meanings of squad +0x03/+0x06/+0x19/+0x1a are not confirmed; the bytes are used as read.
 
 use crate::matchsim::{
-    goal_minutes_generate, goal_pick, player_position_mismatch, player_role_mismatch,
-    team_strength_value,
+    cup_cell, goal_minutes_generate, goal_pick, league_result_cell, player_position_mismatch,
+    player_role_mismatch, team_strength_value,
 };
 use crate::rng::{Rng, clamp_int, ldiv, lmul};
 use crate::runtime::Runtime;
@@ -300,19 +300,11 @@ pub fn league_strength_drift(state: &mut GameState, rt: &Runtime, rng: &mut Rng,
 /// `slot` of league tier `comp`: row `comp * 38 + competition_rounds[comp] - 1` (the
 /// original's table starts one row before save block 6, so the round counter is 1-based).
 fn league_result_index(state: &GameState, comp: u8, slot: u8) -> usize {
-    let round = i16::from(state.competition_rounds[usize::from(comp)] as i8);
-    let row = i16::from(comp) * 38 + round - 1;
-    assert!(
-        (0..3 * 38).contains(&row),
-        "league result row {row} outside save block 6"
-    );
-    row as usize * 20 + usize::from(slot)
-}
-
-/// Byte index into the flattened [`GameState::cup_results`] of cell `slot` of cup row
-/// `comp - 10`.
-fn cup_result_index(comp: u8, slot: u8) -> usize {
-    usize::from(comp - 10) * 32 + usize::from(slot)
+    league_result_cell(
+        comp,
+        i16::from(state.competition_rounds[usize::from(comp)] as i8),
+        slot,
+    )
 }
 
 /// Upper bound of the goal draws of a quick result for strength difference `d >= 0`.
@@ -511,7 +503,7 @@ pub fn match_goal_chance(
     let cell = if comp < 10 {
         league_result_index(state, comp, slot)
     } else {
-        cup_result_index(comp, slot)
+        cup_cell(comp - 10, slot)
     };
     let (mut gh, mut ga) = if comp < 10 {
         let r = state.league_results.as_flattened().as_flattened();
@@ -534,7 +526,7 @@ pub fn match_goal_chance(
             state.matchday_pairings.as_flattened().as_flattened()
                 [usize::from(m.row) * 20 + usize::from(m.slot)]
         } else {
-            state.cup_pairings.as_flattened()[usize::from(m.row) * 32 + usize::from(m.slot)]
+            state.cup_pairings.as_flattened()[cup_cell(m.row, m.slot)]
         };
         if team == home {
             live = Some(k as u8);
@@ -579,7 +571,7 @@ pub fn match_goal_chance(
             _ => 0,
         };
         GoalFollowUp::Live { index, kind }
-    } else if rt.option_show_other_goals != 0 && goal && watched {
+    } else if rt.live_match_shown != 0 && goal && watched {
         if side != 0 {
             ga += 1;
         } else {
@@ -1575,7 +1567,7 @@ mod tests {
                 follow_up: GoalFollowUp::None
             }
         );
-        rt.option_show_other_goals = 1;
+        rt.live_match_shown = 1;
         let r = match_goal_chance(&mut s, &mut rt, &mut Rng::new(1), 0, 0, HOME, AWAY, 1, 100);
         assert_eq!(
             r.follow_up,
@@ -1595,7 +1587,7 @@ mod tests {
         s.league_results[0][0][0] = 10;
         s.clubs[usize::from(AWAY)].crest = 0x80;
         let mut rt = Runtime {
-            option_show_other_goals: 1,
+            live_match_shown: 1,
             ..Runtime::default()
         };
         let r = match_goal_chance(&mut s, &mut rt, &mut Rng::new(1), 0, 0, HOME, AWAY, 1, 50);

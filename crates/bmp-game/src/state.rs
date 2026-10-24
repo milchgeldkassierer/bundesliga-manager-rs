@@ -130,6 +130,14 @@ pub const NO_TEAM: u8 = 100;
 /// Value of [`Player::owner_manager`] for players no human manager owns
 /// (`mana_load_player_names` 422b:035c).
 pub const NO_OWNER: u8 = 5;
+/// Byte offsets into a [`GameState::rescheduled_matches`] entry (`+0` is unused): the day
+/// the game is moved to (0 = free slot), its league round, tier and pair.
+pub const RESCHEDULED_DAY: usize = 1;
+pub const RESCHEDULED_ROUND: usize = 2;
+pub const RESCHEDULED_TIER: usize = 3;
+pub const RESCHEDULED_PAIR: usize = 4;
+/// [`GameState::week_competitions`] bit of a day that carries rescheduled games.
+pub const RESCHEDULED_GAMES_DAY: u8 = 0x80;
 /// Number of human-manager slots in every per-manager table.
 pub const MANAGER_SLOTS: usize = 4;
 /// Number of clubs in the club table FAR:3066.

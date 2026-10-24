@@ -79,23 +79,43 @@ fn is_available(rec: &SquadPlayer, suspended_allowed: bool) -> bool {
     }
 }
 
+/// The records of `group` that `squad_count_by_flag` scans: 12 of the
+/// transfer list, 24 of a human squad.
+fn counted_records(state: &GameState, group: usize) -> &[SquadPlayer] {
+    let n = if group == TRANSFER_LIST {
+        TRANSFER_LIST_SCAN
+    } else {
+        SQUAD_SCAN
+    };
+    &state.squads[group][..n]
+}
+
 /// Counts the records of `group` that hold a player, scanning 12 records of
 /// the transfer list and 24 of a human squad. This is mode 0 of the original;
-/// modes 1 and 2 (starters, substitutes) have no caller yet.
+/// mode 1 is [`squad_count_starters`], mode 2 (substitutes) has no caller yet.
 ///
 /// # Panics
 /// When `group` is not below [`SQUAD_COUNT`].
 ///
 /// Origin: BMMAIN.EXE 4091:1109 (squad_count_by_flag)
 pub fn squad_count_listed(state: &GameState, group: usize) -> u8 {
-    let n = if group == TRANSFER_LIST {
-        TRANSFER_LIST_SCAN
-    } else {
-        SQUAD_SCAN
-    };
-    state.squads[group][..n]
+    counted_records(state, group)
         .iter()
         .filter(|r| r.player_id != 0)
+        .count() as u8
+}
+
+/// Counts the records of `group` on the pitch (lineup position 1..=11),
+/// scanning the same records as [`squad_count_listed`].
+///
+/// # Panics
+/// When `group` is not below [`SQUAD_COUNT`].
+///
+/// Origin: BMMAIN.EXE 4091:1109 (squad_count_by_flag, mode 1)
+pub fn squad_count_starters(state: &GameState, group: usize) -> u8 {
+    counted_records(state, group)
+        .iter()
+        .filter(|r| is_starter(r))
         .count() as u8
 }
 
@@ -560,6 +580,19 @@ mod tests {
             .collect();
         v.sort();
         v
+    }
+
+    #[test]
+    fn starter_count_scans_the_listed_records_only() {
+        let mut s = state();
+        for (i, v) in [0, 1, 11, 12].into_iter().enumerate() {
+            s.squads[0][i].lineup_position = v;
+        }
+        s.squads[0][24].lineup_position = 3;
+        assert_eq!(squad_count_starters(&s, 0), 2);
+        s.squads[TRANSFER_LIST][11].lineup_position = 1;
+        s.squads[TRANSFER_LIST][12].lineup_position = 1;
+        assert_eq!(squad_count_starters(&s, TRANSFER_LIST), 1);
     }
 
     #[test]

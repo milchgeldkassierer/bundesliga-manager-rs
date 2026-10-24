@@ -1081,7 +1081,7 @@ pub fn match_rate_players_and_newspaper(
 ) -> Vec<Newspaper> {
     let mut papers = Vec::new();
     for m in 0..state.manager_count.min(MANAGER_SLOTS as u8) {
-        if rt.manager_played_today[usize::from(m)] == 0 {
+        if rt.manager_plays_now[usize::from(m)] == 0 {
             continue;
         }
         state.saved_manager = m as i8;
@@ -1422,7 +1422,7 @@ mod tests {
     /// Manager 0 with one starter in slot 0 who has no lineup mismatch.
     fn grading_state() -> (GameState, Runtime) {
         let (mut s, mut rt) = match_state();
-        rt.manager_played_today[0] = 1;
+        rt.manager_plays_now[0] = 1;
         let p = &mut s.squads[0][0];
         p.skills = [33, 33, 30];
         p.exhaustion = 66;
@@ -2147,14 +2147,14 @@ mod tests {
     fn rate_and_newspaper_for_every_manager_who_played() {
         let (mut s, mut rt) = home_win();
         s.manager_count = 2;
-        rt.manager_played_today = [1, 0, 0, 0];
+        rt.manager_plays_now = [1, 0, 0, 0];
         let mut rng = Rng::new(9);
         let papers = match_rate_players_and_newspaper(&mut s, &mut rt, &mut rng, 0, &env(&narrow));
         assert_eq!(papers.len(), 1);
         assert_eq!(s.saved_manager, 0);
         let (mut t, mut t_rt) = home_win();
         t.manager_count = 2;
-        t_rt.manager_played_today = [1, 0, 0, 0];
+        t_rt.manager_plays_now = [1, 0, 0, 0];
         let mut rng = Rng::new(9);
         assert!(
             match_rate_players_and_newspaper(&mut t, &mut t_rt, &mut rng, 1, &env(&narrow))
@@ -2357,7 +2357,7 @@ mod tests {
             let mut rt = Runtime::default();
             for m in 0..s.active_managers().len() as u8 {
                 let mi = usize::from(m);
-                rt.manager_played_today[mi] = 1;
+                rt.manager_plays_now[mi] = 1;
                 let r = &mut rt.news_records[mi];
                 r.club_a = s.managers[mi].team;
                 r.club_b = 0;

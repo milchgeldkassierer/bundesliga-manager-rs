@@ -14,6 +14,8 @@ pub const TIER_FIRST: [u8; 3] = [0, 18, 38];
 pub const TIER_COUNT: [u8; 3] = [18, 20, 20];
 /// DS:2262: number of rounds per league tier.
 pub const TIER_ROUNDS: [u8; 3] = [34, 38, 38];
+/// Booking slot value of [`Runtime::booked_players`] that holds nobody.
+pub const NO_BOOKING: i8 = 0x7f;
 
 /// A match shown in the live view: the fixture row and the even pairing slot of the home team.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,6 +23,19 @@ pub struct LiveMatch {
     /// `FAR:305c[k]`: league tier, or cup row.
     pub row: u8,
     /// `FAR:0028[k]`: even slot of the home team in the pairing row.
+    pub slot: u8,
+}
+
+/// A league fixture lost by forfeit because a human manager could not field a team.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Forfeit {
+    /// `FAR:549c[k]`: 1 = the home club's manager forfeited, 2 = the away club's.
+    pub side: u8,
+    /// `FAR:4bd0[k]`: league tier.
+    pub tier: u8,
+    /// `FAR:57a6[k]`: 0-based round (`competition_rounds[tier] - 1`).
+    pub round_index: u8,
+    /// `FAR:0170[k]`: even pairing slot.
     pub slot: u8,
 }
 
@@ -37,8 +52,10 @@ pub struct Runtime {
     pub tier_club_ranges: [[u8; 2]; 4],
     /// FAR:90c6: lineup changes per manager since the last match day.
     pub lineup_change_count: [u8; MANAGER_SLOTS],
-    /// FAR:2e99: option "show goals of other matches" (flash strip in the live view).
-    pub option_show_other_goals: u8,
+    /// FAR:2e99: a human manager's match is shown live. Cleared by `matchday_play`
+    /// (1310:15db), set by its gate-money hook (2a58:20b2) and by the cup extra-time check
+    /// (27c2:1226); card and injury events (1310:2ee5) only happen while it is set.
+    pub live_match_shown: u8,
     /// FAR:6dbc/6dbd: home and away goals of the last unstored quick result.
     pub quick_sim_result: [u8; 2],
     /// FAR:21da + 2 * m: home and away goals of manager `m`'s last quick-simulated match.
@@ -53,9 +70,26 @@ pub struct Runtime {
     pub live_matches: Vec<LiveMatch>,
     /// FAR:90ca: newspaper match record of each human manager.
     pub news_records: [NewsRecord; MANAGER_SLOTS],
-    /// FAR:1d14: non-zero when the manager's club played today (written by the match-day
-    /// driver 2a58:20b2).
-    pub manager_played_today: [u8; MANAGER_SLOTS],
+    /// FAR:2e98 (count), FAR:549c, FAR:4bd0, FAR:57a6, FAR:0170: the forfeits of the match day,
+    /// built by `matchday_play` (1310:15db) and written by `match_write_forfeit_results`
+    /// (1310:152e).
+    pub forfeits: Vec<Forfeit>,
+    /// FAR:0178 + 2 * m: yellow cards manager `m`'s team can still get in this match. Reset by
+    /// `matchday_play`, set by 2a58:20b2, used by 1310:2ee5.
+    pub yellow_cards_left: [u8; MANAGER_SLOTS],
+    /// FAR:0179 + 2 * m: a red card is still possible for manager `m`'s team. Reset by
+    /// `matchday_play`, set by 2a58:20b2, used and cleared by 1310:2ee5.
+    pub red_card_possible: [u8; MANAGER_SLOTS],
+    /// FAR:1d1c + 6 * m: squad indices of manager `m`'s booked players, [`NO_BOOKING`] =
+    /// free. Filled with [`NO_BOOKING`] by 2a58:20b2, used by 1310:2ee5.
+    pub booked_players: [[i8; 6]; MANAGER_SLOTS],
+    /// FAR:1d14 + m: manager `m`'s team plays now. Set by 2a58:20b2, cleared by 27c2:1226
+    /// (which also writes FAR:1d13 + r, i.e. index `r - 1`), read by 1310:2ee5.
+    pub manager_plays_now: [u8; MANAGER_SLOTS],
+    /// FAR:5710 + m / FAR:5778 + m: home / away chances of manager `m`'s match already played
+    /// in this period. Reset by 1310:15db and 1310:2303, counted by 2a58:0ca3, read by
+    /// 1310:347f.
+    pub period_chances_used: [[u8; 2]; MANAGER_SLOTS],
 }
 
 impl Default for Runtime {
@@ -72,14 +106,19 @@ impl Default for Runtime {
                 [last(2) + 1, 255],
             ],
             lineup_change_count: [0; MANAGER_SLOTS],
-            option_show_other_goals: 0,
+            live_match_shown: 0,
             quick_sim_result: [0; 2],
             manager_last_score: [[0; 2]; MANAGER_SLOTS],
             league_goal_minutes: [[[0; 8]; 20]; 3],
             cup_goal_minutes: [[[0; 8]; 32]; 4],
             live_matches: Vec::new(),
             news_records: Layout::zeroed(),
-            manager_played_today: [0; MANAGER_SLOTS],
+            forfeits: Vec::new(),
+            yellow_cards_left: [0; MANAGER_SLOTS],
+            red_card_possible: [0; MANAGER_SLOTS],
+            booked_players: [[NO_BOOKING; 6]; MANAGER_SLOTS],
+            manager_plays_now: [0; MANAGER_SLOTS],
+            period_chances_used: [[0; 2]; MANAGER_SLOTS],
         }
     }
 }

@@ -456,10 +456,11 @@ done:
 Screen side effect (the "goal elsewhere" flash): font 1. The text is built from club names (`FAR:3066 +
 0x22*club`, 20 bytes) and the separators `DS:02be = " - "`, `DS:02c2 = "   "` and `DS:02c6 = ":"`, with
 numbers formatted by `format_long_thousands`. It is drawn centred in x 0..0x140 at y 0xed, colours
-0x1d/0xff, in the strip `(0,0xe7)-(0x13f,0xef)`, held for 70 ticks and then cleared. `FAR:2e99` is the
-option that enables this flash. Bit 7 of the club flags is set by the opponent-info screen (3a41:0e72)
-and cleared by `league_strength_drift` when `mode != 1`. The scores 10..18 mean extra time: only
-`gh` is reduced modulo 10 for the text.
+0x1d/0xff, in the strip `(0,0xe7)-(0x13f,0xef)`, held for 70 ticks and then cleared. `FAR:2e99` gates
+this flash; it is not an option but `live_match_shown`, set while a human match is shown live
+(match.md §6). Bit 7 of the club flags is set by the opponent-info screen (3a41:0e72) and cleared
+by `league_strength_drift` when `mode != 1`. The scores 10..18 mean extra time: only `gh` is reduced
+modulo 10 for the text.
 
 ### 2.5 `squad_lineup_totals` — 1f9d:1122
 
@@ -677,7 +678,7 @@ for (k = 0; k < n; k++) {
 | FAR:0efa + 0x36*t | u8 | `club_league_position` | 16 (FAR:0ecc) |
 | FAR:2242 + 0x30a*m | struct | manager record (`+0x1e` club, `+0x10a` popularity, `+0x131` slider, `+0x138` league tier, `+0x13d` aggression, `+0x15e` stadium i32[...], `+0x1dc` u16) | 13 |
 | FAR:21d8 + 2*k | u8[2] | `manager_last_score` (k = 1+manager) | 29 (FAR:21e2) neighbour; not saved |
-| FAR:2e99 | u8 | `option_show_other_goals` | 39 (FAR:2ec2) neighbour; not saved |
+| FAR:2e99 | u8 | `live_match_shown` (set by 2a58:20b2, see match.md §6) | 39 (FAR:2ec2) neighbour; not saved |
 | FAR:304a | u8 | `current_manager` | 3 |
 | FAR:305c[k] | u8[] | `live_match_row` | not saved (see below) |
 | FAR:3066 + 0x22*t | struct[200] | club table (`+0x17` bonus, `+0x18` A[3], `+0x1b` B[3], `+0x1e` C[3], `+0x21` flags) | 15 |
