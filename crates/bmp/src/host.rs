@@ -185,6 +185,9 @@ pub struct Host {
     /// The code of a pending `fatal_error_exit` (the first failure wins): set where the
     /// original calls it, handled by `game::run`, where the game state is reachable.
     pub fatal: Option<u8>,
+    /// MOD2026: the data directory holds Mod 2026 data, read once at start-up.
+    #[expect(dead_code, reason = "read by the Mod 2026 behaviour of later changes")]
+    pub mod2026: bool,
 }
 
 impl Host {
@@ -221,6 +224,7 @@ impl Host {
             vga: Vga::new(),
             card,
             fatal: None,
+            mod2026: bmp_game::mod2026::is_active(data),
         })
     }
 

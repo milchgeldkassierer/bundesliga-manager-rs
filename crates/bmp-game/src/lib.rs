@@ -6,6 +6,7 @@ pub mod finance;
 pub mod highscore;
 pub mod league;
 pub mod matchsim;
+pub mod mod2026;
 pub mod newgame;
 pub mod news;
 pub mod rng;

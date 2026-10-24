@@ -1,0 +1,81 @@
+//! `bmp mod2026 build` as seen from the command line.
+
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+fn bmp<const N: usize>(args: [&OsStr; N]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_bmp"))
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+/// `bmp mod2026 build --from <from> --out <out>`.
+fn build(from: &Path, out: &Path) -> Output {
+    let [cmd, sub, from_flag, out_flag] = ["mod2026", "build", "--from", "--out"].map(OsStr::new);
+    bmp([
+        cmd,
+        sub,
+        from_flag,
+        from.as_os_str(),
+        out_flag,
+        out.as_os_str(),
+    ])
+}
+
+/// A fresh directory below the system temp directory holding a single file `MANA.DAT`.
+fn source(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("bmp-mod2026-cli-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("MANA.DAT"), [1]).unwrap();
+    dir
+}
+
+/// Asserts that `output` is a refusal with exit code 2 whose message contains `reason`.
+fn assert_refused(output: &Output, reason: &str) {
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains(reason), "unexpected message: {stderr}");
+}
+
+#[test]
+fn help_lists_the_build_command() {
+    let help = bmp(["--help".as_ref()]);
+    assert!(help.status.success());
+    assert!(String::from_utf8_lossy(&help.stdout).contains("mod2026 build --from"));
+}
+
+#[test]
+fn build_writes_the_copy_and_the_marker() {
+    let from = source("build");
+    let out = from.with_extension("out");
+    let _ = std::fs::remove_dir_all(&out);
+
+    let output = build(&from, &out);
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(std::fs::read(out.join("MANA.DAT")).unwrap(), [1]);
+    assert!(out.join("MOD2026.DAT").is_file());
+    std::fs::remove_dir_all(&from).unwrap();
+    std::fs::remove_dir_all(&out).unwrap();
+}
+
+#[test]
+fn build_refuses_the_play_directory_and_the_source() {
+    let dir = source("refuse");
+    let play_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../BMP");
+    let play_dir_existed = play_dir.exists();
+
+    assert_refused(&build(&dir, &play_dir), "play directory");
+    assert_refused(&build(&dir, &dir), "lies inside");
+
+    assert_eq!(play_dir.exists(), play_dir_existed);
+    let files: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into())
+        .collect();
+    assert_eq!(files, [PathBuf::from("MANA.DAT")]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

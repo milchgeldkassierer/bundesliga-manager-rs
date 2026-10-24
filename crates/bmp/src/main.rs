@@ -20,6 +20,7 @@ const USAGE: &str = "usage: bmp [--data <dir>] [--version]
        bmp [--data <dir>] teamed [--script <file> --shots <dir>]
        bmp [--data <dir>] render-music <out.wav> [--tail <ms>] [--opl-log <out.txt>]
        bmp [--data <dir>] play-sound music|1..5
+       bmp mod2026 build --from <dir> --out <dir>
        bmp compare <port.png> <reference.png> [--diff <out.png>] [--threshold <percent>]
   <name> is a file below PIC/, e.g. 47.CP or 120.VGA
   run starts the game like BMP.BAT: the Software 2000 logo intro (BMINTRO, ended by
@@ -36,6 +37,9 @@ const USAGE: &str = "usage: bmp [--data <dir>] [--version]
   --opl-log lists the OPL register writes as \"<ms> <register> <value>\" lines (hex)
   play-sound plays the title tune or digitised voice 1..5 (1 crowd, 2 goal, 3 whistle,
   4 injury, 5 miss) on the default audio device
+  mod2026 build writes the Mod 2026 data directory <out> (it must not exist or be empty;
+  never <repo>/BMP or the --from directory): a copy of the data in <from> plus the marker
+  MOD2026.DAT, which switches mod behaviour on
   compare exits 0 when at least <percent> (default 90) of the pixels match, 1 otherwise";
 
 struct Args {
@@ -167,6 +171,20 @@ fn compare_frames(args: &Args) -> Result<ExitCode, String> {
     } else {
         ExitCode::FAILURE
     })
+}
+
+/// `mod2026 build --from <dir> --out <dir>`: writes the Mod 2026 data directory.
+fn mod2026(args: &Args) -> Result<(), String> {
+    let mut rest = args.rest[1..].to_vec();
+    let from = take_opt(&mut rest, "--from")?;
+    let out = take_opt(&mut rest, "--out")?;
+    let (Some(from), Some(out)) = (from, out) else {
+        return Err(USAGE.to_string());
+    };
+    if rest != ["build"] {
+        return Err(USAGE.to_string());
+    }
+    bmp_game::mod2026::build(Path::new(&from), Path::new(&out))
 }
 
 /// Starts the game in a window, or headless driven by an input script.
@@ -338,6 +356,7 @@ fn run() -> Result<ExitCode, String> {
         Some("compare") => compare_frames(&args),
         Some("run") => run_game(&args).map(|()| ExitCode::SUCCESS),
         Some("teamed") => run_teamed(&args).map(|()| ExitCode::SUCCESS),
+        Some("mod2026") => mod2026(&args).map(|()| ExitCode::SUCCESS),
         Some("render-music") => render_music(&args).map(|()| ExitCode::SUCCESS),
         Some("play-sound") => play_sound(&args).map(|()| ExitCode::SUCCESS),
         Some("--help") | Some("-h") => {
