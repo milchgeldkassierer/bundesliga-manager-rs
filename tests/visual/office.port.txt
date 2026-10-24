@@ -1,0 +1,21 @@
+# Port side of the office scenario (bmp run --script syntax, milliseconds):
+# load 07072019.MAN from the start menu, show the office and one submenu.
+# seed: 35372
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+shot r01-load
+click 40 82
+wait 500
+shot r02-picked
+click 40 82
+wait 1000
+shot r03-office
+click 30 173
+wait 500
+shot r04-submenu
+rclick 160 230
+wait 500
+shot r05-closed

@@ -170,16 +170,15 @@ fn run_game(args: &Args) -> Result<(), String> {
         }
         None => host::Host::with_window(&dir, 3)?,
     };
-    // TODO(#30): hand the choices to the new-game initialisation and the office.
     match game::run(&mut host, time)? {
-        Ok(game::start_menu::Outcome::NewGame(ng)) => eprintln!(
+        Ok(game::Exit::NewGame(ng)) => eprintln!(
             "new game: {} manager(s), end year {}, modern start {}, difficulty {}",
             ng.managers.len(),
             ng.end_year(),
             ng.modern_start(),
             ng.difficulty()
         ),
-        Ok(outcome) => eprintln!("{outcome:?}"),
+        Ok(game::Exit::EndOfTurn) => eprintln!("end of turn (the season loop is not ported yet)"),
         Err(host::Quit) => {}
     }
     Ok(())

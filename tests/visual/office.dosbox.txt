@@ -1,0 +1,22 @@
+# DOSBox side of the office scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN (shipped in both game copies) from the start menu.
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+shot r01-load
+click 40 82 240
+wait 1
+shot r02-picked
+click 40 82 240
+wait 6
+shot r03-office
+click 30 173 240
+wait 2
+shot r04-submenu
+click 160 230 240 3
+wait 2
+shot r05-closed

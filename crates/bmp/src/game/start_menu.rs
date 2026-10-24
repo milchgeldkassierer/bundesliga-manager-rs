@@ -3,7 +3,9 @@
 
 use bmp_game::rng::format_long_thousands;
 
-use super::ClubEntry;
+use bmp_game::state::GameState;
+
+use super::{ClubEntry, Session, load_game, office_show_cached_background};
 use crate::gfx::{
     BitmapId, Gfx, RastPort, ui_draw_text_at, ui_draw_text_centered_shadow, ui_fill_rect,
 };
@@ -84,8 +86,8 @@ impl NewGame {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     NewGame(NewGame),
-    /// The header bar was clicked: load a saved game (not ported yet).
-    LoadGame,
+    /// The header bar was clicked and a saved game was loaded.
+    LoadGame(Box<GameState>),
 }
 
 struct Screen<'a> {
@@ -95,8 +97,6 @@ struct Screen<'a> {
     managers: [ManagerChoice; 4],
     /// `DS:07ab`.
     count: u8,
-    /// `DS:0210`: the marble background is cached in VRAM page 2.
-    marble_cached: bool,
     hdr: BitmapId,
     strip: BitmapId,
     frame: BitmapId,
@@ -144,24 +144,6 @@ impl Screen<'_> {
         );
     }
 
-    /// Origin: BMMAIN.EXE 18bc:3b92 (office_show_cached_background)
-    fn office_show_cached_background(&mut self) -> Run<()> {
-        self.host.screen_fade(0)?;
-        self.g().mouse_pointer_hide(0);
-        if !self.marble_cached {
-            // The file is part of the game data; a failure here is fatal in the original.
-            self.host
-                .load_screen_picture(22)
-                .expect("PIC\\22.CP (fatal_error_exit 2 in the original)");
-            self.g().vga_copy_page(0, 0x9600);
-            self.marble_cached = true;
-        } else {
-            self.g().vga_copy_page(0x9600, 0);
-        }
-        self.g().mouse_pointer_show();
-        Ok(())
-    }
-
     /// Draws crest `code` (`PIC\<code + 0x50>.VGA`) into `dst` at `(x, y)` and clears
     /// the two columns right of it. The "blank crest" list `DS:05dc` is inactive
     /// (`DS:05da == 0`).
@@ -188,7 +170,7 @@ impl Screen<'_> {
 
     /// §4.2, label 18bc:22ca.
     fn full_redraw(&mut self, n0: u8) -> Run<()> {
-        self.office_show_cached_background()?;
+        office_show_cached_background(self.host)?;
         let screen = self.host.screen();
         self.blit(self.frame, 0, 0, screen, 5, 0x28, 0x135, 0x41);
         self.blit(self.hdr, 0, 0, screen, 0, -3, 0x140, 0x2c);
@@ -630,6 +612,7 @@ pub fn start_menu_new_or_load(
     host: &mut Host,
     pics: &Pictures,
     clubs: &[ClubEntry],
+    session: &mut Session,
 ) -> Result<Run<Outcome>, String> {
     let n0: u8 = 0;
     host.set_font(2);
@@ -647,7 +630,6 @@ pub fn start_menu_new_or_load(
             name: Vec::new(),
         }),
         count: 0,
-        marble_cached: false,
         hdr,
         strip,
         frame,
@@ -674,8 +656,12 @@ pub fn start_menu_new_or_load(
             }
             let (mx, my) = s.host.mouse_xy();
             if my < 0x24 {
-                // TODO(#15): screen_load_game 422b:120c.
-                return Ok(Some(Outcome::LoadGame));
+                office_show_cached_background(s.host)?;
+                if let Some(state) = load_game::screen_load_game(s.host, session, s.pics, 1)? {
+                    return Ok(Some(Outcome::LoadGame(state)));
+                }
+                s.full_redraw(n0)?;
+                continue;
             }
             if my > 0x2e && my < 0x69 {
                 s.host.set_font(1);

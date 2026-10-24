@@ -141,6 +141,10 @@ pub struct Host {
     /// `DS:079c`: minimum field width of `format_long_thousands`; every
     /// `vga_load_picture` call sets it to 1.
     pub number_pad: i8,
+    /// `DS:07b2`: suppresses the thousands separators of `format_long_thousands`.
+    pub number_no_separators: bool,
+    /// `DS:0210`: the office background (`PIC\22.CP`) is cached in VRAM page 2.
+    pub office_bg_cached: bool,
     /// `DS:014a`: last `screen_fade` state.
     fade_state: u8,
     keys: VecDeque<u8>,
@@ -165,6 +169,8 @@ impl Host {
             data: data.to_path_buf(),
             button: 0,
             number_pad: 0,
+            number_no_separators: false,
+            office_bg_cached: false,
             fade_state: 0xff,
             keys: VecDeque::new(),
             backend,
@@ -326,6 +332,14 @@ impl Host {
         Ok(self.button)
     }
 
+    /// Polls until no mouse event is pending (`FAR:3046` stays 0).
+    ///
+    /// Origin: BMMAIN.EXE 176b:0e27 (input_wait_release)
+    pub fn input_wait_release(&mut self) -> Run<()> {
+        while self.input_poll_mouse()? != 0 {}
+        Ok(())
+    }
+
     /// Pointer position as the game reads it (`mouse_state[1]`, `mouse_state[0]`).
     pub fn mouse_xy(&self) -> (i16, i16) {
         (self.g.pointer.client_x, self.g.pointer.client_y)
@@ -451,6 +465,7 @@ impl Host {
     pub fn number_format(&self) -> bmp_game::rng::NumberFormat {
         bmp_game::rng::NumberFormat {
             pad_width: self.number_pad,
+            no_separators: self.number_no_separators,
             ..Default::default()
         }
     }
