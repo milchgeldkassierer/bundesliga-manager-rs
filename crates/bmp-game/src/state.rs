@@ -177,6 +177,9 @@ pub const CLUB_LISTED: u8 = TRANSFER_LIST as u8;
 /// Value of [`SquadPlayer::board_col`] for a player without a tactics-board
 /// spot (0xff in the original).
 pub const BOARD_UNPLACED: i8 = -1;
+/// Last row of the tactics board in [`SquadPlayer::board_row`]: the original
+/// uses rows 0..=7 (0 = attack, 7 = goal).
+pub const BOARD_ROW_MAX: i8 = 7;
 /// Value of [`SquadPlayer::loan`] that selects price mode 3 of
 /// `player_value_calc` 3277:25de (`'c'`).
 pub const LOAN_PRICE_MODE: u8 = 0x63;
@@ -488,7 +491,8 @@ record! {
         /// +0x19 (FAR:7763) tactics-board column 0..=7, [`BOARD_UNPLACED`] =
         /// not placed.
         pub board_col: i8,
-        /// +0x1a (FAR:7764) tactics-board row 0..=7 (0 = attack, 7 = goal).
+        /// +0x1a (FAR:7764) tactics-board row 0..=[`BOARD_ROW_MAX`] (0 = attack,
+        /// [`BOARD_ROW_MAX`] = goal).
         pub board_row: i8,
         /// +0x1b not yet traced.
         pub unknown_1b: u8,
@@ -1166,7 +1170,7 @@ impl GameState {
                     continue;
                 }
                 let index = squad * SQUAD_SIZE + slot;
-                if !(BOARD_UNPLACED..=7).contains(&rec.board_row) {
+                if !(BOARD_UNPLACED..=BOARD_ROW_MAX).contains(&rec.board_row) {
                     let field = "squads.board_row";
                     return Err(StateError::SavedIndex { field, index });
                 }
@@ -1913,7 +1917,7 @@ pub(crate) mod tests {
     #[test]
     fn saved_index_past_its_table_is_rejected() {
         type Patch = fn(&mut GameState, bool);
-        let cases: [(&str, usize, Patch); 28] = [
+        let cases: [(&str, usize, Patch); 29] = [
             ("manager_count", 0, |s, bad| {
                 s.manager_count = 4 + u8::from(bad)
             }),
@@ -2000,6 +2004,10 @@ pub(crate) mod tests {
             ("squads.board_row", SQUAD_SIZE + 2, |s, bad| {
                 s.squads[1][2].player_id = 1;
                 s.squads[1][2].board_row = if bad { 8 } else { BOARD_UNPLACED };
+            }),
+            ("squads.board_row", SQUAD_SIZE + 3, |s, bad| {
+                s.squads[1][3].player_id = 1;
+                s.squads[1][3].board_row = BOARD_ROW_MAX + i8::from(bad);
             }),
             ("squads.sale_club", 0, |s, bad| {
                 s.squads[0][0].player_id = 1;
