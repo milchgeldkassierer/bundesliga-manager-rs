@@ -126,10 +126,24 @@ office turn of a season played on from every shipped save (checked once when the
 | `month`, `day_of_month` | – | | no: `calendar_compute_date` rewrites both before any reader |
 | `message_counts`, `team_slots`, `event_state[4..]`, `lineup_state`, `Manager::league` in the screens | – | | no: bounded with `take`/`.get`/`.min`/`match` |
 | `SquadPlayer::injury`, `Club::crest`, `Manager::slot` | – | | no: `%`, a `match` with a default, or bit tests and clipped blits |
-| `event_state[0..4]` = 0 on a cup day | the 32-slot rows of `cup_goal_minutes` / `cup_pairings` | 0 at program start and inside `cup_draw_first_round` | no: a game-written value |
+| `event_state[0..4]` = 0 on a cup day | the 32-slot rows of `cup_goal_minutes` / `cup_pairings` | 0 at program start and inside `cup_draw_first_round` | no: a game-written value; the cup day is bounded instead (below) |
 | `winner_07ac` / `dfb_cup_runner_up` = 0 | `clubs` through holder - 1 = 0xff (cups.md §3.2) | 0 = none (the runner-up at program start) | no: a game-written value |
 | `Manager::round_log[..][3]` stage `& 7` | `UI[121 + stage]` (`ui_stage_text`, stage texts then competition names) | stage 1..7; 7 reads `UI[128]` = "Pokal der Landesmeister" | no: every value 0..=7 resolves inside the string table, as in the original |
-| `league_teams` duplicates | `cups.rs` qualifier table | a permutation | no: not a range; each id is in range |
+| `league_teams` duplicates | `cups.rs` qualifier table | a permutation | no: not a range; the qualifier scan is bounded instead (below) |
+
+**Bounded consumers** (#132). Two corrupt-save shapes from the table above load and are bounded where
+they are read (`// DEVIATION:`), because a load guard would refuse states the game holds:
+
+- Cup round 0 on a cup day: DS:07d6[0] gives 32 pairings, so the original plays and completes 64 slots
+  and runs past the 32-slot rows of `cup_pairings`, `cup_results` and `cup_goal_minutes`. A load guard
+  would refuse the program start and zeroed states, which hold round 0 and are round-trip tested, so `cups::round_slots` caps the slots of a
+  match day (`matchday_play`, `match_live_period`) and of `cup_round_complete` at 32: round 0 plays and
+  completes one full row like round 1. The draw screens and `team_in_european_cup_lists` keep the
+  original's 32 pairings.
+- Duplicate `league_teams` ids: the UEFA places of `euro_cup_qualifiers_build` take unqualified clubs
+  from the 60 table entries and the original runs on past them while places are left. The port stops at
+  the table's end and leaves the remaining UEFA places `NO_QUALIFIER`. Game-written tables never reach
+  that end, so the normal path is unchanged.
 
 **Other saved values** (`StateError::SavedValue { field, index }`, #131). Three saved values are no
 table index but still stop the original, and would make the port panic. `check_saved_values` refuses

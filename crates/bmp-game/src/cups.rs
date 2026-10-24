@@ -41,7 +41,7 @@
 //! qualifiers, the goal clearing and the draws `(c, false)` for c = 1..=3, and later
 //! `(0, false)` and `(c, true)` for c = 1..=3 (§9.4).
 
-use crate::matchsim::{MatchHooks, cup_row, match_penalty_shootout, matchday_play};
+use crate::matchsim::{CUP_ROW_CELLS, MatchHooks, cup_row, match_penalty_shootout, matchday_play};
 use crate::rng::Rng;
 use crate::runtime::{Runtime, TIER_FIRST};
 use crate::state::{CLUB_COUNT, GERMAN_CLUBS, GameState, MANAGER_SLOTS};
@@ -77,6 +77,14 @@ pub(crate) fn round_pairings(round: u8) -> u8 {
     *CUP_ROUND_PAIRINGS
         .get(usize::from(round))
         .unwrap_or_else(|| panic!("cup round {round} outside DS:07d6"))
+}
+
+/// Slots played in cup round `round`: two per pairing, at most the [`CUP_ROW_CELLS`] of one row.
+// DEVIATION: round 0, which the game only holds at program start and inside
+// `cup_draw_first_round`, gives 64 slots in the original, so a corrupt save with it on a cup
+// day plays and completes ties past the 32-slot rows of the cup tables (`state.md` §1.1).
+pub(crate) fn round_slots(round: u8) -> u8 {
+    (round_pairings(round) << 1).min(CUP_ROW_CELLS as u8)
 }
 
 /// The 32 draw slots of cup row `cup`.
@@ -430,7 +438,10 @@ pub fn euro_cup_qualifiers_build(state: &mut GameState, rt: &mut Runtime) {
         }
     }
     let mut src = 1;
-    while uefa != 0 {
+    // DEVIATION: the original runs on past the 60 table entries while places are left, which
+    // only a corrupt save with duplicate `league_teams` ids reaches; the port stops at the
+    // table's end and leaves those places free (`state.md` §1.1).
+    while uefa != 0 && src < table.len() {
         let team = table[src];
         if !team_is_euro_qualified(state, rt, team) {
             qualify(state, rt, UEFA + n2, team);
@@ -584,7 +595,7 @@ pub fn cup_round_complete(
     euro: u8,
     ui: &mut dyn CupDrawUi,
 ) {
-    let n2 = usize::from(round_pairings(state.event_state[usize::from(euro != 0)]) << 1);
+    let n2 = usize::from(round_slots(state.event_state[usize::from(euro != 0)]));
     let managers = state.active_managers().len();
     let playing = rt.relegation_mode == 0;
     if euro != 0 {
@@ -859,6 +870,7 @@ mod tests {
     use super::*;
     use crate::matchsim::TickerEvent;
     use crate::test_saves::save_states;
+    use bmp_formats::savegame::SaveGame;
 
     /// Advances a copy of `rng` by `n` calls of `rand()`.
     fn advanced(rng: Rng, n: usize) -> Rng {
@@ -1081,6 +1093,32 @@ mod tests {
         assert_eq!(qualifiers(&s)[2], [10, 1, 2, 3, 4]);
         assert!(team_is_euro_qualified(&s, &rt, 10));
         assert!(!team_is_euro_qualified(&s, &rt, 5));
+    }
+
+    #[test]
+    fn duplicate_table_ids_leave_uefa_places_free() {
+        // Every entry is club 0, so only the champion qualifies from the table.
+        let save = GameState::zeroed().to_savegame().to_bytes().unwrap();
+        let mut s = GameState::from_savegame(&SaveGame::parse(&save).unwrap()).unwrap();
+        let mut rt = Runtime::default();
+        euro_cup_qualifiers_build(&mut s, &mut rt);
+        assert_eq!(qualifiers(&s), [&[0][..], &[0xff], &[]]);
+        assert_eq!(rt.euro_qualified_count, 2);
+    }
+
+    #[test]
+    fn round_0_on_a_cup_day_completes_32_slots() {
+        let rt = Runtime::default();
+        let mut s = GameState::zeroed();
+        s.manager_count = 1;
+        s.managers[0].team = 31;
+        for (i, t) in slots_mut(&mut s, 0).iter_mut().enumerate() {
+            *t = i as u8;
+        }
+        goals_mut(&mut s, 0)[30..].copy_from_slice(&[0, 1]);
+        cup_round_complete(&mut s, &rt, &mut Rng::new(9), 0, &mut |_| false);
+        assert_eq!(s.managers[0].values_132[0], 1);
+        assert_eq!(s.event_state[0], 1);
     }
 
     #[test]

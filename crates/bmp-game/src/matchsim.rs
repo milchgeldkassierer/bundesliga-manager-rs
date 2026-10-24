@@ -22,7 +22,7 @@ use std::ops::Range;
 use bmp_formats::savegame::{BLOCK_COMPETITION_SLOTS, BLOCK_PLAYERS, BLOCKS, BlockDesc};
 
 use crate::ai::{GoalFollowUp, match_goal_chance, match_simulate_quick_result};
-use crate::cups::round_pairings;
+use crate::cups::round_slots;
 use crate::league::{
     NO_MATCH, NOT_PLAYED, RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
 };
@@ -209,7 +209,7 @@ pub(crate) fn league_result_cell(tier: u8, round: i16, slot: u8) -> Option<usize
 
 /// Cells in one cup row of the flattened [`GameState::cup_pairings`],
 /// [`GameState::cup_results`] and [`GameState::cup_first_leg_goals`].
-const CUP_ROW_CELLS: usize = 32;
+pub(crate) const CUP_ROW_CELLS: usize = 32;
 
 /// Byte range of cup row `cup` in the flattened [`GameState::cup_pairings`] and
 /// [`GameState::cup_results`].
@@ -777,7 +777,7 @@ pub fn match_penalty_shootout<H: MatchHooks + ?Sized>(
 /// Pairing bytes of the cup round of a cup day: the European round (FAR:0009) for
 /// `cup_mask > 1`, else the DFB cup round (FAR:0008).
 fn cup_pairing_bytes(state: &GameState, cup_mask: u8) -> u8 {
-    round_pairings(state.event_state[usize::from(cup_mask > 1)]) << 1
+    round_slots(state.event_state[usize::from(cup_mask > 1)])
 }
 
 /// Pairing bytes of the cup round played on a match day, shared by [`match_live_period`]
@@ -2557,6 +2557,22 @@ mod tests {
         );
         assert_ne!(rng, no_et);
     }
+
+    #[test]
+    fn cup_day_in_round_0_plays_one_row() {
+        let mut s = period_state();
+        s.event_state[0] = 0;
+        let mut rt = Runtime::default();
+        let mut hooks = Recorder::default();
+        matchday_play(&mut s, &mut rt, &mut Rng::new(3), &mut hooks, 0, 1);
+        let ties = Call::Ties {
+            cup_mask: 1,
+            count: 32,
+            shootout: false,
+        };
+        assert!(hooks.calls.contains(&ties), "{:?}", hooks.calls);
+    }
+
     /// A European cup day: cup row 1 plays `HOME` v `AWAY` and `T1_HOME` v `T1_AWAY` in round 4
     /// while the DFB cup (row 0) is in its final.
     fn euro_day_state() -> GameState {
