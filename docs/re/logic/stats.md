@@ -63,8 +63,8 @@ opposite; see Open questions.
 | +0x10b + r | 234d + r | u8 | league position (0-based) after round index `r` (written by `league_apply_round_and_sort`) |
 | +0x132..+0x135 | 2374..2377 | u8[4] | cup stage bytes (1..6 count in the high score) |
 | +0x138 | 237a | u8 | league tier of the team (0 = Bundesliga, 1 = 2. Liga, 2 = Oberliga) |
-| +0x13a | 237c | u8 | number of entries in the history byte list +0x14a |
-| +0x14a | 238c | u8[] | history list (table position per season, statistics graph) |
+| +0x13a | 237c | u8 | league home games of the season, the entry count of +0x14a (written by 2a58:20b2, reset at the season end) |
+| +0x14a | 238c | u8[20] | attendance of each league home game of the season in thousands (low byte; written by 2a58:20b2) |
 | +0x15e | 23a0 | int32[] | stadium block (`S` below): `S+0x00, S+0x08, S+0x10, S+0x18, S+0x20, S+0x28, S+0x30` are `int32` stadium values (standing places, seats, covered places, floodlights, score board, comfort...; owned by the stadium agent) |
 | +0x1dc | 241e | u16 | used by income and advertising offers (`km` below) |
 | +0x1de | 2420 | u16 | weekly expense item |

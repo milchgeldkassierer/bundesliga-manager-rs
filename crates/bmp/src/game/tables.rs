@@ -11,9 +11,9 @@ use bmp_game::league::{
     RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
 };
 use bmp_game::rng::{NumberFormat, format_long_thousands, long_abs_diff};
+use bmp_game::season::calendar_compute_date;
 use bmp_game::state::GameState;
 
-use super::season::calendar_compute_date;
 use super::widgets::{TextButtons, ui_wait_right_click_button};
 use super::{GAME_OPTION_A, GAME_OPTION_B, Session, append_ordinal_suffix, text_to_upper_de};
 use crate::gfx::{

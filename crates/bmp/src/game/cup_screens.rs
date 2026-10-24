@@ -12,9 +12,9 @@
 
 use bmp_game::cups::CUP_ROUND_PAIRINGS;
 use bmp_game::rng::NumberFormat;
+use bmp_game::season::calendar_compute_date;
 use bmp_game::state::GameState;
 
-use super::season::calendar_compute_date;
 use super::stats_screens::{CUP_NAMES, DFB_STAGES};
 use super::tables::{
     LEAGUE_NAMES, cat, centered, club_name, icon, league_tier_of_team, line, num, panel,

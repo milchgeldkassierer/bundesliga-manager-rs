@@ -446,7 +446,7 @@ pub fn screen_statistics(host: &mut Host, session: &mut Session, state: &mut Gam
     let games = usize::from(mgr.values_13a[0]);
     // TODO(#31): the original reads `games` bytes from +0x14a on; only the 20
     // bytes up to the stadium block are modelled here.
-    let bars = attendance_bar_heights(&mgr.unknown_14a[..games.min(mgr.unknown_14a.len())]);
+    let bars = attendance_bar_heights(&mgr.home_attendance[..games.min(mgr.home_attendance.len())]);
     for (k, h) in bars.into_iter().enumerate() {
         let x = 5 * k as i16;
         frame(host, x + 0xd1, 0x76 - h, x + 0xd6, 0x76, 0x15);
@@ -525,12 +525,7 @@ pub fn eternal_table_rows(state: &GameState, ord: &[u8; 64]) -> Vec<EternalRow> 
 /// Word `k` of the career counters `M(m)+0x1a4` (pairs of home and away
 /// words).
 fn career_word(mgr: &Manager, k: usize) -> u16 {
-    let v = mgr.season_stats[k / 2] as u32;
-    if k.is_multiple_of(2) {
-        v as u16
-    } else {
-        (v >> 16) as u16
-    }
+    mgr.career_stats[k / 2][k % 2]
 }
 
 /// The career line `row` (points, goals, wins, losses, draws) in column `c`
@@ -591,7 +586,13 @@ pub fn screen_eternal_table(
         let k = si as i16;
         centered(host, trophy, 0xb0, 0x11e, 0x17 * k + 0x1e, 1, 0);
         // M(m)[0x39 + si]: titles won.
-        let won = mgr.unknown_01f[0x1a + si];
+        let won = [
+            mgr.titles,
+            mgr.cup_wins[0],
+            mgr.cup_wins[1],
+            mgr.cup_wins[2],
+            mgr.cup_wins[3],
+        ][si];
         let (buf, color) = if won == 0 {
             (NOT_YET.to_vec(), 1)
         } else {
@@ -917,9 +918,9 @@ mod tests {
     #[test]
     fn career_columns() {
         let mut mgr = Box::new(GameState::zeroed()).managers[0].clone();
-        mgr.season_stats[0] = (61 << 16) | 30; // points for: home 30, away 61
-        mgr.season_stats[3] = (5 << 16) | 4; // points against
-        mgr.season_stats[5] = (7 << 16) | 9; // M+0x1b8 wins
+        mgr.career_stats[0] = [30, 61]; // points for: home 30, away 61
+        mgr.career_stats[3] = [4, 5]; // points against
+        mgr.career_stats[5] = [9, 7]; // M+0x1b8 wins
         assert_eq!(career_text(&mgr, 0, 0, fmt()), (b"91:9".to_vec(), true));
         assert_eq!(career_text(&mgr, 0, 2, fmt()), (b"61:5".to_vec(), true));
         assert_eq!(career_text(&mgr, 2, 1, fmt()), (b"9".to_vec(), false));

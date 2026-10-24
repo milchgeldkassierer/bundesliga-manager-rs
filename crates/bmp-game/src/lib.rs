@@ -3,6 +3,7 @@
 pub mod ai;
 pub mod cups;
 pub mod finance;
+pub mod highscore;
 pub mod league;
 pub mod matchsim;
 pub mod newgame;

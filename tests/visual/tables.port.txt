@@ -3,7 +3,11 @@
 # tables of the three tiers with a mode switch, fixtures with paging, strength
 # tables with a part switch, the club info from each of them) and return to
 # the office.
-# seed: 35372
+# Seed 43597 was recovered from the reference's Bundesliga strength table (r13): run
+# from program start through the European cup draws and the loop top of the loaded
+# game (finances, weekly strength drift), it is the only 16-bit seed that gives all 18
+# clubs their shown values.
+# seed: 43597
 wait 500
 click 160 120
 wait 4000

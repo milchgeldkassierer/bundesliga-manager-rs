@@ -408,7 +408,7 @@ if ((i32)FAR:513c == FAR:a7a0) {                                // last season o
                 far_memcpy_bytes(FAR:4cfe, &row[i], 58);
                 for (u8 a = 0; a < 19; a++) for (u8 b = a+1; b < 20; b++)
                     if (row[a].score < row[b].score) swap rows via FAR:4cfe;   // 3 copies of 58 bytes
-                break;   // see note: the outer loop restarts with i = 0 of the next manager
+                // no break: the scan goes on with i + 1 and FAR:4cfe as the candidate
             }
         }
     }
@@ -447,9 +447,11 @@ startup_step_034d(3);                                           // 18bc:034d(3)
 goto TOP;
 ```
 
-Note on the high-score loop: the asm restarts the row scan with `i = 0` after a `put` (2a58:42ea sets
-the row index to 0 and re-enters the "next row" test), so a manager can be inserted more than once
-only if his entry again matches; port it as written: after the sort, continue the scan at `i = 1`.
+Note on the high-score loop: after a `put` and the sort (2a58:42ea resets the sort's outer index, not
+the row index) the scan goes on with the next row, and the candidate is now the swap buffer
+FAR:4cfe, which holds the row the sort's last swap moved out. When the put was over the manager's
+own row and the sort moved it up, that buffer row then beats the last row and is put in a second
+time (the last row drops out). Port: `bmp_game::highscore::highscore_game_end_insert`.
 
 RNG calls in this function, in order per pass: `random_range(0, n+3)` once per office turn in loop B;
 at season end `random_range(up+3, up+4)` (only tier 2, `j == 0`, `up < 60`).
@@ -1253,14 +1255,16 @@ Callers: 1cb5:2756, 24a4:19fb.
 ### 4.7 `season_rebalance_player_clubs` 1cb5:2756
 
 Moves persons (`P[p]`, e.g. players/coaches of AI clubs) between tiers so that each tier gets the
-number requested by 24a4:1798.
+number requested by 24a4:1798 (`player_pool_season_shuffle`, stats.md §3.3, which also runs the
+yearly pool shuffle, so it runs twice here).
 
 ```c
 void season_rebalance_player_clubs(void) {
     u8 rank[3][20];
     for (i16 k = 0; k < 3; k++) rank_tier_teams_by_strength((i8)k, rank[k]);   // result unused afterwards
     u8 pool[0x97][4]; memset(pool, 0xff, sizeof pool);      // pool[idx][k]
-    i16 want[4];  tier_person_quota(want);                   // 24a4:1798(i16 far *)
+    i16 want[4];  tier_person_quota(want);                   // 24a4:1798(i16 far *), writes want[0..3]
+    want[3] = 0;
     i16 have[4], avail[4];
     for (i16 k = 0; k < 4; k++) {
         have[k] = 0;
@@ -1663,8 +1667,8 @@ refused, 8 restart with 500.000 DM), `+0x141..0x144` training plan, `+0x145` tra
 6. (resolved) 2a58:0ca3 and 2a58:042f are now specified (§3.9, §3.10). The RNG inside
    `match_pick_scorer`, `tore_scene_play`, `player_injure` and `squad_recalc_team_strength` belongs to
    the match/stats areas.
-7. The high-score insertion loop at the game end (2a58:41c9..42fa) re-enters the row scan after a
-   copy; check against the HIGH.XY port (`savegame.md`) before porting.
+7. (resolved) The high-score insertion loop at the game end (2a58:41c9..42fa) goes on scanning
+   with the swap buffer after a put (see the note after §3.1).
 8. `rank_tier_teams_by_strength` results are computed in 1cb5:2756 but the buffer is never read
    there; confirm whether 24a4:1798 reads it through the stack frame (unlikely).
 9. 1cb5:0012 Trennungen: `squad_remove_player(sl, 1, (2 - (sl == 4)) * 12)` compares the **slot**

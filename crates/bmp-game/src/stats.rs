@@ -23,8 +23,8 @@ use crate::transfer::player_value_of;
 const SCORER_WEIGHTS: [u8; 11] = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 46];
 /// Rows of the top-scorer list.
 const TOP_SCORER_ROWS: usize = 20;
-/// DS:54c9: form string of a club that has not played yet.
-const FORM_PLACEHOLDER: &[u8] = b"@@@@@@@@";
+/// DS:54c9 (and its copy DS:53c7): form string of a club that has not played yet.
+pub(crate) const FORM_PLACEHOLDER: &[u8] = b"@@@@@@@@";
 /// FAR address of the player table ([`GameState::players`]).
 const PLAYERS_FAR: usize = BLOCKS[BLOCK_PLAYERS].offset as usize;
 /// FAR address of the squad table ([`GameState::squads`]).
@@ -153,6 +153,20 @@ pub fn top_scorers_order(state: &mut GameState) -> [u8; PLAYER_COUNT] {
         }
     }
     ord
+}
+
+/// Whether the top scorer of the current manager's league plays for the
+/// manager's club: the first player of the league with at least two goals in
+/// [`top_scorers_order`] (which also copies the squads' goals into the pool).
+///
+/// Origin: BMMAIN.EXE 24a4:1ad5 (screen_top_scorers, `no_display != 0`)
+pub fn top_scorer_plays_for_current_manager(state: &mut GameState) -> bool {
+    let order = top_scorers_order(state);
+    let m = current_manager(state);
+    let (tier, team) = (usize::from(m.league), m.team);
+    top_scorers_rows(state, &order, tier, false)
+        .first()
+        .is_some_and(|r| state.players[usize::from(r.player)].team == team)
 }
 
 /// One row of the top-scorer list.
@@ -475,6 +489,69 @@ fn advertising_offer(
     Some((o, d as u8 + 1))
 }
 
+/// The injury names `UI[53..71]`, by injury type ([`SquadPlayer::injury`]).
+pub const INJURY_NAMES: [&[u8]; 18] = [
+    b"Oberschenkelzerrung",
+    b"Prellung d. Kn|chels",
+    b"Platzwunde am Kopf",
+    b"Stauchung d. Fu~gelenkes",
+    b"Sprunggelenkprellung",
+    b"B{nderdehnung",
+    b"Bauchmuskelzerrung",
+    b"Bluterguss am Knie",
+    b"Nasenbeinbruch",
+    b"Au~enbandanri~",
+    b"Schienbeinbruch",
+    b"Muskelfaserri~",
+    b"Meniskusverletzung",
+    b"Innenbandabri~",
+    b"Wadenbeinbruch",
+    b"Kapselri~",
+    b"Leistenbruch",
+    b"Kreuzbandri~",
+];
+/// DS:05bc: the least number of games each injury type lasts.
+const INJURY_GAMES: [u8; 18] = [1, 2, 1, 2, 2, 4, 2, 1, 1, 6, 12, 5, 7, 10, 11, 9, 20, 14];
+
+/// Injures the player of record `slot` of squad `group`: his third skill drops by 12..=19
+/// when above 20, a random injury type (a serious one, with chance 1/2 and when it lasts
+/// longer than a draw of 2..=4 games, is drawn again) keeps him out for its games plus up to
+/// a quarter of them and one more, and he leaves the lineup. Returns `" (<injury>)"`.
+///
+/// Origin: BMMAIN.EXE 24a4:30cf (player_injure)
+pub fn player_injure(state: &mut GameState, rng: &mut Rng, group: usize, slot: usize) -> Vec<u8> {
+    let p = &mut state.players[usize::from(state.squads[group][slot].player_id)];
+    if p.skills[2] > 20 {
+        p.skills[2] = p.skills[2].wrapping_sub(rng.random_range(12, 19) as u8);
+    }
+    let mut kind = rng.random_range(0, 17) as usize;
+    if rng.random_range(0, 1) != 0 && i16::from(INJURY_GAMES[kind]) > rng.random_range(2, 4) {
+        kind = rng.random_range(0, 17) as usize;
+    }
+    let games = INJURY_GAMES[kind];
+    let extra = rng.random_range(0, i16::from(games >> 2) + 1) as u8;
+    let s = &mut state.squads[group][slot];
+    s.suspended = extra.wrapping_add(games);
+    s.status |= 2;
+    s.injury = kind as u8;
+    s.lineup_position = 0;
+    [&b" ("[..], INJURY_NAMES[kind], b")"].concat()
+}
+
+/// How much a player wants to leave: his age, times 85 % for a goalkeeper or 100 % otherwise,
+/// minus half of how far his second skill is above his first, in percent.
+///
+/// Origin: BMMAIN.EXE 24a4:2588 (player_value_percent)
+pub fn player_value_percent(state: &GameState, s: &SquadPlayer) -> i32 {
+    let p = &state.players[usize::from(s.player_id)];
+    let diff = i16::from(s.skills[1]) - i16::from(s.skills[0]);
+    let mut pct = 100 - 15 * i16::from(p.position_value < 25);
+    if diff > 0 {
+        pct -= diff >> 1;
+    }
+    ldiv(i32::from(p.age) * i32::from(pct), 100)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -492,6 +569,84 @@ mod tests {
             s.players[p].position_value = talent;
         }
         s
+    }
+
+    #[test]
+    fn the_top_scorer_flag_needs_the_leagues_first_scorer() {
+        // Manager 0 runs club 20 in the 2. Bundesliga; player 5 plays for it, player 6 for
+        // club 21, player 7 for Bundesliga club 1.
+        let flag = |own: u8, other: u8, top_league: u8| {
+            let mut s = pool(0xff, &[], 0);
+            s.manager_count = 1;
+            s.managers[0].team = 20;
+            s.managers[0].league = 1;
+            for (p, team, goals) in [(5, 20, own), (6, 21, other), (7, 1, top_league)] {
+                s.players[p].team = team;
+                s.players[p].counters[0] = goals;
+            }
+            top_scorer_plays_for_current_manager(&mut s)
+        };
+        assert!(flag(3, 2, 9));
+        assert!(!flag(3, 4, 0));
+        assert!(!flag(1, 0, 0), "fewer than two goals do not count");
+    }
+
+    #[test]
+    fn an_injury_keeps_the_player_out_for_its_games() {
+        for seed in 0..40 {
+            let mut s = GameState::zeroed();
+            s.squads[1][3].player_id = 7;
+            s.squads[1][3].lineup_position = 4;
+            s.squads[1][3].status = 0x40;
+            s.players[7].skills = [50, 50, 30];
+            let mut rng = Rng::new(seed);
+            let mut want = rng;
+            let drop = want.random_range(12, 19) as u8;
+            let mut kind = want.random_range(0, 17) as usize;
+            if want.random_range(0, 1) != 0
+                && i16::from(INJURY_GAMES[kind]) > want.random_range(2, 4)
+            {
+                kind = want.random_range(0, 17) as usize;
+            }
+            let games = INJURY_GAMES[kind];
+            let extra = want.random_range(0, i16::from(games / 4) + 1) as u8;
+
+            let text = player_injure(&mut s, &mut rng, 1, 3);
+            assert_eq!(rng, want, "seed {seed}");
+            assert_eq!(s.players[7].skills, [50, 50, 30 - drop]);
+            let r = &s.squads[1][3];
+            assert_eq!(
+                (r.suspended, r.status, r.injury),
+                (games + extra, 0x42, kind as u8)
+            );
+            assert!((games..=games + games / 4 + 1).contains(&r.suspended));
+            assert_eq!(r.lineup_position, 0);
+            assert_eq!(text, [&b" ("[..], INJURY_NAMES[kind], b")"].concat());
+        }
+    }
+
+    #[test]
+    fn a_weak_third_skill_is_not_lowered_by_an_injury() {
+        let mut s = GameState::zeroed();
+        s.squads[0][0].player_id = 1;
+        s.players[1].skills = [50, 50, 20];
+        player_injure(&mut s, &mut Rng::new(3), 0, 0);
+        assert_eq!(s.players[1].skills[2], 20);
+    }
+
+    #[test]
+    fn the_wish_to_leave_grows_with_age() {
+        let mut s = GameState::zeroed();
+        let mut q = SquadPlayer::zeroed();
+        q.player_id = 2;
+        s.players[2].age = 30;
+        s.players[2].position_value = 40;
+        q.skills = [60, 50, 0];
+        assert_eq!(player_value_percent(&s, &q), 30);
+        q.skills = [50, 61, 0]; // half of 11 rounds down: 95 %
+        assert_eq!(player_value_percent(&s, &q), 28);
+        s.players[2].position_value = 0; // a goalkeeper: 85 % - 5
+        assert_eq!(player_value_percent(&s, &q), 24);
     }
 
     #[test]

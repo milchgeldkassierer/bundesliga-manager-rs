@@ -144,7 +144,9 @@ Ghidra). MEMORY_MAP gives the offsets relative to FAR:2260 (= +0x1e); this table
 | 0x000 | 2242 | `name: [u8;29]` | Name, NUL terminated |
 | 0x01d | 225f | `slot: u8` | 1..4. `startup_clear_state` writes `m+1` and the loader repairs 0. The start menu swaps it when managers are reordered |
 | 0x01e | 2260 | `team: u8` | Club index, 100 = none (`NO_TEAM`). A new game with no name typed gets `m*11` |
-| 0x01f | | `unknown_01f: [u8;31]` | |
+| 0x01f | | `unknown_01f: [u8;26]` | |
+| 0x039 | 227b | `titles: u8` | Championships won (`season_main_loop` 2a58:3763) |
+| 0x03a | 227c | `cup_wins: [u8;4]` | Cups won: DFB-Pokal, then European cups 1..3 (2a58:3763) |
 | 0x03e | 2280 | `round_log: [[u8;4];50]` | Per-round log, initialized to 0xff. Shifted when DS:07e2 reaches 0x31 |
 | 0x106 | | `unknown_106: [u8;4]` | |
 | 0x10a | 234c | `value_10a: u8` | `(s + 8) * 2 - 3*league` (`s` = scenario 0x7ac/0x7c9) |
@@ -154,15 +156,15 @@ Ghidra). MEMORY_MAP gives the offsets relative to FAR:2260 (= +0x1e); this table
 | 0x137 | | `unknown_137: u8` | |
 | 0x138 | 237a | `league: u8` | 0 = Bundesliga, 1 = 2. Bundesliga, 2 = amateur (compared with `league_of_rank()>>1`, 27c2:1bb5) |
 | 0x139 | 237b | `camp_cooldown: u8` | Days until the next training camp; `random(7,18)` after a booking, decremented daily (finance.md §2.1) |
-| 0x13a | | `values_13a: [u8;5]` | Training/AI bytes |
+| 0x13a | | `values_13a: [u8;3]` | `[0]` league home games of the season (2a58:20b2), `[1]` seasons dropped from the full `round_log` (2a58:3763) |
 | 0x13f | 2381 | `training_intensity: u8` | 0..0x22 (`screen_training`); monthly cost and `fatigue_sum` |
 | 0x140 | | `value_140: u8` | |
 | 0x141 | 2383 | `training_141: [u8;5]` | Copied from DS:0286 on a new game |
 | 0x146 | 2388 | `training_146: [u8;4]` | Copied from DS:028c |
-| 0x14a | | `unknown_14a: [u8;20]` | |
+| 0x14a | | `home_attendance: [u8;20]` | Attendance of each league home game of the season in thousands (low byte), indexed by `values_13a[0]` (2a58:20b2) |
 | 0x15e | 23a0 | `stadium: [[i32;2];7]` | `[item][0]` = current value, `[item][1]` = under construction. New-game values are in the Rust doc comment |
 | 0x196 | 23d8 | `build_days: [u16;7]` | Construction countdown per stadium item in days (finance.md §3.2, §3.5) |
-| 0x1a4 | 23e6 | `season_stats: [i32;8]` | Season totals (`season_main_loop`). Observed values are DM-sized |
+| 0x1a4 | 23e6 | `career_stats: [[u16;2];8]` | Career totals, home and away half per field: points, goals for, goals against, points lost, played, wins, losses, draws; added at every season end (2a58:3763) |
 | 0x1c4 | | `unknown_1c4: [u8;24]` | |
 | 0x1dc | 241e | `fans: u16` | New game: `50 - 20*league`; grows at month end while below 95 |
 | 0x1de | 2420 | `extra_costs: u16` | Monthly expense item |
@@ -294,10 +296,13 @@ every manager's `position_history` is updated (§3.1). The whole function only r
 | 0x13 | `exhaustion: u8` | Exhaustion, `random_range(80,120)` on insert |
 | 0x14 | `traits: u8` | Bit field from `player_init_random_attrs` (bits 0-3, 4-5, 7) |
 | 0x19 | `board_col: i8` | Tactics-board column 0..7, -1 (`BOARD_UNPLACED`) = not placed |
+| 0x15 | `match_rating: u8` | Signed rating of the current match: 0 at kick-off (2a58:20b2), +15 per goal, +10 per assist, -10 per missed chance or card (`match_ticker_events` 2a58:0ca3) |
 | 0x16 | `sale_club: u8` | Club the player moves to when sold |
+| 0x17 | `injury: u8` | Injury type, an index into `stats::INJURY_NAMES` (`player_injure` 24a4:30cf); copied on a manager-to-manager sale |
 | 0x18 | `negotiation: u8` | 0 willing, 1..99 cool-down, 100..127 insists on `value - 100` seasons, bit 7 retires (transfer.md §2.1) |
 | 0x1a | `board_row: i8` | Tactics-board row 0..7 (0 = attack, 7 = goal) |
 | 0x1c | `value_terms: [u16;3]` | Value terms weighted 50/20/30 by `player_value_calc` |
+| 0x22 | `club_goals: [u16;3]` | Goals in league, DFB-Pokal and Europapokal for the club, not reset at the season end (`match_ticker_events` 2a58:0ca3) |
 | 0x28 | `market_value: i32` | Monthly salary in squads 0..3, asking fee in the market (`player_value_calc` 3277:25de) |
 | 0x30 | `message_ptr: u32` | Far pointer to a message. The loader patches it through the string table |
 
@@ -380,7 +385,7 @@ xrefs/decompilations above and MEMORY_MAP.
 
 ## 7. Open questions
 
-* `Manager` bytes 0x01f..0x03d, 0x106..0x109, 0x14a..0x15d and 0x1c4..0x1db have not been
+* `Manager` bytes 0x01f..0x038, 0x106..0x109 and 0x1c4..0x1db have not been
   traced, and the meaning of most of 0x10a..0x146.
 * Which competition each of DS:07ac..07af is (inferred only from the prestige bonus order).
 * Blocks 30, 31, 36..40, 44, 46, 51..60 have only been located (users known); their meaning is not

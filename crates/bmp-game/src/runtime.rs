@@ -6,6 +6,7 @@
 //! after program start (`docs/re/logic/state.md` §5, `docs/re/logic/ai.md` §5). Fields are added
 //! when a ported function needs them.
 
+use crate::squad::LineupRules;
 use crate::state::{Layout, MANAGER_SLOTS, NewsRecord};
 
 /// DS:226e: first club index of each league tier.
@@ -103,6 +104,10 @@ pub struct Runtime {
     /// FAR:56f4: the game started in 1992 rather than 1963; set by the new-game options
     /// dialog, not saved.
     pub modern_start: bool,
+    /// FAR:513e / FAR:56ee: the lineup rules the office dispatcher (18bc:0b5f) last set,
+    /// read by the weekly `auto_lineup` (2ecd:3360) of the season loop. Both bytes are 0 in
+    /// the program image.
+    pub lineup_rules: LineupRules,
 }
 
 impl Default for Runtime {
@@ -135,6 +140,10 @@ impl Default for Runtime {
             relegation_mode: 0,
             euro_qualified_count: 0,
             modern_start: false,
+            lineup_rules: LineupRules {
+                suspended_allowed: false,
+                max_lineup_slot: 0,
+            },
         }
     }
 }
@@ -153,6 +162,15 @@ impl Runtime {
         } else {
             4
         }
+    }
+
+    /// League tier of a club as an index: the first of [`Runtime::tier_club_ranges`] that holds
+    /// it, 4 if none does.
+    pub fn tier_of_club(&self, club: u8) -> u8 {
+        self.tier_club_ranges
+            .iter()
+            .position(|&[lo, hi]| (lo..=hi).contains(&club))
+            .unwrap_or(4) as u8
     }
 }
 

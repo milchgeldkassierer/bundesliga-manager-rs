@@ -728,12 +728,7 @@ pub fn match_attendance_estimate(
     let week = i32::from(state.competition_rounds[tier_idx] as i8);
     let weeks = i32::from(rt.tier_round_count[tier_idx]);
     let cap = if fixed_cap {
-        let range = rt
-            .tier_club_ranges
-            .iter()
-            .position(|&[lo, hi]| lo <= home && home <= hi)
-            .unwrap_or(4);
-        let base = ATTENDANCE_TIER_BASE[range];
+        let base = ATTENDANCE_TIER_BASE[usize::from(rt.tier_of_club(home))];
         let t = base as i16;
         let t3 = ldiv(base, 3) as i16;
         i32::from(rng.random_range(t.wrapping_sub(t3), t.wrapping_add(t3))) * 10

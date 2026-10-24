@@ -148,7 +148,7 @@ pub fn screen_player_info(
         buf.extend_from_slice(ui_string(133 - i16::from(st)));
         if st == 2 {
             buf.push(b'(');
-            buf.extend(text_to_upper_de(ui_string(53 + i16::from(r.unknown_17))));
+            buf.extend(text_to_upper_de(ui_string(53 + i16::from(r.injury))));
             buf.push(b')');
         }
     }
@@ -159,7 +159,7 @@ pub fn screen_player_info(
     host.number_pad = 2;
     text_at(host, b"TORE:", 0x5c, 0x64, 1);
     for (k, &x) in COLX.iter().enumerate() {
-        let total = u16::from_le_bytes([r.unknown_22[2 * k], r.unknown_22[2 * k + 1]]);
+        let total = r.club_goals[k];
         let mut buf = num_or_blank(host, i32::from(r.goals[k]));
         buf.push(b'(');
         buf.extend(num_or_blank(host, i32::from(total)));

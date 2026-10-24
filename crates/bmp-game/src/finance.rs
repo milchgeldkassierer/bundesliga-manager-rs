@@ -4,7 +4,9 @@
 //! Every function works on the manager whose turn it is
 //! ([`GameState::current_manager`], FAR:304a), like the original. Dialogs
 //! and messages the original shows in the middle of the processing are
-//! returned as [`FinanceEvent`]s in the order they appear.
+//! returned as [`FinanceEvent`]s in the order they appear; the messages are
+//! posted to the inbox where the original posts them, as that draws a random
+//! number.
 //!
 //! The screens that call into this module call `copy_protection_penalty`
 //! 16c7:09f9, which draws random numbers only while the copy protection has
@@ -13,7 +15,8 @@
 //!
 //! Full documentation with Ghidra addresses: `docs/re/logic/finance.md`.
 
-use crate::rng::{Rng, clamp_int, ldiv, lmul, lrem, lshr};
+use crate::news::{MessageArg, NO_FREE_SLOT, message_delete, message_post, team_slot_free_index};
+use crate::rng::{NumberFormat, Rng, clamp_int, ldiv, lmul, lrem, lshr};
 use crate::state::{Credit, GameState, Manager};
 
 /// Days per month, DS:07b8 (no leap years).
@@ -26,14 +29,17 @@ pub const BANK: usize = 4;
 const FAN_GROWTH_LIMIT: u16 = 95;
 
 /// Something the original shows to the player while processing a day.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FinanceEvent {
     /// Construction of stadium item `item` (0..7, see [`Manager::stadium`])
-    /// finished (`stadium_construction_daily`: shown at once or queued as a
-    /// message, depending on the day counter).
+    /// finished (`stadium_construction_daily`).
     ConstructionFinished {
         /// Stadium item index.
         item: usize,
+        /// The message the original shows at once and deletes again (in the
+        /// winter break and after the season's last day); `None`: it went to
+        /// the inbox through [`message_queue_add`].
+        shown: Option<Vec<u8>>,
     },
     /// "Ihr Kredit von <lender> wurde heute fällig." The loan was repaid.
     LoanDue {
@@ -166,15 +172,68 @@ pub fn interest_rates_update(state: &mut GameState, rng: &mut Rng) {
     state.interest_rates = interest_rate_table(state.base_interest_rate);
 }
 
+/// DS:28d8: the first message line of a finished stadium item.
+const CONSTRUCTION_SUBJECT: [&[u8]; 7] = [
+    b"Der Ausbau der Sitzpl{tze",
+    b"Der Ausbau der Stehpl{tze",
+    b"Die ]berdachung des Stadions",
+    b"Die Errichtung der neuen",
+    b"Die Errichtung der neuen",
+    b"Die Stadionrenovierung",
+    b"Die Verbesserung des",
+];
+/// The line that ends a construction message.
+const CONSTRUCTION_DONE: &[u8] = b"ist abgeschlossen.";
+/// Message template of [`message_queue_add`]'s kind 0 (`3 * kind + 2`: three text lines).
+const QUEUED_TEMPLATE: u8 = 2;
+/// Message template of a message shown at once (kind 1).
+const SHOWN_TEMPLATE: usize = 5;
+/// [`GameState::team_slots`] countdown of a queued message.
+const QUEUED_DAYS: u8 = 3;
+
+/// Posts a three-line message (template `3 * kind + 2`) to the inbox of the
+/// current manager and keeps it in a free slot of row `row` of
+/// [`GameState::team_slots`] with a countdown of 3; without a free slot the
+/// message is deleted again.
+///
+/// Origin: BMMAIN.EXE 1000:239e (message_queue_add)
+pub fn message_queue_add(
+    state: &mut GameState,
+    rng: &mut Rng,
+    fmt: &mut NumberFormat,
+    lines: [&[u8]; 3],
+    row: u8,
+    kind: u8,
+) {
+    state.saved_manager = state.current_manager;
+    let slot = team_slot_free_index(state, row);
+    let args = lines.map(MessageArg::Text);
+    let tpl = usize::from(kind.wrapping_mul(3).wrapping_add(QUEUED_TEMPLATE));
+    let msg = message_post(state, rng, fmt, kind != 0, tpl, &args);
+    if slot == NO_FREE_SLOT {
+        message_delete(state, msg.pointer);
+    } else {
+        let (r, s) = (usize::from(row), usize::from(slot));
+        state.message_pointers[r][s] = msg.pointer;
+        state.team_slots[r][s] = QUEUED_DAYS;
+    }
+}
+
 /// Counts down the construction-firm locks (shared by all managers, so they
 /// tick once per manager and day) and the current manager's construction
-/// days; a finished item adds its pending amount to the current one.
+/// days; a finished item adds its pending amount to the current one, and its
+/// message goes to the inbox ([`message_queue_add`], row 1), or in the winter
+/// break and after the season's last day it is shown at once.
 ///
 /// Origin: BMMAIN.EXE 1000:20e1 (stadium_construction_daily)
-pub fn stadium_construction_daily(state: &mut GameState) -> Vec<FinanceEvent> {
+pub fn stadium_construction_daily(
+    state: &mut GameState,
+    rng: &mut Rng,
+    fmt: &mut NumberFormat,
+) -> Vec<FinanceEvent> {
     let m = current_index(state);
     let mut events = Vec::new();
-    for item in 0..7 {
+    for (item, subject) in CONSTRUCTION_SUBJECT.into_iter().enumerate() {
         let lock = &mut state.construction[item];
         *lock = lock.saturating_sub(1);
         let manager = &mut state.managers[m];
@@ -184,9 +243,34 @@ pub fn stadium_construction_daily(state: &mut GameState) -> Vec<FinanceEvent> {
         let [current, pending] = &mut manager.stadium[item];
         *current = current.wrapping_add(*pending);
         *pending = 0;
-        events.push(FinanceEvent::ConstructionFinished { item });
+        let lines = match item {
+            3 => [subject, b"Flutlichtmasten", CONSTRUCTION_DONE],
+            4 => [subject, b"Anzeigetafel", CONSTRUCTION_DONE],
+            6 => [subject, b"Stadion-Komforts", CONSTRUCTION_DONE],
+            _ => [subject, CONSTRUCTION_DONE, b""],
+        };
+        let shown = if construction_shown_at_once(state.day_counter) {
+            state.saved_manager = state.current_manager;
+            let args = lines.map(MessageArg::Text);
+            let msg = message_post(state, rng, fmt, true, SHOWN_TEMPLATE, &args);
+            message_delete(state, msg.pointer);
+            Some(msg.text)
+        } else {
+            message_queue_add(state, rng, fmt, lines, 1, 0);
+            None
+        };
+        events.push(FinanceEvent::ConstructionFinished { item, shown });
     }
     events
+}
+
+/// Whether a finished construction is shown at once on day `day`: strictly
+/// between `DS:224d * 7 + 0x80` and `0xcf - DS:224d * 14` (DS:224d is 0), or
+/// after the season's last day.
+///
+/// Origin: BMMAIN.EXE 1000:20e1 (stadium_construction_daily, the test at 1000:223a..2295)
+fn construction_shown_at_once(day: i32) -> bool {
+    (0x80 < day && day < 0xcf) || day > 0x142
 }
 
 /// Decrements a running countdown; `true` when this step reached 0.
@@ -210,9 +294,13 @@ fn count_down<T: Copy + PartialEq + From<u8> + std::ops::Sub<Output = T>>(value:
 /// loan payments.
 ///
 /// Origin: BMMAIN.EXE 212a:0a6d (finance_daily_processing)
-pub fn finance_daily_processing(state: &mut GameState, rng: &mut Rng) -> Vec<FinanceEvent> {
+pub fn finance_daily_processing(
+    state: &mut GameState,
+    rng: &mut Rng,
+    fmt: &mut NumberFormat,
+) -> Vec<FinanceEvent> {
     let m = current_index(state);
-    let mut events = stadium_construction_daily(state);
+    let mut events = stadium_construction_daily(state, rng, fmt);
 
     for counter in &mut state.ds_0620 {
         let step = i16::from(*counter < 0) - i16::from(*counter > 0);
@@ -554,19 +642,113 @@ mod tests {
         m.stadium[0] = [1000, 500];
         m.stadium[1] = [2000, 700];
         m.stadium[2] = [0, 300]; // pending without a countdown never finishes
+        let mut rng = Rng::new(5);
+        let mut fmt = NumberFormat::default();
 
-        let events = stadium_construction_daily(&mut s);
-        assert_eq!(events, [FinanceEvent::ConstructionFinished { item: 0 }]);
+        let events = stadium_construction_daily(&mut s, &mut rng, &mut fmt);
+        let finished = |item| FinanceEvent::ConstructionFinished { item, shown: None };
+        assert_eq!(events, [finished(0)]);
         assert_eq!(s.construction, [2, 0, 0, 0, 0, 0, 0]);
         let m = &s.managers[0];
         assert_eq!(m.build_days, [0, 1, 0, 0, 0, 0, 0]);
         assert_eq!(m.stadium[0], [1500, 0]);
         assert_eq!(m.stadium[1], [2000, 700]);
 
-        let events = stadium_construction_daily(&mut s);
-        assert_eq!(events, [FinanceEvent::ConstructionFinished { item: 1 }]);
+        let events = stadium_construction_daily(&mut s, &mut rng, &mut fmt);
+        assert_eq!(events, [finished(1)]);
         assert_eq!(s.managers[0].stadium[1], [2700, 0]);
         assert_eq!(s.managers[0].stadium[2], [0, 300]);
+    }
+
+    /// The inbox texts of manager 0 after the date line.
+    fn inbox(s: &GameState) -> Vec<&[u8]> {
+        s.messages[0]
+            .iter()
+            .map(|e| {
+                let text = e.bytes.strip_suffix(&[0]).unwrap();
+                let date = text.iter().position(|&c| c == b'^').unwrap();
+                &text[date + 1..]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn finished_constructions_are_queued_in_row_1_during_the_season() {
+        let mut s = state_on(10, 0, 1966);
+        s.day_counter = 0x80;
+        s.team_slots[1] = [3, 1, 0, 0, 0, 0, 0, 0, 0, 0];
+        s.managers[0].build_days = [0, 0, 0, 1, 0, 0, 1];
+        let mut rng = Rng::new(5);
+        let mut want = rng;
+        want.random_range(0, 3);
+        want.random_range(0, 3);
+
+        let events = stadium_construction_daily(&mut s, &mut rng, &mut NumberFormat::default());
+        assert!(
+            events
+                .iter()
+                .all(|e| matches!(e, FinanceEvent::ConstructionFinished { shown: None, .. }))
+        );
+        assert_eq!(rng, want, "one date draw per message");
+        assert_eq!(
+            inbox(&s),
+            [
+                &b"Die Verbesserung des^Stadion-Komforts^ist abgeschlossen. ^"[..],
+                b"Die Errichtung der neuen^Flutlichtmasten^ist abgeschlossen. ^",
+            ]
+        );
+        assert_eq!(s.team_slots[1], [3, 1, 3, 3, 0, 0, 0, 0, 0, 0]);
+        let ptrs: Vec<u32> = s.messages[0].iter().map(|e| e.old_pointer).collect();
+        assert_eq!(s.message_pointers[1][2..4], [ptrs[1], ptrs[0]]);
+        assert_eq!(s.far_56e2[0], 1, "new-message flag");
+    }
+
+    #[test]
+    fn finished_constructions_are_shown_at_once_in_the_winter_break_and_after_the_season() {
+        for day in [0x81, 0xce, 0x143] {
+            let mut s = state_on(10, 0, 1966);
+            s.day_counter = day;
+            s.managers[0].build_days[0] = 1;
+            let mut rng = Rng::new(5);
+            let mut want = rng;
+            want.random_range(0, 3);
+
+            let events = stadium_construction_daily(&mut s, &mut rng, &mut NumberFormat::default());
+            let [
+                FinanceEvent::ConstructionFinished {
+                    item: 0,
+                    shown: Some(text),
+                },
+            ] = &events[..]
+            else {
+                panic!("day {day}: {events:?}");
+            };
+            assert!(text.ends_with(b"^Der Ausbau der Sitzpl{tze^ist abgeschlossen.^ ^"));
+            assert_eq!(rng, want);
+            assert!(inbox(&s).is_empty(), "day {day}: deleted again");
+            assert_eq!(s.team_slots, [[0; 10]; 3]);
+            assert_eq!(s.far_56e2[0], 0);
+        }
+    }
+
+    #[test]
+    fn a_queued_message_without_a_free_slot_is_deleted() {
+        let mut s = state_on(10, 0, 1966);
+        s.team_slots[2] = [1; 10];
+        let mut rng = Rng::new(5);
+        message_queue_add(
+            &mut s,
+            &mut rng,
+            &mut NumberFormat::default(),
+            [b"A", b"B", b"C"],
+            2,
+            0,
+        );
+        assert!(inbox(&s).is_empty());
+        assert_eq!(s.message_pointers, [[0; 10]; 3]);
+        assert_eq!(s.team_slots[2], [1; 10]);
+        assert_eq!(team_slot_free_index(&s, 2), NO_FREE_SLOT);
+        assert_eq!(team_slot_free_index(&s, 3), NO_FREE_SLOT);
     }
 
     #[test]
@@ -733,7 +915,7 @@ mod tests {
         want.random_range(20, 70); // counter already 0: drawn, times 0
         want.random_range(0, 60);
 
-        let events = finance_daily_processing(&mut s, &mut rng);
+        let events = finance_daily_processing(&mut s, &mut rng, &mut NumberFormat::default());
         assert!(events.is_empty());
         assert_eq!(rng, want);
         assert_eq!(s.ds_0620, [a, -b, 0, 4, -4, 1, -1, 69]);
@@ -765,7 +947,7 @@ mod tests {
         let mut walked = s.clone();
         interest_rates_update(&mut walked, &mut want);
 
-        finance_daily_processing(&mut s, &mut rng);
+        finance_daily_processing(&mut s, &mut rng, &mut NumberFormat::default());
         assert_eq!(rng, want);
         assert_eq!(s.base_interest_rate, walked.base_interest_rate);
         assert_eq!(s.interest_rates, walked.interest_rates);
@@ -814,7 +996,7 @@ mod tests {
             0
         };
 
-        finance_daily_processing(&mut s, &mut rng);
+        finance_daily_processing(&mut s, &mut rng, &mut NumberFormat::default());
         assert_eq!(rng, draws);
         let m = &s.managers[0];
         assert_eq!(m.balance, 1_990_000 + income - expenses - 100);
@@ -841,7 +1023,7 @@ mod tests {
             let mut rng = rng_without_rate_walk();
             let mut want = rng;
             want.random_range(0, 60);
-            finance_daily_processing(&mut s, &mut rng);
+            finance_daily_processing(&mut s, &mut rng, &mut NumberFormat::default());
             assert_eq!(rng, want);
             assert_eq!(s.managers[0].fans, fans);
             assert_eq!(s.quarter_flag, quarter);
@@ -886,7 +1068,7 @@ mod tests {
                 0
             };
 
-            finance_daily_processing(&mut s, &mut rng);
+            finance_daily_processing(&mut s, &mut rng, &mut NumberFormat::default());
             assert_eq!(rng, want, "{promotion}");
             assert_eq!(s.managers[2].fans, 50 + growth, "{promotion}");
             assert_eq!(s.managers[2].fatigue_sum, 47);
@@ -978,7 +1160,7 @@ mod tests {
         let mut rng = Rng::default();
         for day in 22..=24 {
             s.day_of_month = day;
-            finance_daily_processing(&mut s, &mut rng);
+            finance_daily_processing(&mut s, &mut rng, &mut NumberFormat::default());
         }
         // Counter 2 hit 0 on the first day and was re-drawn; the rest only step.
         for i in (0..8).filter(|&i| i != 2) {

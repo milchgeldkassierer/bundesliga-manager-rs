@@ -11,6 +11,7 @@ use bmp_game::squad::{
     lineup_renumber_starters, squad_count_listed,
 };
 use bmp_game::state::{BOARD_UNPLACED, GameState, SquadPlayer};
+use bmp_game::stats::INJURY_NAMES;
 use bmp_game::transfer::player_value_of;
 
 use super::negotiation::{Browse, contract_negotiation_browse};
@@ -102,24 +103,7 @@ pub(super) fn ui_string(k: i16) -> &'static [u8] {
         39 => b"ABWEHRSPIELER",
         40 => b"MITTELFELDSPIELER",
         41 => b"ANGREIFER",
-        53 => b"Oberschenkelzerrung",
-        54 => b"Prellung d. Kn|chels",
-        55 => b"Platzwunde am Kopf",
-        56 => b"Stauchung d. Fu~gelenkes",
-        57 => b"Sprunggelenkprellung",
-        58 => b"B{nderdehnung",
-        59 => b"Bauchmuskelzerrung",
-        60 => b"Bluterguss am Knie",
-        61 => b"Nasenbeinbruch",
-        62 => b"Au~enbandanri~",
-        63 => b"Schienbeinbruch",
-        64 => b"Muskelfaserri~",
-        65 => b"Meniskusverletzung",
-        66 => b"Innenbandabri~",
-        67 => b"Wadenbeinbruch",
-        68 => b"Kapselri~",
-        69 => b"Leistenbruch",
-        70 => b"Kreuzbandri~",
+        53..=70 => INJURY_NAMES[(k - 53) as usize],
         128 => b"Pokal der Landesmeister",
         129 => b"Pokal der Pokalsieger",
         130 => b"UEFA-Pokal",
@@ -539,7 +523,7 @@ fn hover_text(
                 s.extend_from_slice(ui_string(133 - i16::from(st)));
                 if st == 2 {
                     s.push(b'(');
-                    s.extend(text_to_upper_de(ui_string(53 + i16::from(r.unknown_17))));
+                    s.extend(text_to_upper_de(ui_string(53 + i16::from(r.injury))));
                     s.push(b')');
                 }
             }

@@ -212,7 +212,7 @@ see `globals.tsv`.
 | 0ecc + 0x36*t | 0x36 | teams | per-team match statistics bytes (wins/draws/goals at +0x00, +0x16, +0x1a, +0x1e, +0x26, +0x2a) accumulated into the manager record (medium) |
 | **0x25*t + 57f7..5801** (`t` = team id) | 0x25 | teams | **team records** from MANA.DAT. Fields are accessed as `0x25*t + 0x57fe` (owning manager index, compared with 304a), `+0x5801`, `+0x57f7`, `+0x57f9..57fc`. The record base offset is not yet pinned down (medium; the MANA agent owns the format) |
 | **774a + 0x34*(m*0x19+i)** | 0x34 | 25 per squad | **player records** of a squad: `+0x0a` (7754) status/injury (<0x0c counted). `+0x0d` (7757) suspension flag. `+0x0f` (7759) player id. `+0x19`-`+0x1a` (7763/7764) attributes. `+0x28` (7772) word. `+0x30/+0x32` (777a/777c) far pointer to a message. Squads 0-3 belong to human managers; 0x7e9+ is the transfer pool (`find_player_by_id`) (medium) |
-| 23e6 + 2*(k + m*0x185) | words | | league table accumulators (games, goals, points…) updated each round in `season_main_loop` (medium) |
+| 23e6 + 2*(k + m*0x185) | words | | career totals of the manager (points, goals, points lost, games, wins, losses, draws; home and away word per field), added up from the club's table at each season end by `season_main_loop` 2a58:3763 (medium) |
 | 243e + 0x12*(c*3+j) + 0x30a*m | 0x12 | 5x3 | finance ledger entries (income/expense categories) (medium) |
 
 ## 4. Interrupts, ports and hardware

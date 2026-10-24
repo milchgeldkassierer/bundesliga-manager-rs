@@ -227,8 +227,13 @@ record! {
         /// +0x01e (FAR:2260) club index into [`GameState::clubs`]; [`NO_TEAM`]
         /// = none. Searched by `manager_index_of_team` 1310:32b1.
         pub team: u8,
-        /// +0x01f..0x03d not yet traced.
-        pub unknown_01f: [u8; 31],
+        /// +0x01f..0x038 not yet traced.
+        pub unknown_01f: [u8; 26],
+        /// +0x039 (FAR:227b) championships won (`season_main_loop` 2a58:3763).
+        pub titles: u8,
+        /// +0x03a (FAR:227c) cups won: DFB-Pokal, then European cups 1..3
+        /// (`season_main_loop` 2a58:3763).
+        pub cup_wins: [u8; 4],
         /// +0x03e (FAR:2280) per-round result log, 50 entries of 4 bytes,
         /// initialized to 0xff (`start_menu_new_or_load`). `season_main_loop`
         /// shifts it down when full (count DS:07e2, capped at 0x31).
@@ -265,7 +270,9 @@ record! {
         /// booked: `random(7, 18)` after a booking, decremented daily by
         /// `finance_daily_processing` 212a:0a6d.
         pub camp_cooldown: u8,
-        /// +0x13a..0x13c per-manager state bytes (training, AI).
+        /// +0x13a..0x13c per-manager state bytes: `[0]` league home games of
+        /// the season (2a58:20b2), `[1]` seasons dropped from the full
+        /// [`Manager::round_log`] (2a58:3763), `[2]` not yet traced.
         pub values_13a: [u8; 3],
         /// +0x13d (FAR:237f) match aggression 0..=40, or 100 when fewer than
         /// 8 players start (`squad_recalc_team_strength` 1f9d:0002).
@@ -283,8 +290,9 @@ record! {
         pub training_141: [u8; 5],
         /// +0x146 (FAR:2388) 4 bytes copied from DS:028c on a new game.
         pub training_146: [u8; 4],
-        /// +0x14a..0x15d not yet traced.
-        pub unknown_14a: [u8; 20],
+        /// +0x14a attendance of each league home game of the season in
+        /// thousands (low byte), indexed by `values_13a[0]` (2a58:20b2).
+        pub home_attendance: [u8; 20],
         /// +0x15e (FAR:23a0) seven stadium `long` pairs: `[item][0]` = current
         /// value, `[item][1]` = value under construction (0 if none). New game
         /// (`s` = 1 if FAR:513c is 0x7ac/0x7c9, `t` = 1 if it is 0x7ae/0x7cb):
@@ -299,10 +307,12 @@ record! {
         /// (`stadium_expansion_order` 1000:0000 sets it,
         /// `stadium_construction_daily` 1000:20e1 counts it down).
         pub build_days: [u16; 7],
-        /// +0x1a4 (FAR:23e6) season total `long`s updated by
-        /// `season_main_loop` (observed values are DM-sized, i.e. income /
-        /// expense totals).
-        pub season_stats: [i32; 8],
+        /// +0x1a4 (FAR:23e6) career totals, two `u16` halves (home, away)
+        /// per field, added up at every season end by `season_main_loop`
+        /// 2a58:3763: points, goals for, goals against, points lost
+        /// (`2 * played - points`), played, wins, losses, draws
+        /// (`played - losses - wins`).
+        pub career_stats: [[u16; 2]; 8],
         /// +0x1c4..0x1db not yet traced.
         pub unknown_1c4: [u8; 24],
         /// +0x1dc (FAR:241e) fans / popularity, new game: `50 - 20 * league`
@@ -446,13 +456,17 @@ record! {
         /// +0x14 (FAR:775e) bit field from `player_init_random_attrs`
         /// 3277:000a: bits 0-3, bits 4-5 and bit 7.
         pub traits: u8,
-        /// +0x15 not yet traced.
-        pub unknown_15: u8,
+        /// +0x15 (FAR:775f) signed rating of the current match: 0 at
+        /// kick-off (2a58:20b2), +15 per goal, +10 per assist, -10 per
+        /// missed chance or card (`match_ticker_events` 2a58:0ca3).
+        pub match_rating: u8,
         /// +0x16 (FAR:7760) club the player moves to when sold; a value
         /// above 0x3f fixes an offer at 130 % (`player_value_calc`).
         pub sale_club: u8,
-        /// +0x17 (FAR:7761) copied on a manager-to-manager sale.
-        pub unknown_17: u8,
+        /// +0x17 (FAR:7761) injury type, an index into
+        /// [`crate::stats::INJURY_NAMES`] (`player_injure` 24a4:30cf); copied
+        /// on a manager-to-manager sale.
+        pub injury: u8,
         /// +0x18 (FAR:7762) negotiation state: 0 willing, 1..=99 cool-down,
         /// 100..=127 insists on `value - 100` seasons, bit 7 retires when the
         /// contract ends.
@@ -467,8 +481,10 @@ record! {
         /// +0x1c, +0x1e, +0x20 (FAR:7766) value terms weighted 50/20/30 by
         /// `player_value_calc` 3277:25de.
         pub value_terms: [u16; 3],
-        /// +0x22..0x27 not yet traced.
-        pub unknown_22: [u8; 6],
+        /// +0x22 (FAR:776c) goals in league, DFB-Pokal and Europapokal for
+        /// the club, not reset at the season end (`match_ticker_events`
+        /// 2a58:0ca3).
+        pub club_goals: [u16; 3],
         /// +0x28 (FAR:7772) `long` from `player_value_calc` 3277:25de: the
         /// monthly salary in squads 0..3 (`finance_monthly_expenses` 24a4:2822
         /// adds it up), the asking fee in the transfer list.

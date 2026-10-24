@@ -2,13 +2,12 @@
 # start menu -> manager "ADI" with the centre club -> options (defaults: level 2,
 # endless game) -> right click -> office of the new game -> squad screen (sub icon 1
 # of "Mannschaft").
-# TODO(#27): the original shows the DFB-Pokal draw and the three European cup draws
+# TODO(#15): the original shows the DFB-Pokal draw and the three European cup draws
 # first, each with an "An Alle" question that the DOSBox run answers with "KEIN
-# DANKE" (four clicks at 187 166). `dialog_two_choice` puts the pointer back where
-# it was, so the port leaves it at 160 120 and skips the clicks until #27 ports the
-# screens. The squad's skills differ until then as well: the European cup draws
-# before the start menu take about 150 random numbers that `NoCups` skips (with
-# them skipped by hand, the first rows match the original exactly).
+# DANKE" (four clicks at 187 166). The port draws the cups but shows neither the
+# question nor the draw screens (every question is answered "no"); `dialog_two_choice`
+# puts the pointer back where it was, so the port leaves it at 160 120 and skips the
+# clicks.
 # Seed 1 was recovered from the carousel (unique among all 16-bit seeds). Seed 2
 # changes nothing in these frames; the value is an estimate (DOSBox time runs about
 # 1.5 times faster than the script's waits).

@@ -9,11 +9,9 @@ use bmp_formats::savegame::{
     self, HIGHSCORE_ENTRIES, HIGHSCORE_FILE_LEN, HighScoreEntry, HighScoreTable,
     highscore_file_name,
 };
-use bmp_game::finance::{CreditField, credit_sum};
-use bmp_game::rng::{Rng, format_long_thousands, ldiv, lmul};
+use bmp_game::highscore::highscore_build_entry;
+use bmp_game::rng::{Rng, format_long_thousands};
 use bmp_game::state::GameState;
-use bmp_game::stats::stadium_attraction;
-use bmp_game::transfer::player_value_calc;
 
 use super::load_game::{SaveSession, file_selector, find_case_insensitive};
 use super::widgets::{
@@ -443,99 +441,6 @@ pub enum HighscoreMode {
     Preview,
     /// 2: insert the current manager silently and save the table.
     Insert,
-}
-
-/// The score of manager `m`: the table position term, the cup stages and
-/// the logged rounds, averaged over the rounds, times 10.
-///
-/// Origin: BMMAIN.EXE 422b:2864 (highscore_compute_score)
-pub fn highscore_compute_score(state: &GameState, m: usize) -> i32 {
-    /// `DS:226e`: first club id of each tier, as signed bytes.
-    const TIER_BASE: [i8; 4] = [0, 18, 38, 2];
-    let man = &state.managers[m];
-    let pos = state.team_tables[usize::from(man.team) % state.team_tables.len()].table_position;
-    let mut s = 0x39 - i32::from(pos) - i32::from(TIER_BASE[usize::from(man.league) & 3]);
-    if s < 0 {
-        s = 0;
-    }
-    s = ldiv(s, 2);
-    for &c in &man.values_132[..4] {
-        if c != 0 && c < 7 {
-            s = s.wrapping_add(2 * i32::from(c));
-        }
-    }
-    let n = (state.logged_rounds as u8).min(50);
-    for e in &man.round_log[..usize::from(n)] {
-        s = s.wrapping_add(i32::from((0x3a - i16::from(e[0])) / 2));
-        let b = e[2];
-        if b & 0x80 != 0 {
-            s = s.wrapping_add(20);
-            let b3 = e[3];
-            s = s.wrapping_add(if b3 & 0x80 != 0 {
-                25
-            } else {
-                3 * i32::from(b3 & 7)
-            });
-        } else {
-            s = s.wrapping_add(2 * i32::from(b & 7));
-        }
-    }
-    if n != 0 {
-        s = ldiv(s, i32::from(n) + 1);
-    }
-    lmul(s, 10)
-}
-
-/// The high-score entry of manager `m` (`FAR:4cfe`): name, club, the score
-/// with the squad value, stadium and balance terms and the three title
-/// counters. `variant` 0 (the normal game) adds 300.
-///
-/// Origin: BMMAIN.EXE 422b:2a2a (highscore_build_entry)
-pub fn highscore_build_entry(
-    state: &GameState,
-    rng: &mut Rng,
-    m: usize,
-    variant: u8,
-) -> HighScoreEntry {
-    let man = &state.managers[m];
-    let mut e = HighScoreEntry {
-        manager: [0; 26],
-        club: [0; 26],
-        score: 0,
-        extra: 0,
-    };
-    let name = man.name();
-    e.manager[..name.len().min(25)].copy_from_slice(&name[..name.len().min(25)]);
-    let club = state.clubs[usize::from(man.team)].name();
-    e.club[..club.len().min(23)].copy_from_slice(&club[..club.len().min(23)]);
-    let mut score = highscore_compute_score(state, m) as i16;
-    let mut v: i32 = 0;
-    for i in 0..state.squad_player_count(m) {
-        v = v.wrapping_add(player_value_calc(state, rng, i, 0));
-    }
-    v = v.wrapping_add(lmul(stadium_attraction(state), 135_000));
-    let debts = credit_sum(man, CreditField::Principal, None);
-    v = v.wrapping_add(man.balance.wrapping_sub(debts));
-    score = score.wrapping_add(ldiv(v, 80_000) as i16);
-    // M(m)[0x39..0x3d]: the title counters.
-    let t = &man.unknown_01f[0x1a..0x1f];
-    let (a, b) = (t[0], t[1]);
-    let c = t[2].wrapping_add(t[3]).wrapping_add(t[4]);
-    e.club[23] = a;
-    e.club[24] = b;
-    e.club[25] = c;
-    // 8-bit MULs for the first two, a 16-bit IMUL for the third.
-    score = score.wrapping_add((u16::from(a) * 40) as i16);
-    score = score.wrapping_add((u16::from(b) * 20) as i16);
-    score = score.wrapping_sub((i16::from(c)).wrapping_mul(-60).wrapping_add(500));
-    if variant == 0 {
-        score = score.wrapping_add(300);
-    }
-    if score < 1 {
-        score = 1;
-    }
-    e.score = score;
-    e
 }
 
 /// Reads `HIGH.XY` (or creates it zeroed when missing) and returns the table

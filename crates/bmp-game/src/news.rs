@@ -192,7 +192,7 @@ pub fn news_record_match_event(
 /// Match rating of a squad player (+0x15, reset to 0 per match, see
 /// `docs/re/logic/match.md`).
 fn match_rating(p: &SquadPlayer) -> i8 {
-    p.unknown_15 as i8
+    p.match_rating as i8
 }
 
 /// Post-match grade of squad slot `i` of manager `m`: FAR:4d3c
@@ -1239,6 +1239,23 @@ pub fn message_delete(state: &mut GameState, pointer: u32) {
     }
 }
 
+/// [`team_slot_free_index`] when row `t` has no free slot.
+pub const NO_FREE_SLOT: u8 = 0x7f;
+
+/// The first free slot (countdown 0) of row `t` of [`GameState::team_slots`], or
+/// [`NO_FREE_SLOT`].
+///
+/// Origin: BMMAIN.EXE 4091:0000 (team_slot_free_index)
+pub fn team_slot_free_index(state: &GameState, t: u8) -> u8 {
+    // TODO(re): `random_weekly_events` passes manager 3, whose row lies past the three saved
+    // rows (in the high-score table at FAR:1d52); here that row has no free slot.
+    state
+        .team_slots
+        .get(usize::from(t))
+        .and_then(|row| row.iter().position(|&c| c == 0))
+        .map_or(NO_FREE_SLOT, |i| i as u8)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1461,24 +1478,24 @@ mod tests {
         assert_eq!(grade_of(&s, &rt), 4);
         s.players[1].attr_20 = 2;
         // A rating below -12 counts as -12: c = 6 * 4 + 2, 46 / 11 = 4.
-        s.squads[0][0].unknown_15 = -13i8 as u8;
+        s.squads[0][0].match_rating = -13i8 as u8;
         assert_eq!(grade_of(&s, &rt), 4);
         // Rating -5: -(7) / 6 truncates to -1 (floor would give -2). With a
         // role mismatch of 10 (+2): c = 20 + 2 + 2, 44 / 11 = 4.
-        s.squads[0][0].unknown_15 = -5i8 as u8;
+        s.squads[0][0].match_rating = -5i8 as u8;
         s.players[1].position_value = 70;
         assert_eq!(grade_of(&s, &rt), 4);
         // Very strong and in top form: -14 / 11 = -1, raised to 1.
         let p = &mut s.squads[0][0];
         p.skills = [255, 255, 30];
-        p.unknown_15 = 36;
+        p.match_rating = 36;
         p.exhaustion = 0;
         s.players[1].position_value = 80;
         assert_eq!(grade_of(&s, &rt), 1);
         // Weak, worn out and misplaced: 326 / 11 = 29, lowered to 6.
         let p = &mut s.squads[0][0];
         p.skills = [0, 0, 30];
-        p.unknown_15 = -12i8 as u8;
+        p.match_rating = -12i8 as u8;
         p.exhaustion = 255;
         p.board_row = 7;
         p.board_col = BOARD_UNPLACED;
@@ -1723,9 +1740,9 @@ mod tests {
         news_record_match_event(&mut rt, 0, EVENT_GOAL, 0, 0, 10);
         news_record_match_event(&mut rt, 0, EVENT_GOAL, 0, 0, 50);
         rt.news_records[0].spectators = 30_000;
-        s.squads[0][0].unknown_15 = 30;
+        s.squads[0][0].match_rating = 30;
         s.players[1].position_value = 50;
-        s.squads[0][1].unknown_15 = -20i8 as u8;
+        s.squads[0][1].match_rating = -20i8 as u8;
         set_grades(&mut rt, 0, &[4, 5]);
         (s, rt)
     }
@@ -1783,7 +1800,7 @@ mod tests {
         let (mut s, mut rt) = home_win();
         // Slot 2 also qualifies as hero (the last one wins) and as loser
         // (only the first one counts); grade 1 stays 1, grade 6 stays 6.
-        s.squads[0][2].unknown_15 = 26;
+        s.squads[0][2].match_rating = 26;
         s.players[3].position_value = 1;
         set_grades(&mut rt, 0, &[1, 6, 1]);
         let mut rng = Rng::new(5);

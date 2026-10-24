@@ -68,7 +68,7 @@ const HAS_RELEGATION_PLAYOFF: [u8; 3] = [1, 0, 0];
 const PLAYOFF_DAY: i32 = 315;
 /// Index of DS:0608 ("show the DFB-Pokal draw") in [`GameState::options`]; DS:0609 (European
 /// draws) follows.
-const SHOW_DRAW_OPTION: usize = 10;
+pub(crate) const SHOW_DRAW_OPTION: usize = 10;
 
 /// Pairings played in cup round `round` (DS:07d6).
 pub(crate) fn round_pairings(round: u8) -> u8 {

@@ -8,8 +8,9 @@
 //! [`matchday_play_rescheduled`].
 //!
 //! The functions of other areas that the engine calls mid-match go through [`MatchHooks`]:
-//! the gate money and live-match registry and the match ticker (season area, #31), the cup
-//! tie checks and the cup round ([`crate::cups`]) and the newspaper (news area, #32).
+//! the gate money and live-match registry ([`crate::season`]) and the match ticker (season
+//! area, #31), the cup tie checks and the cup round ([`crate::cups`]) and the newspaper
+//! ([`crate::news`]).
 //!
 //! Not here: the relegation match 1310:02bf ([`crate::cups::matchday_relegation_match`]),
 //! the league shuffle 1310:09c5 ([`crate::cups::league_shuffle_teams`]), the club swaps
@@ -37,6 +38,8 @@ use crate::stats::matchday_assign_ai_scorers;
 /// DS:008e: weight in percent of each line (defence, midfield, attack) for the strength kinds
 /// 0 = defence, 1 = overall, 2 = attack.
 pub const LINE_WEIGHTS: [[u8; 3]; 3] = [[80, 20, 0], [25, 50, 25], [0, 20, 80]];
+/// The pseudo manager the match days run as (FAR:304a = 0x1e).
+pub const MATCH_DAY_MANAGER: i8 = 0x1e;
 
 /// Far address of the league goal-minute table ([`Runtime::league_goal_minutes`]).
 const LEAGUE_MINUTES_ADDR: u16 = 0x515c;
@@ -1178,6 +1181,39 @@ pub fn league_reschedule_match(
         d += 1;
     }
     false
+}
+
+/// True when the current manager has a rescheduled match in `week` (always for
+/// [`MATCH_DAY_MANAGER`]).
+///
+/// Origin: BMMAIN.EXE 1310:000a (has_rescheduled_match_today)
+pub fn has_rescheduled_match_today(state: &mut GameState, week: u8) -> bool {
+    let cur = state.current_manager;
+    let Some(m) = usize::try_from(cur).ok().filter(|&m| m < 4) else {
+        return cur == MATCH_DAY_MANAGER;
+    };
+    let tier = state.managers[m].league as usize;
+    let team = state.managers[m].team;
+    let mut found = false;
+    for i in 0..20 {
+        let e = state.rescheduled_matches[i];
+        if e[RESCHEDULED_DAY] != week {
+            continue;
+        }
+        if e[RESCHEDULED_TIER] as usize != tier || tier > 2 {
+            continue;
+        }
+        fixtures_build_round_pairings(state, tier, e[RESCHEDULED_ROUND]);
+        let f = state.matchday_pairings[tier][e[RESCHEDULED_PAIR] as usize % 10];
+        if f[0] == team || f[1] == team {
+            found = true;
+        }
+    }
+    if tier <= 2 {
+        let round = state.competition_rounds[tier];
+        fixtures_build_round_pairings(state, tier, round);
+    }
+    found
 }
 
 /// Plays the games rescheduled to `day`: their pairings are put into the tier-0 pairing list,

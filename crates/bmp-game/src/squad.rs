@@ -119,6 +119,22 @@ pub fn squad_count_starters(state: &GameState, group: usize) -> u8 {
         .count() as u8
 }
 
+/// The squad group and record of player `id`: the listed records of the
+/// active managers' squads, then the transfer list.
+///
+/// Origin: BMMAIN.EXE 4091:17b7 (find_player_by_id)
+pub fn find_player_by_id(state: &GameState, id: u8) -> Option<(usize, usize)> {
+    (0..SQUAD_COUNT)
+        .filter(|&g| g < state.manager_count as usize || g == TRANSFER_LIST)
+        .find_map(|g| {
+            let n = usize::from(squad_count_listed(state, g));
+            let i = state.squads[g][..n]
+                .iter()
+                .position(|r| r.player_id == id)?;
+            Some((g, i))
+        })
+}
+
 /// Number of players manager `owner` holds: every listed record of group
 /// `owner` plus every listed record of the other active squads and the
 /// transfer list whose player is owned by `owner`.

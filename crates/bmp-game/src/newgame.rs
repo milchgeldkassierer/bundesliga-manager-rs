@@ -4,14 +4,17 @@
 //!
 //! The start menu itself (UI) runs between [`startup`] and [`new_game`] and draws no random
 //! numbers. The cup draws `main` makes ([`crate::cups`]) run through [`CupInit`] at their place
-//! in the random stream.
+//! in the random stream; [`CupDraws`] makes them.
 //!
 //! Full documentation with addresses: `docs/re/logic/flow.md` §2, §4.6–§4.9 and §5.1–§5.5.
 
 use bmp_formats::mana::ManaDat;
 
 use crate::ai::{league_strength_drift, squad_recalc_team_strength};
-use crate::cups::{league_shuffle_teams, round_pairings};
+use crate::cups::{
+    cup_clear_match_goals, cup_draw_first_round, euro_cup_qualifiers_build, league_shuffle_teams,
+    round_pairings,
+};
 use crate::finance::interest_rates_update;
 use crate::rng::{Rng, ldiv, lmul};
 use crate::runtime::{Runtime, SEASON_START_DAY, TIER_FIRST};
@@ -54,8 +57,8 @@ fn is_one_year(end_year: u16) -> bool {
     end_year == ONE_YEAR || end_year == ONE_YEAR + MODERN_OFFSET
 }
 
-/// The cup draws `main` makes while it sets up a new game (`docs/re/logic/cups.md`, #27). Each
-/// hook runs at the place in the random stream where `main` calls the cup functions.
+/// The cup draws `main` makes while it sets up a new game (`docs/re/logic/cups.md`). Each hook
+/// runs at the place in the random stream where `main` calls the cup functions.
 pub trait CupInit {
     /// `euro_cup_qualifiers_build` 27c2:0ef2, `cup_clear_match_goals` 27c2:1b6d and
     /// `cup_draw_first_round(c, 0)` for c = 1..=3; `main` 18bc:0718..0750, after
@@ -66,28 +69,25 @@ pub trait CupInit {
     fn after_pool_assignment(&mut self, state: &mut GameState, rt: &mut Runtime, rng: &mut Rng);
 }
 
-/// Draws no cups: the cup tables keep their values and no random numbers are drawn. The
-/// original draws, before the start menu, per European cup `random_range(64, 199)` per slot
-/// until unique and `random_range(1, 31)` per qualifier until the slot holds a foreign club;
-/// after the pool assignment `random_range(0, 31)` per human manager (with re-rolls) and
-/// `random_range(0, 57)` per other slot until unique.
-///
-/// Without the European cup lists a one-year game can loop forever placing its third manager
-/// (see [`NoCups::can_finish`]).
-pub struct NoCups;
+/// The cup draws of the original. `ask` answers the "An Alle … AUSLOSUNG BEIWOHNEN ?" question
+/// of a cup row's draw (see [`crate::cups::cup_draw_screen_open`]).
+pub struct CupDraws<F: FnMut(u8) -> bool>(pub F);
 
-impl NoCups {
-    /// Whether [`new_game`] with `choices` returns without the cup draws. A one-year game draws
-    /// every manager's club until one lies in the UEFA cup list, which then holds only club 0
-    /// and the first bytes of manager 0's squad: a third manager can find no club there.
-    pub fn can_finish(choices: &MenuChoices) -> bool {
-        !is_one_year(choices.options.end_year()) || choices.count <= 2
+impl<F: FnMut(u8) -> bool> CupInit for CupDraws<F> {
+    fn before_start_menu(&mut self, state: &mut GameState, rt: &mut Runtime, rng: &mut Rng) {
+        euro_cup_qualifiers_build(state, rt);
+        cup_clear_match_goals(state);
+        for cup in 1..=3 {
+            cup_draw_first_round(state, rt, rng, cup, false, &mut self.0);
+        }
     }
-}
 
-impl CupInit for NoCups {
-    fn before_start_menu(&mut self, _: &mut GameState, _: &mut Runtime, _: &mut Rng) {}
-    fn after_pool_assignment(&mut self, _: &mut GameState, _: &mut Runtime, _: &mut Rng) {}
+    fn after_pool_assignment(&mut self, state: &mut GameState, rt: &mut Runtime, rng: &mut Rng) {
+        cup_draw_first_round(state, rt, rng, 0, false, &mut self.0);
+        for cup in 1..=3 {
+            cup_draw_first_round(state, rt, rng, cup, true, &mut self.0);
+        }
+    }
 }
 
 /// The start-menu part of a manager record.
@@ -762,6 +762,14 @@ pub(crate) mod tests {
         }
     }
 
+    /// Draws no cups: the cup tables keep their values and no random numbers are drawn.
+    struct NoCups;
+
+    impl CupInit for NoCups {
+        fn before_start_menu(&mut self, _: &mut GameState, _: &mut Runtime, _: &mut Rng) {}
+        fn after_pool_assignment(&mut self, _: &mut GameState, _: &mut Runtime, _: &mut Rng) {}
+    }
+
     /// Puts clubs 0..=5 into the first-round UEFA cup list and foreign clubs everywhere else
     /// in the European cup lists, so that one-year games find their clubs.
     struct TestCups;
@@ -1331,22 +1339,57 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn no_cups_finishes_every_game_it_accepts() {
+    fn cup_draws_finish_every_game() {
         let mana = synthetic_mana();
         for mode in [MODE_ENDLESS, MODE_ONE_YEAR, MODE_THREE_YEARS] {
             for start in [0, MODE_HISTORICAL] {
                 for n in 1..=4 {
                     let c = choices(&[3, 20, 45, 60][..n], mode | start, 2, 9);
-                    let accepted = NoCups::can_finish(&c);
-                    assert_eq!(accepted, mode != MODE_ONE_YEAR || n <= 2);
-                    if accepted {
-                        let what = format!("mode {mode} start {start} {n} managers");
-                        let (s, rt) = full_game(&mana, 35372, &c, &mut NoCups);
-                        assert_consistent(&s, &rt, &what);
-                    }
+                    let what = format!("mode {mode} start {start} {n} managers");
+                    let (s, rt) = full_game(&mana, 35372, &c, &mut CupDraws(|_| false));
+                    assert_consistent(&s, &rt, &what);
                 }
             }
         }
+    }
+
+    /// The hooks of [`CupDraws`] are `main`'s cup calls: replayed by hand on clones, the state
+    /// and the generator match after each hook.
+    #[test]
+    fn cup_draws_run_mains_cup_sequence() {
+        let mana = synthetic_mana();
+        let mut rt = Runtime::default();
+        let mut rng = Rng::default();
+        let mut s = startup(&mana, &mut rt, &mut rng, 77, &mut NoCups);
+        let (mut want, mut want_rt, mut want_rng) = (s.clone(), rt.clone(), rng);
+        let mut asked = Vec::new();
+        let mut draws = CupDraws(|c| {
+            asked.push(c);
+            false
+        });
+        draws.before_start_menu(&mut s, &mut rt, &mut rng);
+        euro_cup_qualifiers_build(&mut want, &mut want_rt);
+        cup_clear_match_goals(&mut want);
+        for cup in 1..=3 {
+            cup_draw_first_round(&mut want, &want_rt, &mut want_rng, cup, false, &mut |_| {
+                false
+            });
+        }
+        assert!(s == want, "state after before_start_menu");
+        assert_eq!((rng, &rt), (want_rng, &want_rt));
+        assert_ne!(rng, Rng::default());
+
+        draws.after_pool_assignment(&mut s, &mut rt, &mut rng);
+        cup_draw_first_round(&mut want, &want_rt, &mut want_rng, 0, false, &mut |_| false);
+        for cup in 1..=3 {
+            cup_draw_first_round(&mut want, &want_rt, &mut want_rng, cup, true, &mut |_| {
+                false
+            });
+        }
+        assert!(s == want, "state after after_pool_assignment");
+        assert_eq!((rng, &rt), (want_rng, &want_rt));
+        // Only the DFB-Pokal draw and the redisplayed European draws ask.
+        assert_eq!(asked, [0, 1, 2, 3]);
     }
 
     /// The owner's acceptance check of a finished new game.
@@ -1469,8 +1512,9 @@ pub(crate) mod tests {
         let c = choices(&[2, 5], MODE_THREE_YEARS | MODE_HISTORICAL, 2, 3);
         let mut rt = Runtime::default();
         let mut rng = Rng::default();
-        let mut s = startup(&mana, &mut rt, &mut rng, 35372, &mut NoCups);
-        new_game(&mut s, &mut rt, &mut rng, &mana, &c, 35400, &mut NoCups);
+        let mut draws = CupDraws(|_| false);
+        let mut s = startup(&mana, &mut rt, &mut rng, 35372, &mut draws);
+        new_game(&mut s, &mut rt, &mut rng, &mana, &c, 35400, &mut draws);
         assert_consistent(&s, &rt, "MANA.DAT");
         for p in &s.players[1..] {
             assert!(!p.name().is_empty());

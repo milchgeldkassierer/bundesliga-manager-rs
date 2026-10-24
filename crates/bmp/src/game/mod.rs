@@ -5,7 +5,6 @@ pub mod contract;
 pub mod credits;
 pub mod cup_screens;
 pub mod disk;
-pub mod league;
 pub mod load_game;
 pub mod negotiation;
 pub mod office;
@@ -21,10 +20,10 @@ pub mod transfer_screen;
 pub mod widgets;
 
 use bmp_formats::mana::ManaDat;
-use bmp_game::newgame::{self, NoCups};
+use bmp_game::newgame::{self, CupDraws};
 use bmp_game::rng::Rng;
 use bmp_game::runtime::Runtime;
-use bmp_game::state::{GERMAN_CLUBS, GameState};
+use bmp_game::state::GERMAN_CLUBS;
 
 pub use bmp_game::runtime::SEASON_START_DAY;
 
@@ -83,8 +82,8 @@ impl Session {
 /// How [`run`] ended.
 #[derive(Debug)]
 pub enum Exit {
-    /// The first office turn of a new or loaded game ended; the season loop is not
-    /// ported yet (#31).
+    /// The first office turn of a new or loaded game ended; the screens do not run the
+    /// rest of the season loop yet (#31, they do not implement `bmp_game::season::SeasonUi`).
     EndOfTurn,
 }
 
@@ -158,34 +157,6 @@ pub fn append_ordinal_suffix(buf: &mut Vec<u8>, n: u8, option_a: i32, option_b: 
     buf.extend_from_slice(suffix);
 }
 
-/// `main`'s new-game part after the start menu.
-fn finish_new_game(
-    world: &mut GameState,
-    session: &mut Session,
-    mana: &ManaDat,
-    choices: &newgame::MenuChoices,
-    time2: i32,
-) -> Result<(), String> {
-    // TODO(#27): the cup draws; until then the games `NoCups` cannot finish are refused.
-    if !NoCups::can_finish(choices) {
-        return Err(format!(
-            "a one-year game with {} managers needs the European cup draws, which are not \
-             ported yet (#27)",
-            choices.count
-        ));
-    }
-    newgame::new_game(
-        world,
-        &mut session.rt,
-        &mut session.rng,
-        mana,
-        choices,
-        time2,
-        &mut NoCups,
-    );
-    Ok(())
-}
-
 /// Pictures `main` keeps loaded for the whole game.
 fn load_main_pictures(host: &mut Host) -> Result<(), String> {
     for i in 0..2u16 {
@@ -225,8 +196,10 @@ pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, 
     host.voice_init()?;
     let mana = load_mana(host)?;
     let mut session = Session::new(Rng::default());
-    // TODO(#27): the European cup draws.
-    let mut world = newgame::startup(&mana, &mut session.rt, &mut session.rng, time, &mut NoCups);
+    // TODO(#15): the "An Alle" draw questions and the draw screens are not shown; every
+    // question is answered "no".
+    let mut cups = CupDraws(|_| false);
+    let mut world = newgame::startup(&mana, &mut session.rt, &mut session.rng, time, &mut cups);
     load_main_pictures(host)?;
     let pics = start_menu::Pictures::load(host)?;
     // The 32x23 picture of icon code 0x23, cut from the icon sheet.
@@ -255,9 +228,15 @@ pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, 
                 host.g.free(icons);
             }
             let time2 = time2.unwrap_or_else(time_now);
-            // TODO(#27): the DFB-Pokal draw and the display of the European cup draws
-            // (`cup_draw_first_round(0, 0)`, `(1..3, 1)`) with their "An Alle" questions.
-            finish_new_game(&mut world, &mut session, &mana, &choices, time2)?;
+            newgame::new_game(
+                &mut world,
+                &mut session.rt,
+                &mut session.rng,
+                &mana,
+                &choices,
+                time2,
+                &mut cups,
+            );
             (world, false)
         }
         start_menu::Outcome::LoadGame(state) => (*state, true),
@@ -277,38 +256,6 @@ pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bmp_game::state::NO_TEAM;
-
-    #[test]
-    fn one_year_games_of_three_managers_are_refused() {
-        let mana = ManaDat {
-            crest: [0; 64],
-            strength: [[0; 3]; 200],
-            points: [[0; 2]; 64],
-            goals: [[0; 2]; 64],
-            rank: [0; 64],
-            clubs: Vec::new(),
-        };
-        let manager = |team| newgame::ManagerChoice {
-            name: b"M".to_vec(),
-            team,
-            slot: 1,
-        };
-        let choices = newgame::MenuChoices {
-            managers: [manager(1), manager(2), manager(3), manager(NO_TEAM)],
-            count: 3,
-            carousel_pos: 0,
-            options: newgame::GameOptions {
-                level: 2,
-                mode_flags: newgame::MODE_ONE_YEAR,
-            },
-        };
-        let mut world = GameState::program_start();
-        let mut session = Session::new(Rng::default());
-        let before = world.clone();
-        assert!(finish_new_game(&mut world, &mut session, &mana, &choices, 0).is_err());
-        assert_eq!(world, before);
-    }
 
     #[test]
     fn upper_case_handles_umlauts() {

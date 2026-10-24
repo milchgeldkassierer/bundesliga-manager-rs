@@ -5,7 +5,9 @@
 use bmp_game::league::{
     LEAGUE_ROUND_COUNT, RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
 };
+use bmp_game::matchsim::has_rescheduled_match_today;
 use bmp_game::rng::{NumberFormat, format_long_thousands};
+use bmp_game::season::calendar_compute_date;
 use bmp_game::squad::{LineupRules, auto_lineup};
 use bmp_game::state::{GameState, Manager, RESCHEDULED_GAMES_DAY};
 
@@ -16,10 +18,8 @@ use super::disk::{
     HIGHSCORES_DISABLED, HighscoreMode, highscore_screen, quit_game_confirm, screen_save_game,
     screen_settings,
 };
-use super::league::has_rescheduled_match_today;
 use super::load_game::screen_load_game;
 use super::scorers::screen_top_scorers;
-use super::season::calendar_compute_date;
 use super::squad_screen::screen_squad_lineup;
 use super::stadium::screen_stadium;
 use super::start_menu::Pictures;
@@ -413,6 +413,7 @@ pub fn office_menu_dispatcher(
             suspended_allowed: banner.cup_day,
             max_lineup_slot: banner.max_lineup_slot,
         };
+        session.rt.lineup_rules = rules;
         auto_lineup(state, rules);
         let name = state.managers[cur].name().to_vec();
         let (g, rp) = (&mut host.g, &mut host.rp);

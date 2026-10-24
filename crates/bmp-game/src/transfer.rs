@@ -843,7 +843,7 @@ pub fn purchase_complete(
     let s = record_mut(state, purchase.squad_slot);
     if from_human {
         s.status = listed.status;
-        s.unknown_17 = listed.unknown_17;
+        s.injury = listed.injury;
         s.suspended = listed.suspended;
         s.cards = listed.cards;
     }
