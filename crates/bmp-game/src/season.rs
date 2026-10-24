@@ -590,7 +590,7 @@ fn training_week(state: &mut GameState, rt: &Runtime, rng: &mut Rng, m: u8) {
                 inten = 10;
             }
         }
-        let band = usize::from(state.players[usize::from(s.player_id)].position_value / 25);
+        let band = usize::from(state.players[usize::from(s.player_id)].position_band());
         if band == 0 {
             inten += 30;
         }

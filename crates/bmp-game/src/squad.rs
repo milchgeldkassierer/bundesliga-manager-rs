@@ -252,7 +252,7 @@ fn auto_lineup_pick_best(
                 continue;
             }
             any = true;
-            let player_pos = state.players[rec.player_id as usize].position_value / 25;
+            let player_pos = state.players[rec.player_id as usize].position_band();
             if player_pos as i16 != pos as i16 {
                 continue;
             }

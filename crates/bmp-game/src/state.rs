@@ -408,10 +408,24 @@ record! {
     }
 }
 
+/// Width of one position band of [`Player::position_value`]: the original
+/// maps the code to a position by `value / 25` (`auto_lineup_pick_best`
+/// 2ecd:3635, `random_weekly_events` 1cb5:13bd).
+pub const POSITION_BAND_WIDTH: u8 = 25;
+
+/// Number of position bands, 0 (GK) ..= 3 (ATT).
+pub const POSITION_BANDS: u8 = 4;
+
 impl Player {
     /// Player name without the NUL padding.
     pub fn name(&self) -> &[u8] {
         c_str(&self.name)
+    }
+
+    /// Position band of [`Player::position_value`]: `value / 25`, 0 (GK)
+    /// ..= 3 (ATT) for a valid code (see [`POSITION_BAND_WIDTH`]).
+    pub fn position_band(&self) -> u8 {
+        self.position_value / POSITION_BAND_WIDTH
     }
 }
 
@@ -864,9 +878,9 @@ pub enum StateError {
     },
 }
 
-/// Smallest [`Player::position_value`] that is no position: `value / 25`
-/// has to be 0 (GK) ..= 3 (ATT).
-const POSITION_CODE_LIMIT: u8 = 100;
+/// Smallest [`Player::position_value`] that is no position:
+/// [`Player::position_band`] has to be 0 (GK) ..= 3 (ATT).
+const POSITION_CODE_LIMIT: u8 = POSITION_BAND_WIDTH * POSITION_BANDS;
 
 /// Calls `$m!(index, field, Type)` for every save block in save order.
 macro_rules! for_each_block {
@@ -1571,6 +1585,16 @@ pub(crate) mod tests {
                         .any(|r| usize::from(r.player_id) == i)
             })
             .unwrap()
+    }
+
+    #[test]
+    fn position_code_limit_is_four_bands_of_25() {
+        assert_eq!(POSITION_CODE_LIMIT, 100);
+        let mut player = Player::zeroed();
+        for (code, band) in [(0, 0), (24, 0), (25, 1), (74, 2), (75, 3), (99, 3)] {
+            player.position_value = code;
+            assert_eq!(player.position_band(), band);
+        }
     }
 
     #[test]
