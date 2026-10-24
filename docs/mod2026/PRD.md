@@ -76,8 +76,12 @@ Everything else plays like version 1.0.0.
   `DS:2266`, play-off flag `DS:226a`, first rank `DS:226e`, id ranges `DS:2272`. The mod sets them
   to the values above. The original's tier 3, "everything above 58", becomes the pool 56..63.
 - **Regionalliga pool:**
-  - 8 real Regionalliga clubs of 2026/27, with squads and crests, for example the leaders of the
-    five Regionalligen.
+  - 8 real Regionalliga clubs of 2026/27, with squads and crests: the **clubs with the most fans
+    or the longest tradition** (owner decision 2026-10-24). Candidates are the first teams that
+    play in one of the five Regionalligen in 2026/27. Tradition clubs come first: clubs that
+    played in the Bundesliga, the old Oberliga (before 1963) or the DDR-Oberliga. Inside each
+    group the average home attendance of 2025/26 decides. Each pick records its sources
+    (attendance figure, league history) with the fetch date.
   - The 4 clubs relegated from the 3. Liga swap places with 4 pool clubs, so no club leaves the
     game.
   - The pool clubs that go up are chosen the way the original picks replacement clubs (#177):
@@ -159,10 +163,8 @@ Everything else plays like version 1.0.0.
   team, so no slot may hold one ("II", "U23", "Amateure"). Each reserve team of the real
   3. Liga 2026/27 (VfB Stuttgart II, TSG Hoffenheim II) is replaced by the next first team in
   sporting order: the clubs relegated from the 3. Liga 2025/26 with the most points that are not
-  already in the 3. Liga (Erzgebirge Aue, SSV Ulm 1846). Their pool places are refilled by the next
-  first teams of the pool rule (1. FC Schweinfurt 05 as the next relegated club, then the
-  Regionalliga runner-up with the most points per game as of 18-20 October 2026). The same rule
-  applies wherever a reserve team would enter a list (pool leaders, runners-up).
+  already in the 3. Liga (Erzgebirge Aue, SSV Ulm 1846). The pool is then filled by the pool rule
+  of R1 (fans and tradition), which only takes first teams.
 - Strengths are recomputed from the table as the team editor does. 3. Liga clubs get table-based
   strengths too instead of the purely random ones.
 - **Points:** MANA.DAT block 3 holds a [plus, minus] pair, and the strength recomputation reads
