@@ -1,7 +1,8 @@
 # Bundesliga Manager Professional (Rust Port)
 
-A faithful port of the 1993 DOS classic **Bundesliga Manager Professional** (Software 2000) to
-Linux, written in Rust. It is not a remake "inspired by" the original: every screen, every rule
+A faithful port of the DOS classic **Bundesliga Manager Professional** (Software 2000, first
+released in 1991) to Linux, written in Rust. The port follows version 2.0 of the game (1992),
+which offers the 1992/93 season as a second start. It is not a remake "inspired by" the original: every screen, every rule
 and every random draw was reconstructed from the original executables with Ghidra, and it is
 checked frame by frame against the DOS game running in DOSBox.
 
@@ -66,6 +67,10 @@ All screenshots are rendered by the port.
 
 Known gaps are tracked in the [issues](../../issues).
 
+The game was also sold in English as *The Manager*, with the English leagues. The engine still
+contains the switches for that edition (English ordinal suffixes and number format). An English
+version of the port is planned once the German port is complete.
+
 ## Building and running
 
 Requirements: a Rust toolchain (edition 2024, e.g. via [rustup](https://rustup.rs)), the SDL2
@@ -121,6 +126,6 @@ or leaves a screen. Any key skips the intro.
 
 This repository contains no code, sounds or data files of the original game; the port loads
 them from your own copy at runtime. The screenshots in `docs/screenshots/` show the original
-artwork as rendered by the port. Bundesliga Manager Professional is © 1993 Software 2000; all
+artwork as rendered by the port. Bundesliga Manager Professional is © 1991–1992 Software 2000; all
 trademarks belong to their owners. The port's own code is released under the
 [MIT licence](LICENSE).
