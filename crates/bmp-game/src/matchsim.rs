@@ -302,12 +302,14 @@ pub fn match_pick_scorer(state: &GameState, rng: &mut Rng, m: u8, kind: u8, alt:
         let e = long_abs_diff(0, i32::from(rec.board_col) - 3) as i16;
         let scorer_malus = if kind == 0 { 2 } else { 0 };
         w = w.wrapping_add((e - scorer_malus) * 5);
-        let side = player_role_mismatch(state, m, si as u8);
-        let role = player_position_mismatch(state, m, si as u8);
+        let role_diff = player_role_mismatch(state, m, si as u8);
+        let pos_diff = player_position_mismatch(state, m, si as u8);
         if weighted {
-            w = w.wrapping_add((5 - side) * 5).wrapping_add(0x23 - role);
+            w = w
+                .wrapping_add((5 - role_diff) * 5)
+                .wrapping_add(0x23 - pos_diff);
         } else {
-            w = w.wrapping_add(side * 5).wrapping_add(role);
+            w = w.wrapping_add(role_diff * 5).wrapping_add(pos_diff);
         }
         let mut ok = rng.random_range(0, 0xdac) < w;
         if keeper == 0 && rng.random_range(0, 0x14) != 0 {

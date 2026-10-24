@@ -509,7 +509,7 @@ office_load_background(1);                                                /* 18b
 Penalties are played inside `cup_round_helper(.., 1)`, which calls `match_penalty_shootout` (§2,
 1310:356d) for every level pairing. The `cup_round_helper` contract (27c2:1226, cup area) is in §4.3.
 
-### 1310:1bd7 `player_side_mismatch`
+### 1310:1bd7 `player_role_mismatch`
 
 `i16 far (u8 m, u8 i)`: `return absdiff((u8)pdb(player(m,i).id).+0x20, (i32)(i8)player(m,i).+0x19);`
 Callers: `match_pick_scorer`, `squad_recalc_team_strength`, 3e3a:23aa.
@@ -521,10 +521,10 @@ Callers: `match_pick_scorer`, `squad_recalc_team_strength`, 3e3a:23aa.
 (`DS:009c`) when the flag is set, then `"R"` (`DS:009e`). It always finishes with `")"` (`DS:00a0`).
 Callers: `player_card`, `player_strength_line`, `screen_transfer_market`.
 
-### 1310:1cd3 `player_role_mismatch`
+### 1310:1cd3 `player_position_mismatch`
 
 `i16 far (u8 m, u8 i)`: `x = ((7 - (i8)player(m,i).+0x1a) * 0x4b) / 7 + 5` (16-bit `idiv`);
-`return absdiff((u8)pdb(id).+0x1f, (i32)x);`. Same callers as `player_side_mismatch`.
+`return absdiff((u8)pdb(id).+0x1f, (i32)x);`. Same callers as `player_role_mismatch`.
 
 ### 1310:1d45 `match_pick_event_player`
 
@@ -708,8 +708,8 @@ while (!ok) {
     if ((i8)rec.+0x1a < 2) w += 0x4b0;
     i16 e = (i16)absdiff(0, (i8)rec.+0x19 - 3);
     w += (e - (kind == 0 ? 2 : 0)) * 5;
-    if (kind || alt) { w += (5 - player_side_mismatch(m, si)) * 5; w += 0x23 - player_role_mismatch(m, si); }
-    else             { w += player_side_mismatch(m, si) * 5;       w += player_role_mismatch(m, si); }
+    if (kind || alt) { w += (5 - player_role_mismatch(m, si)) * 5; w += 0x23 - player_position_mismatch(m, si); }
+    else             { w += player_role_mismatch(m, si) * 5;       w += player_position_mismatch(m, si); }
     if (rr(0, 0xdac) < w) ok = 1;
     if ((u8)pdb(rec.id).+0x1f == 0 && rr(0, 0x14) != 0) ok = 0;
 }
