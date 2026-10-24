@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["crates/bmp-formats", "crates/bmp-game", "crates/bmp"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+bmp-formats = { path = "crates/bmp-formats" }
+bmp-game = { path = "crates/bmp-game" }
