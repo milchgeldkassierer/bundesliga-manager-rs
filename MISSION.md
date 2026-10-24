@@ -79,8 +79,30 @@ never merged into `main`.
   - Squads and market values come from Transfermarkt (transfermarkt.de), club logos from
     Wikipedia/Wikimedia Commons or the clubs' sites.
   - Every value records its source URL and fetch date.
-  - The data is for the owner's private use. The repository is private.
-  - The researched dataset (JSON) and converted crest and font images may be committed.
+  - The repository is private, but is kept ready for publication (see "Public readiness").
+  - These may be committed:
+    - club facts: names, leagues, last season's tables;
+    - player names and positions;
+    - converted crest and font images. The owner accepts the risk for the crests.
+  - **Market values are never committed.** They are only used to choose the 20 players, and stay
+    in the local research directory `~/Apps/bmp-mod2026/research/`. The committed squad lists
+    only the chosen players, together with the source URL and fetch date.
+
+## Public readiness -- owner decision 2026-10-24
+
+The repository stays private but must be publishable at any time with
+`tools/prepare-public.sh`. That script writes a cleaned copy and never touches this repository
+or its remote. Rules for every change:
+
+- **No original artwork, sound or text dumps.** This means no screenshots or other images showing
+  original game graphics, in the tree or in docs. Progress screenshots stay in the git-ignored
+  `progress/`. The README describes the game in words.
+- **No personal data:** no local absolute paths (`/home/...`, `/media/...`), no e-mail
+  addresses, no machine names. Commits use the GitHub noreply identity.
+- **Short German texts only:** verbatim German in-game strings appear in code and specs only
+  where the port needs them, and only as short excerpts.
+- **Disclaimer:** the README states that the project is not affiliated with Software 2000, the
+  DFL/DFB or any club, and that it ships no original game data.
   - Original game files never are (invariant 3).
 
 ## Hard invariants -- not tunable by any issue
