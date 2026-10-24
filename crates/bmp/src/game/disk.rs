@@ -125,7 +125,7 @@ pub fn savegame_write_man(
 /// `DS:9440 = 1` and the four-line disk error message.
 ///
 /// Origin: BMMAIN.EXE 422b:0006 (disk_error_dialog)
-fn disk_error_dialog(host: &mut Host) -> Run<()> {
+pub(crate) fn disk_error_dialog(host: &mut Host) -> Run<()> {
     let [a, b, c, d] = DISK_ERROR;
     dialog_okay(host, a, b, c, d)?;
     Ok(())
@@ -171,14 +171,14 @@ pub fn screen_save_game(
         host.set_font(3);
         let title = text_to_upper_de(SAVE_TITLE);
         ui_draw_text_centered_shadow(&mut host.g, &mut host.rp, &title, 0, 0x140, 0x14, 0xb, 0);
-        let name = file_selector(host, &mut session.saves, 0)?;
+        let cur = (state.current_manager as usize).min(3);
+        let who = state.managers[cur].name().to_vec();
+        let name = file_selector(host, &mut session.saves, 0, &who)?;
         if name.is_empty() {
             return Ok(());
         }
         let path = save_path(host, &session.saves, &name);
         if path.is_file() {
-            let cur = (state.current_manager as usize).min(3);
-            let who = state.managers[cur].name().to_vec();
             let [l1, l2, l3, yes, no] = FILE_EXISTS;
             if dialog_two_choice(host, session.auto_play, &who, l1, l2, l3, yes, no)? == 0 {
                 return Ok(());

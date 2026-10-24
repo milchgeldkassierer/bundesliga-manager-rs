@@ -1462,6 +1462,42 @@ savegame.md.
   geben Sie den Spiel-Level (0-5) ein:"`; checksum mismatch: endless `UI[136..139]` "DER GROSSE
   MOGELGURU" screen. Disk prompt `LBL[143] "Spielstanddisk"`.
 
+  ```c
+  copy_protection_penalty(LBL[107]); font 3; title; DS:9440 = 0;
+  file_selector(cwd, 0, name, icon);  if (!name[0]) return 0;
+  path = FAR:4af6 + (FAR:4af6[3] ? "\\" : "") + name;
+  if (!(fd = file_open(path, 0))) { disk_error_dialog(); goto out; }  // 4-line dialog_okay
+  read(fd, sig, strlen(DS:93e0));
+  if (strncmp(sig, DS:93e0, 0x18)) {
+      dialog_okay(LBL[285..288]); file_close(fd); return 0;          // "Kein ... !!!"
+  }
+  messages_free_all();                                               // 4091:0532
+  read(fd, version, 4); read(fd, &id, 4); file_close(fd);
+  if (strncmp(version, ">V", 2)) { ui_dialog_box(UI[18], UI[19]); goto out; }
+  if (id in FAR:a6d8[0..50]) { ui_dialog_box(LBL[192], LBL[193]); goto out; }
+  append id (as in screen_save_game); strcpy(FAR:54a2, name);
+  while (!(fd = file_open(path, 0))) ui_dialog_box(LBL[143], "");   // "Spielstanddisk"
+  read all blocks; a checksum mismatch sets bad = 5;  DS:05ac = DS:05fa[0];
+  if (DS:9440 == 0) {                                                // no read error
+      crests into DS:05b0, screen_fade(0), portraits into DS:4d38;
+      if (bad) the endless MOGELGURU screen (fade, title font 3 colour 0x12,
+               two lines font 2, a frame flashing 0 / 0x12 every 20 ticks);
+      DS:9440 = 0; DS:05ad = 0;                                      // may save again
+      if (version[2] == '1') {
+          screen_fade(0); rastport_clear(8); font 1;
+          text_centered_shadow(DS:9448, 0..0x13f, y 0x14, colour 1, shadow 0);
+          text_centered_shadow(DS:9471, 0..0x13f, y 0x1e, colour 1, shadow 0);
+          screen_fade(1);
+          v = ui_value_spinner(3, x 0x7d, y 0x32, 0, 5, step 1);  if (v == -1) v = 3;
+          DS:4a28 = 5 - v;                                           // level
+      }
+      return 1;
+  }
+  out: DS:9440 = 0; return 0;
+  ```
+  The `ui_dialog_box` boxes are timed (no click). Port: `crates/bmp/src/game/load_game.rs`
+  (`screen_load_game`); the deviations are listed in §7a.
+
 ### 5.3 High scores (`HIGH.XY`)
 
 File format: savegame.md "HIGH.XY high-score files". Table in memory: `FAR:1d52`, 20 entries
@@ -1607,6 +1643,28 @@ listing of `"*.*"` filtered to `".MAN"`, pages (`UI[146] "SEITE: "`), header `UI
 `text_filter_filename_char` 176b:0d56, `".MAN"` appended), delete with confirmation `LBL[211]
 "WIRKLICH L|SCHEN ?"` / `LBL[212] "MACH SCHON!"` / `LBL[213] "OH NEIN!"`. Pure UI; draw
 details in Appendix A.
+
+Buttons below the list (`ui_register_icon_slot`, slots 1..8): seven drive labels `DS:93ec`
+(`"A:"`..`"G:"`, shown only while the slot is below the number of logical drives that
+`_dos_setdrive` reports) and `"L|SCHEN"` (`DS:2994`). On a left click:
+
+```c
+if (slot == 8 && name[0] &&
+    dialog_two_choice(FAR:304a, "FILE" /* DS:94bb */, name, LBL[211], LBL[212], LBL[213])) {
+    dos_delete_file(name);  name[0] = 0;  goto relist;               // also on -1 (auto play)
+}
+if (slot <= logical_drives) { _chdrive(slot); goto relist; }        // slot 8 = drive H: too
+```
+
+`relist` resets the page, calls `getcwd(cwd)` for the `"VERZEICHNIS: "` line and lists
+`findfirst("*.*", 0x10)` again. On leaving, `DS:942c = _getdrive()` and `getcwd(FAR:4af6)`
+are stored and the drive and directory of the start are restored; the next call starts with
+`_chdrive(DS:942c); chdir(FAR:4af6)` when `DS:942c != -1`. Under DOSBox (the reference setup,
+only C: mounted) `_chdrive` succeeds for A: and B: even without a disk: `findfirst` then
+finds nothing (an empty list, not even `.`/`..`), `getcwd` fails and leaves the caller's
+buffer as it was, and the selector stays on that drive until C: is clicked. Loading and
+saving still use `FAR:4af6`, which keeps the C: directory. D:..G: fail and change nothing.
+Port: `file_selector` with `SaveSession::drive`.
 
 ### 5.5 New-game player pool from MANA.DAT
 
@@ -1791,6 +1849,25 @@ best streaks (84) + records (512) + record opponents (512) = 5012.
    only (`DS:2271 < 3` branches); verify the exact formula when porting.
 10. `DS:5485` (`"^@"`) is printed for zero values; the font maps these characters to special
     glyphs (to be confirmed with font.md).
+
+## 7a. Deviations of the port
+
+Obvious bugs of the original that the port fixes (MISSION invariant 1); RNG order and save
+files are unchanged.
+
+1. `screen_load_game` frees the message list (`messages_free_all` 4091:0532) right after the
+   signature check, before the version and the save id are checked. A load from the office
+   that is then refused ("Spielstand aus falscher Version !", "Keinen heutigen Spielstand
+   laden !") loses the running game's messages. The port keeps them: a refused load never
+   touches the running game (`crates/bmp/src/game/load_game.rs`, test
+   `refused_loads_show_their_dialogs_and_load_nothing`).
+2. A read error after the header (`DS:9440` set by `savegame_read_decrypted`) leaves the blocks
+   read so far in memory and returns 0, so the running game continues with half-loaded data.
+   The port loads nothing (`LoadError::Disk`, `disk_error_dialog`).
+3. `file_selector` on an empty floppy drive draws `"VERZEICHNIS: "` with the caller's
+   uninitialised path buffer after `getcwd` fails (seen in DOSBox: the last directory, an
+   empty string, or garbage such as `"U.07"`). The port shows the C: directory. Expected
+   difference in `tests/visual/disk_dialogs` frames k09 and k13 (the line only).
 
 ## Appendix A. Screen call traces
 

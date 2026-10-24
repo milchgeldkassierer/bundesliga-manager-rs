@@ -7,9 +7,13 @@ use bmp_formats::savegame::{self, SaveGame};
 use bmp_game::rng::format_long_thousands;
 use bmp_game::state::{GameState, StateError};
 
+use super::disk::disk_error_dialog;
 use super::start_menu::Pictures;
 use super::start_menu::text_input;
-use super::widgets::{TextButtons, dialog_okay, ui_wait_right_click_button};
+use super::widgets::{
+    TextButtons, dialog_okay, dialog_two_choice, ui_dialog_box, ui_value_spinner,
+    ui_wait_right_click_button,
+};
 use super::{Session, text_to_upper_de};
 use crate::gfx::{
     Gfx, Ui, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow, ui_fill_rect,
@@ -28,6 +32,20 @@ const DELETE_LABEL: &[u8] = b"L\x99SCHEN";
 const LOGICAL_DRIVES: usize = 26;
 /// Most save ids remembered per session (`FAR:a6d8`).
 const SAVE_ID_HISTORY: usize = 50;
+/// `DS:94bb`, `LBL[211..213]`: the delete question (`"FILE"`, the name, then these).
+const DELETE_FILE: &[u8] = b"FILE";
+const DELETE_QUESTION: [&[u8]; 3] = [b"WIRKLICH L|SCHEN ?", b"MACH SCHON!", b"OH NEIN!"];
+/// `LBL[285..288]`: the message for a file without the save signature.
+const NOT_A_SAVE: [&[u8]; 4] = [b"Kein", b"Bundesliga Manager Prof.", b"Spielstand.", b"!!!"];
+/// `UI[18..19]`: the version tag does not start with `">V"`.
+const WRONG_VERSION: [&[u8]; 2] = [b"Spielstand aus", b"falscher Version !"];
+/// `LBL[192..193]`: the save id was loaded (or saved) before in this session.
+const ALREADY_LOADED: [&[u8]; 2] = [b"Keinen heutigen", b"Spielstand laden !"];
+/// `DS:9448`, `DS:9471`: the level question after loading a V1.x save.
+const V1_LOADED: [&[u8]; 2] = [
+    b"Sie haben einen V1.x-Spielstand geladen.",
+    b"Bitte geben Sie den Spiel-Level (0-5) ein:",
+];
 /// The message for [`LoadError::Corrupt`]; the original has none (it hangs later).
 const CORRUPT_SAVE: [&[u8]; 4] = [
     b"Achtung !",
@@ -46,6 +64,9 @@ pub struct SaveSession {
     pub last_name: Vec<u8>,
     /// `FAR:a6d8` / `DS:05ae`: ids of the saves loaded in this session.
     pub loaded_ids: Vec<u32>,
+    /// `DS:942c`: the drive the selector was left on, 1 = A: or 2 = B:; 0 is the
+    /// game drive C:.
+    pub drive: u8,
 }
 
 impl SaveSession {
@@ -54,6 +75,23 @@ impl SaveSession {
         let mut s = b"C:\\".to_vec();
         s.extend_from_slice(self.dir.join("\\").as_bytes());
         s
+    }
+
+    /// `_chdrive(n)` (1 = A:) as DOSBox answers it: the floppy drives A: and B:
+    /// can be selected without a disk, C: is the game directory, and any other
+    /// drive does not exist (the call fails and nothing changes).
+    fn change_drive(&mut self, n: usize) {
+        match n {
+            1 | 2 => self.drive = n as u8,
+            3 => self.drive = 0,
+            _ => {}
+        }
+    }
+
+    /// The current drive is an empty floppy drive: `findfirst` finds nothing,
+    /// `getcwd` fails (the old directory text stays) and nothing can be deleted.
+    fn on_floppy(&self) -> bool {
+        self.drive != 0
     }
 
     pub(crate) fn path(&self, data: &Path) -> PathBuf {
@@ -173,13 +211,24 @@ fn is_save_name(name: &[u8]) -> bool {
 /// The file selector: lists the current directory in two columns, lets the
 /// player pick or type a file name, change directory or drive, and returns the
 /// chosen name (empty when cancelled with the icon button). `icon` selects the
-/// icon of the cancel button (`0x22 + icon`).
+/// icon of the cancel button (`0x22 + icon`). `who` is the title of the delete
+/// question: the name of the current manager (`FAR:304a`).
 ///
-/// TODO(#15): the delete button needs `dialog_two_choice` 4091:146c; the drive
-/// buttons only re-read the current directory (the game directory is drive C:).
+/// The "L|SCHEN" button asks `dialog_two_choice(FAR:304a, "FILE", name,
+/// LBL[211..213])` and deletes the selected file in the current directory unless
+/// the answer is "OH NEIN!". A drive button (and "L|SCHEN" when nothing was
+/// deleted, slot 8 is a drive number too) calls `_chdrive(slot)` and lists the
+/// directory again; see [`SaveSession::change_drive`] for the drives the port
+/// knows. The drive is kept for the next selector (`DS:942c`), while the
+/// directory of drive C: (`FAR:4af6`) stays the one loads and saves use.
 ///
 /// Origin: BMMAIN.EXE 422b:2bbe (file_selector)
-pub fn file_selector(host: &mut Host, saves: &mut SaveSession, icon: u8) -> Run<Vec<u8>> {
+pub fn file_selector(
+    host: &mut Host,
+    saves: &mut SaveSession,
+    icon: u8,
+    who: &[u8],
+) -> Run<Vec<u8>> {
     host.set_font(2);
     host.ui
         .draw_button(&mut host.g, &mut host.rp, 6, 0x21, 0xf1, 0xb5, false, 8);
@@ -215,8 +264,15 @@ pub fn file_selector(host: &mut Host, saves: &mut SaveSession, icon: u8) -> Run<
         let mut first = 0usize;
         Gfx::rastport_set_draw_mode(&mut host.rp, 0);
         ui_fill_rect(&mut host.g, &mut host.rp, 7, 0x22, 0xf6, 0xa1, 8);
-        let (dirs, files) = list_directory(&saves.path(&data));
+        let (dirs, files) = if saves.on_floppy() {
+            (Vec::new(), Vec::new())
+        } else {
+            list_directory(&saves.path(&data))
+        };
         let mut text = b"VERZEICHNIS: ".to_vec();
+        // DEVIATION: on a floppy drive `getcwd` fails and the original shows what
+        // the caller's uninitialised stack buffer holds (often the last directory,
+        // also "" or garbage such as "U.07"); the port shows the C: directory.
         text.extend(text_to_upper_de(&saves.cwd_text()));
         text.truncate(0x2c);
         let (g, rp) = (&mut host.g, &mut host.rp);
@@ -361,15 +417,35 @@ pub fn file_selector(host: &mut Host, saves: &mut SaveSession, icon: u8) -> Run<
                 let slot = buttons.hit(px, py);
                 if ev == LEFT_DOWN && slot != 0 {
                     if slot == 8 && !name.is_empty() {
-                        // TODO(#15): "FILE <name> WIRKLICH L|SCHEN ?" dialog, then delete.
-                        eprintln!("file_selector: deleting files is not ported");
+                        let [l3, yes, no] = DELETE_QUESTION;
+                        // Automatic play (`DS:05d4`) cannot be on here: the
+                        // selector is only reached from menus the player opens.
+                        let answer =
+                            dialog_two_choice(host, false, who, DELETE_FILE, &name, l3, yes, no)?;
+                        if answer != 0 {
+                            if !saves.on_floppy() {
+                                delete_file(&saves.path(&data), &name);
+                            }
+                            name.clear();
+                            continue 'list;
+                        }
                     }
                     if slot <= LOGICAL_DRIVES {
+                        saves.change_drive(slot);
                         continue 'list;
                     }
                 }
             }
         }
+    }
+}
+
+/// `dos_delete_file(name)` in the selector's directory (DOS names ignore case);
+/// a failure is ignored like the original's.
+fn delete_file(dir: &Path, name: &[u8]) {
+    let path = dir.join(String::from_utf8_lossy(name).to_string());
+    if let Some(path) = find_case_insensitive(&path) {
+        let _ = std::fs::remove_file(path);
     }
 }
 
@@ -452,11 +528,17 @@ fn cheat_screen(host: &mut Host) -> Run<()> {
 /// `None` when nothing was loaded. On success the crest cache and the portrait
 /// sheet of [`Pictures`] are rebuilt for the loaded managers.
 ///
-/// A corrupt save ([`LoadError::Corrupt`]) gets a `dialog_okay` message box.
+/// Errors: a file that cannot be opened or read gets `disk_error_dialog`, a
+/// missing signature the `dialog_okay` box "Kein Bundesliga Manager Prof.
+/// Spielstand. !!!", a wrong version and a save id loaded before the timed
+/// `ui_dialog_box`, a checksum mismatch the endless "MOGELGURU" screen, and a
+/// corrupt save ([`LoadError::Corrupt`], port only) a `dialog_okay` box. A `>V1`
+/// save asks for the level (0-5, `ui_value_spinner`, default 3) and stores
+/// `5 - level`. `who` titles the delete question of the selector.
 ///
-/// TODO(#15): the original's error dialogs (`dialog_okay`, `ui_dialog_box`) are
-/// not ported; those errors are reported on stderr. The V1.x level question
-/// (`ui_value_spinner` 4091:0ba5) keeps its default level 3.
+/// The original reads the remaining blocks after a disk error (`DS:9440` makes
+/// them no-ops) and then leaves the half-loaded data in place; the port loads
+/// nothing in that case, a failed load never touches the running game.
 ///
 /// Origin: BMMAIN.EXE 422b:120c (screen_load_game)
 pub fn screen_load_game(
@@ -464,6 +546,7 @@ pub fn screen_load_game(
     session: &mut Session,
     pics: &Pictures,
     arg: u8,
+    who: &[u8],
 ) -> Run<Option<Box<GameState>>> {
     // copy_protection_penalty: one RNG call when the protection was not passed.
     if !session.copy_protection_ok && session.rng.random_range(0, 100) == 0 {
@@ -475,7 +558,7 @@ pub fn screen_load_game(
     host.set_font(3);
     let title = text_to_upper_de(b"Spielstand Laden");
     ui_draw_text_centered_shadow(&mut host.g, &mut host.rp, &title, 0, 0x140, 0x14, 0xb, 0);
-    let name = file_selector(host, &mut session.saves, arg)?;
+    let name = file_selector(host, &mut session.saves, arg, who)?;
     if name.is_empty() {
         return Ok(None);
     }
@@ -495,8 +578,28 @@ pub fn screen_load_game(
             dialog_okay(host, a, b, c, d)?;
             return Ok(None);
         }
-        Err(e) => {
-            eprintln!("screen_load_game: {}: {e:?}", path.display());
+        // DEVIATION: a read error after the header leaves the original with a
+        // half-loaded game (the blocks read so far stay in memory); the port
+        // loads nothing.
+        Err(LoadError::Disk) => {
+            disk_error_dialog(host)?;
+            return Ok(None);
+        }
+        Err(LoadError::NotASave) => {
+            let [a, b, c, d] = NOT_A_SAVE;
+            dialog_okay(host, a, b, c, d)?;
+            return Ok(None);
+        }
+        // DEVIATION: after the signature check the original frees the message list
+        // (`messages_free_all` 4091:0532) before it compares the version and the
+        // save id, so a refused load from the office loses the running game's
+        // messages. The port keeps them.
+        Err(LoadError::WrongVersion) => {
+            ui_dialog_box(host, WRONG_VERSION[0], WRONG_VERSION[1])?;
+            return Ok(None);
+        }
+        Err(LoadError::AlreadyLoaded) => {
+            ui_dialog_box(host, ALREADY_LOADED[0], ALREADY_LOADED[1])?;
             return Ok(None);
         }
     };
@@ -535,11 +638,32 @@ pub fn screen_load_game(
         );
     }
     host.g.free(sheet);
+    // `DS:9440 = 0; DS:05ad = 0`: a loaded game may be saved again.
+    session.save_disabled = false;
     if state.version[2] == b'1' {
-        // TODO(#15): "Sie haben einen V1.x-Spielstand geladen." level question.
-        state.level = 5 - 3;
+        state.level = v1_level_question(host)?;
     }
     Ok(Some(Box::new(state)))
+}
+
+/// The level question after loading a V1.x save: the two lines on a cleared
+/// screen and a value spinner 0..5 starting at 3. Returns the stored level
+/// `5 - input` (`DS:4a28`; input 3 when the spinner was left unchanged).
+///
+/// Origin: BMMAIN.EXE 422b:120c (screen_load_game, 422b:20bf..21b4)
+fn v1_level_question(host: &mut Host) -> Run<u8> {
+    host.screen_fade(0)?;
+    host.g.rastport_clear(&host.rp, 8);
+    host.set_font(1);
+    for (line, y) in V1_LOADED.iter().zip([0x14, 0x1e]) {
+        ui_draw_text_centered_shadow(&mut host.g, &mut host.rp, line, 0, 0x13f, y, 1, 0);
+    }
+    host.screen_fade(1)?;
+    let input = match ui_value_spinner(host, 3, 0x7d, 0x32, 0, 5, 1)? {
+        -1 => 3,
+        v => v,
+    };
+    Ok(5u8.wrapping_sub(input as u8))
 }
 
 /// The host file whose name matches `path`'s file name ignoring case (DOS names).
@@ -622,6 +746,173 @@ mod tests {
     }
 
     #[test]
+    fn only_the_floppy_drives_and_c_can_be_selected() {
+        let mut s = SaveSession::default();
+        assert!(!s.on_floppy());
+        for n in [4, 5, 7, 8] {
+            s.change_drive(n);
+            assert!(!s.on_floppy(), "drive {n} does not exist");
+        }
+        s.change_drive(1);
+        assert!(s.on_floppy());
+        s.change_drive(5);
+        assert_eq!(s.drive, 1, "a failing _chdrive keeps the drive");
+        s.change_drive(2);
+        assert_eq!(s.drive, 2);
+        s.change_drive(3);
+        assert!(!s.on_floppy());
+    }
+
+    /// A temporary game directory holding `files` (name, bytes) plus the original
+    /// data (linked). `None` without `BMP_DATA`.
+    #[cfg(unix)]
+    fn game_dir(tag: &str, files: &[(&str, Vec<u8>)]) -> Option<PathBuf> {
+        let data = bmp_formats::data_dir()?;
+        let dir = std::env::temp_dir().join(format!("bmp-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, bytes) in files {
+            std::fs::write(dir.join(name), bytes).unwrap();
+        }
+        for e in std::fs::read_dir(&data).unwrap().flatten() {
+            let link = dir.join(e.file_name());
+            if !link.exists() {
+                std::os::unix::fs::symlink(e.path(), link).unwrap();
+            }
+        }
+        Some(dir)
+    }
+
+    /// The bytes of the first shipped save with `edit` applied.
+    fn patched_save(edit: impl FnOnce(&mut Vec<u8>)) -> Option<Vec<u8>> {
+        let path = bmp_formats::save_files().into_iter().next()?;
+        let mut bytes = std::fs::read(path).unwrap();
+        edit(&mut bytes);
+        Some(bytes)
+    }
+
+    /// Runs `screen_load_game` with the preset file name `name` (taken by a right
+    /// click on the name field) and `script` after it.
+    #[cfg(unix)]
+    fn load_with_script(
+        dir: &Path,
+        session: &mut Session,
+        name: &[u8],
+        script: &str,
+    ) -> (Run<Option<Box<GameState>>>, usize) {
+        use crate::host::{Host, parse_script};
+        let script =
+            parse_script(&format!("wait 1000\nrclick 100 178\n{script}wait 5000\n")).unwrap();
+        let mut host = Host::with_script(dir, script, dir, false).unwrap();
+        let pics = Pictures::load(&mut host).unwrap();
+        session.saves.last_name = name.to_vec();
+        let result = screen_load_game(&mut host, session, &pics, 0, b"OLIVER");
+        (result, host.script_clicks_left())
+    }
+
+    /// Wrong version, a save id loaded before and a missing signature: each shows
+    /// its dialog (the timed boxes need no click, the "Kein ... !!!" box takes
+    /// the OKAY click), nothing is loaded and the session is left as it was. The
+    /// running game is not touched either (the original frees its messages,
+    /// stats.md §7a).
+    #[cfg(unix)]
+    #[test]
+    fn refused_loads_show_their_dialogs_and_load_nothing() {
+        use bmp_game::rng::Rng;
+        let Some(old) = patched_save(|b| b[0x1a] = b'X') else {
+            return;
+        };
+        let good = patched_save(|_| {}).unwrap();
+        let nosave = patched_save(|b| b[0] = b'X').unwrap();
+        let id = u32::from_le_bytes(good[29..33].try_into().unwrap());
+        let files = [
+            ("OLDVER.MAN", old),
+            ("AGAIN.MAN", good),
+            ("NOSAVE.MAN", nosave),
+        ];
+        let dir = game_dir("refused-load", &files).unwrap();
+        let mut session = Session::new(Rng::new(1));
+        session.saves.loaded_ids = vec![id];
+        let cases: [(&[u8], &str); 3] = [
+            (b"OLDVER", ""),
+            (b"AGAIN", ""),
+            (b"NOSAVE", "wait 1000\nclick 191 165\n"),
+        ];
+        let mut results = Vec::new();
+        for (name, script) in cases {
+            let (result, clicks_left) = load_with_script(&dir, &mut session, name, script);
+            results.push((
+                matches!(result, Ok(None)),
+                clicks_left,
+                session.saves.last_name.clone(),
+            ));
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+        for ((ok, clicks_left, last), (name, _)) in results.into_iter().zip(cases) {
+            assert!(ok, "{name:?}: nothing is loaded");
+            assert_eq!(clicks_left, 0, "{name:?}: every click was taken");
+            assert_eq!(last, name, "{name:?}: last name unchanged");
+        }
+        assert_eq!(session.saves.loaded_ids, vec![id], "no id was remembered");
+    }
+
+    /// A `>V1` save asks for the level: one click into the upper half of the
+    /// spinner raises 3 to 4, the right click ends it, and the level is 5 - 4.
+    #[cfg(unix)]
+    #[test]
+    fn a_v1_save_asks_for_the_level() {
+        use bmp_game::rng::Rng;
+        let Some(v1) = patched_save(|b| b[0x1b] = b'1') else {
+            return;
+        };
+        let dir = game_dir("v1-load", &[("V1.MAN", v1)]).unwrap();
+        let mut session = Session::new(Rng::new(1));
+        session.save_disabled = true;
+        let script = "wait 2000\nclick 160 58\nwait 500\nrclick 160 120\n";
+        let (result, clicks_left) = load_with_script(&dir, &mut session, b"V1", script);
+        std::fs::remove_dir_all(&dir).unwrap();
+        let state = result.ok().flatten().expect("the V1 save is loaded");
+        assert_eq!(clicks_left, 0);
+        assert_eq!(state.level, 1);
+        assert!(!session.save_disabled, "DS:05ad is cleared by a load");
+    }
+
+    /// The delete button: "OH NEIN!" keeps the selected file, "MACH SCHON!"
+    /// deletes it; the cancel icon then leaves the selector.
+    #[cfg(unix)]
+    #[test]
+    fn the_delete_button_asks_and_deletes() {
+        use crate::host::{Host, parse_script};
+        let Some(save) = patched_save(|_| {}) else {
+            return;
+        };
+        let dir = game_dir("delete-file", &[("DELME.MAN", save)]).unwrap();
+        let run = |answer: &str| {
+            // The preset name is the selected file; L|SCHEN, the answer, cancel.
+            let script = format!(
+                "wait 1000\nclick 210 205\nwait 500\nclick {answer}\nwait 500\nclick 290 210\nwait 1000\n"
+            );
+            let mut host =
+                Host::with_script(&dir, parse_script(&script).unwrap(), &dir, false).unwrap();
+            let mut saves = SaveSession {
+                last_name: b"DELME.MAN".to_vec(),
+                ..SaveSession::default()
+            };
+            let name = file_selector(&mut host, &mut saves, 0, b"OLIVER");
+            (name, dir.join("DELME.MAN").exists())
+        };
+        let (kept_name, kept) = run("187 166");
+        let (deleted_name, still_there) = run("117 166");
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(matches!(kept_name, Ok(ref n) if n.is_empty()), "cancelled");
+        assert!(kept, "OH NEIN! keeps the file");
+        assert!(
+            matches!(deleted_name, Ok(ref n) if n.is_empty()),
+            "cancelled"
+        );
+        assert!(!still_there, "MACH SCHON! deletes the file");
+    }
+
+    #[test]
     fn save_with_an_out_of_range_position_code_is_corrupt() {
         let dir = std::env::temp_dir().join(format!("bmp-corrupt-save-{}", std::process::id()));
         let Some(file) = write_corrupt_save(&dir) else {
@@ -662,7 +953,7 @@ mod tests {
         let pics = Pictures::load(&mut host).unwrap();
         let mut session = Session::new(Rng::new(1));
         session.saves.last_name = b"CORRUPT".to_vec();
-        let result = screen_load_game(&mut host, &mut session, &pics, 0);
+        let result = screen_load_game(&mut host, &mut session, &pics, 0, b"");
         let clicks_left = host.script_clicks_left();
         std::fs::remove_dir_all(&dir).unwrap();
 

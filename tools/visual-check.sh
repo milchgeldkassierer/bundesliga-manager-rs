@@ -21,6 +21,9 @@
 # file is then copied into the game directories of both the port and the DOSBox capture.
 # A "# fixture-patch: <file> <example> <args...>" line runs the bmp-formats example <example>
 # on a fixture <file> right after it was generated (e.g. save_add_messages to add inbox mail).
+# A "# fixture-bytes: <file> <source> [<offset>=<byte>|<offset>^<mask>...]" line makes the
+# fixture <file> from the file <source> of $BMP_DATA with single bytes set or XORed (offsets
+# and values in C notation), e.g. a save with a broken signature, version or checksum.
 # Fixtures and references belong together: delete both to regenerate them.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -51,6 +54,21 @@ for name in "${names[@]}"; do
     done < <(sed -n 's/^# fixture-patch: *//p' "tests/visual/$name.port.txt")
     rm -rf "$gdata" "$gout"
   done < <(sed -n 's/^# fixture: *//p' "tests/visual/$name.port.txt")
+  while read -r file src edits; do
+    [ -f "$fix/$file" ] && continue
+    mkdir -p "$fix"
+    python3 -I - "$DATA/$src" "$fix/$file" $edits <<'PY'
+import sys
+data = bytearray(open(sys.argv[1], "rb").read())
+for e in sys.argv[3:]:
+    op = "^" if "^" in e else "="
+    off, val = e.split(op)
+    off, val = int(off, 0), int(val, 0)
+    data[off] = data[off] ^ val if op == "^" else val
+open(sys.argv[2], "wb").write(data)
+PY
+    echo "fixture $name/$file patched from $src"
+  done < <(sed -n 's/^# fixture-bytes: *//p' "tests/visual/$name.port.txt")
   if [ ! -d "$ref" ]; then
     cycles=$(sed -n 's/^# cycles: *//p' "tests/visual/$name.dosbox.txt")
     aim=$(sed -n 's/^# aim-seed: *\([0-9]*\).*/\1/p' "tests/visual/$name.dosbox.txt")

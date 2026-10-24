@@ -1,0 +1,158 @@
+# Port side of the disk_dialogs scenario (bmp run --script syntax, milliseconds):
+# the dialogs of "Spielstand Laden" from the start menu and the office. In the file
+# selector: select DELME.MAN, the delete question ("OH NEIN!", then "MACH SCHON!"), the
+# drive button A: (DOSBox has no drive A:, the list is read again); then the typed name
+# NOFILE (disk error dialog), NOSAVE.MAN (no signature), OLDVER.MAN (wrong version, timed
+# box), V1.MAN (the V1.x level question, raised to 4), and from the office 07072019.MAN
+# (the same save id as V1.MAN: "Keinen heutigen Spielstand laden !") and CHEAT.MAN
+# (checksum mismatch: the endless "MOGELGURU" screen).
+# Fixture saves (tools/visual-check.sh "fixture-bytes", byte edits of shipped saves):
+# DELME.MAN is AUTOSAVE.MAN; NOSAVE.MAN has 'X' as first signature byte; OLDVER.MAN has
+# ">X2" as version tag; V1.MAN has ">V1" (the documented V1.x header difference,
+# savegame.md "Loader checks"); CHEAT.MAN is 2020-JUN.MAN with one encrypted byte of
+# block 0 flipped, which breaks the intermediate checksum.
+# seed: 49506
+# The capture aimed at seed 49505 (aim-seed); the original run had 49506, recovered from
+# the start-menu carousel of k07 (seeds 49490..49530 tried).
+# fixture-bytes: DELME.MAN AUTOSAVE.MAN
+# fixture-bytes: NOSAVE.MAN 07072019.MAN 0=0x58
+# fixture-bytes: OLDVER.MAN 07072019.MAN 0x1a=0x58
+# fixture-bytes: V1.MAN 07072019.MAN 0x1b=0x31
+# fixture-bytes: CHEAT.MAN 2020-JUN.MAN 0x87^0x01
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 1000
+shot k00-selector
+move 40 145
+wait 100
+click 40 145
+wait 500
+shot k01-selected
+move 210 205
+wait 100
+click 210 205
+wait 500
+shot k02-delete-question
+move 187 166
+wait 100
+click 187 166
+wait 1000
+shot k03-delete-kept
+move 210 205
+wait 100
+click 210 205
+wait 500
+move 117 166
+wait 100
+click 117 166
+wait 1000
+shot k04-deleted
+move 30 192
+wait 100
+click 30 192
+wait 1000
+shot k05-drive-a
+move 100 178
+wait 100
+click 100 178
+wait 250
+type nofile
+wait 250
+key enter
+wait 1000
+shot k06-disk-error
+move 191 165
+wait 100
+click 191 165
+wait 2000
+shot k07-start-menu
+move 160 10
+wait 100
+click 160 10
+wait 1000
+move 100 178
+wait 100
+click 100 178
+wait 250
+type nosave
+wait 250
+key enter
+wait 1000
+shot k08-not-a-save
+move 191 165
+wait 100
+click 191 165
+wait 2000
+move 160 10
+wait 100
+click 160 10
+wait 1000
+move 100 178
+wait 100
+click 100 178
+wait 250
+type oldver
+wait 250
+key enter
+wait 600
+shot k09-wrong-version
+wait 4000
+move 160 10
+wait 100
+click 160 10
+wait 1000
+move 100 178
+wait 100
+click 100 178
+wait 250
+type v1
+wait 250
+key enter
+wait 2000
+shot k10-v1-question
+move 160 58
+wait 100
+click 160 58
+wait 500
+shot k11-v1-level
+rclick 160 120
+wait 4000
+shot k12-office
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 132
+wait 100
+click 107 132
+wait 1000
+move 100 178
+wait 100
+click 100 178
+wait 250
+type 07072019
+wait 250
+key enter
+wait 600
+shot k13-already-loaded
+wait 4000
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 132
+wait 100
+click 107 132
+wait 1000
+move 100 178
+wait 100
+click 100 178
+wait 250
+type cheat
+wait 250
+key enter
+wait 3000
+shot k14-cheat

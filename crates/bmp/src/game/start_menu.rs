@@ -625,7 +625,10 @@ pub fn start_menu_new_or_load(
             let (mx, my) = s.host.mouse_xy();
             if my < 0x24 {
                 office_show_cached_background(s.host)?;
-                if let Some(state) = load_game::screen_load_game(s.host, session, s.pics, 1)? {
+                // `FAR:304a` is 0 in the start menu: the first manager's name.
+                let who = s.managers[0].name.clone();
+                if let Some(state) = load_game::screen_load_game(s.host, session, s.pics, 1, &who)?
+                {
                     return Ok(Some(Outcome::LoadGame(state)));
                 }
                 s.full_redraw(n0)?;

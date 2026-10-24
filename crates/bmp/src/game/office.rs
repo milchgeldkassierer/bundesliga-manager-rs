@@ -684,7 +684,9 @@ pub fn office_menu_dispatcher(
                     }
                     (4, 1..=4) => screen_cup_matches(host, session, state, (si - 1) as u8, 0)?,
                     (5, 1) => {
-                        if let Some(loaded) = screen_load_game(host, session, pics, 0)? {
+                        let cur = (state.current_manager as usize).min(3);
+                        let who = state.managers[cur].name().to_vec();
+                        if let Some(loaded) = screen_load_game(host, session, pics, 0, &who)? {
                             *state = *loaded;
                             day_saved = state.day_counter;
                             warned = false;
