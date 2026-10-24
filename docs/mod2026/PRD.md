@@ -155,6 +155,14 @@ Everything else plays like version 1.0.0.
   - crest picture number;
   - source URLs.
 - Clubs promoted into the 3. Liga for 2026/27 take their Regionalliga rank.
+- **No reserve teams** (owner decision 2026-10-24). The game has no concept of a club's second
+  team, so no slot may hold one ("II", "U23", "Amateure"). Each reserve team of the real
+  3. Liga 2026/27 (VfB Stuttgart II, TSG Hoffenheim II) is replaced by the next first team in
+  sporting order: the clubs relegated from the 3. Liga 2025/26 with the most points that are not
+  already in the 3. Liga (Erzgebirge Aue, SSV Ulm 1846). Their pool places are refilled by the next
+  first teams of the pool rule (1. FC Schweinfurt 05 as the next relegated club, then the
+  Regionalliga runner-up with the most points per game as of 18-20 October 2026). The same rule
+  applies wherever a reserve team would enter a list (pool leaders, runners-up).
 - Strengths are recomputed from the table as the team editor does. 3. Liga clubs get table-based
   strengths too instead of the purely random ones.
 - **Points:** MANA.DAT block 3 holds a [plus, minus] pair, and the strength recomputation reads
