@@ -554,7 +554,7 @@ pub fn season_goal_messages(state: &GameState, rt: &mut Runtime) -> Vec<DialogLi
     let rank = |r: i16| usize::from(state.league_teams[league][(r as usize).min(19)]);
     let round = state.competition_rounds[league];
     let mut out = Vec::new();
-    if RELEGATION_PLAYOFF[0]
+    if crate::league_layout::layout().relegation_playoff[0]
         && state.month == 5
         && state.day_of_month == 13
         && i16::from(round as i8) - i16::from(rt.tier_round_count[league]) == 1
@@ -633,9 +633,6 @@ pub fn season_goal_messages(state: &GameState, rt: &mut Runtime) -> Vec<DialogLi
     }
     out
 }
-
-/// DS:226a: which tiers have a relegation play-off (only the Bundesliga).
-const RELEGATION_PLAYOFF: [bool; 3] = [true, false, false];
 
 #[cfg(test)]
 mod tests {

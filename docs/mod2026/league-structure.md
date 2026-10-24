@@ -6,6 +6,14 @@ days, the club ids 0..17, 18..37 and 38..57, the 58 league clubs, the 64 German 
 the relegation and play-off rules. R1 of [the PRD](PRD.md) changes these values; this list is what
 that change has to touch (issue #176).
 
+**Status.** The list records the port before #186. Since #186 the game crates read the league
+structure from one owner, `bmp_game::league_layout` (`ORIGINAL` / `MOD2026`): the constants named
+below (`LEAGUE_*`, `league_team_ids`, `TIER_*`, `TIER_BASE`, `TIER_RANGE`, `RELEGATION_PLACES`,
+`RELEGATION_PLAYOFF`, `HAS_RELEGATION_PLAYOFF`, `PROMOTION_PLACES`, `DFB_LAST_TEAM`) are gone, and
+the `file:line` pointers have moved. The `history_graph_lines` height and the
+`highscore_compute_score` immediates read the owner too. Open are the team editor's rows
+(`crates/bmp/src/teamed/`).
+
 ## How the list was built
 
 - **Grep.** `grep -rnE '\b(17|18|19|20|34|37|38|57|58|64)\b' crates/bmp-game/src crates/bmp/src/game`
@@ -64,13 +72,14 @@ the category sections below list only the sites that use them.
 | League order lists | `crates/bmp-game/src/state.rs:785` | `GameState::league_teams` | FAR:535a | 20 | order list `[tier][20]`; the stride 20 is the largest tier |
 | Fixture generator | `crates/bmp-game/src/state.rs:719` | `GameState::league_results` | FAR:6ddc | 38, 20 | results `[tier][38][20]`; stride of 38 rounds and 20 slots |
 
-The same values are defined more than once in the port: `league.rs` (`LEAGUE_*`), `runtime.rs`
-(`TIER_*` and the `Runtime` copies), `cups.rs` and `tables.rs` (`RELEGATION_PLACES`),
-`finance.rs` (`RELEGATION_PLAYOFF`), `highscore.rs` (`TIER_BASE`) and `scorers.rs`
-(`TIER_RANGE`), and in the team editor `teamed/club.rs` (`GROUP_FIRST`, `GROUP_RANKS`),
-`teamed/mod.rs` (`league_group`), and its strength recomputation in `bmp-game` `strength.rs`
-(`ORIGINAL`, and the generator's `MOD2026`, which repeats the slot table of `clubs.json`). A change
-of a league size has to change all of them, or first make them one definition.
+Before #186 the same values were defined more than once in the port: `league.rs` (`LEAGUE_*`),
+`runtime.rs` (`TIER_*` and the `Runtime` copies), `cups.rs` and `tables.rs`
+(`RELEGATION_PLACES`), `finance.rs` (`RELEGATION_PLAYOFF`), `highscore.rs` (`TIER_BASE`) and
+`scorers.rs` (`TIER_RANGE`). The game crates now read `league_layout` (the `Runtime` fields are
+its run-time copy). Duplicates remain only in the team editor, `teamed/club.rs` (`GROUP_FIRST`,
+`GROUP_RANKS`) and `teamed/mod.rs` (`league_group`), and in its strength recomputation in
+`bmp-game` `strength.rs` (`ORIGINAL`, and the generator's `MOD2026`, which repeats the slot table
+of `clubs.json`).
 
 ## League order lists
 

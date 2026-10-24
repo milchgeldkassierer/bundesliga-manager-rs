@@ -9,9 +9,8 @@
 use bmp_formats::mana::ManaDat;
 use bmp_formats::savegame::{BLOCK_PLAYERS, BLOCK_SQUADS, BLOCKS};
 
-use crate::league::{
-    LEAGUE_ROUND_COUNT, LEAGUE_TEAM_COUNT, NO_MATCH, NOT_PLAYED, league_team_ids, round_results,
-};
+use crate::league::{NO_MATCH, NOT_PLAYED, round_results};
+use crate::league_layout::layout;
 use crate::rng::{Rng, clamp_int, ldiv, lmul};
 use crate::runtime::Runtime;
 use crate::state::{
@@ -47,7 +46,7 @@ fn games(p: &Player) -> u8 {
 /// Origin: BMMAIN.EXE 24a4:1662 (matchday_assign_ai_scorers)
 pub fn matchday_assign_ai_scorers(state: &mut GameState, rng: &mut Rng, league: usize) {
     let mut r = state.competition_rounds[league];
-    if (LEAGUE_ROUND_COUNT[league] as i8 as i16) < r as i16 {
+    if (layout().round_count[league] as i8 as i16) < r as i16 {
         r = 1;
     }
     // TODO(re): for league 0 and round counter 0 the original reads the 20
@@ -55,7 +54,7 @@ pub fn matchday_assign_ai_scorers(state: &mut GameState, rng: &mut Rng, league: 
     let Some(results) = round_results(state, league, r.wrapping_sub(1) as i8) else {
         return;
     };
-    for i in (0..LEAGUE_TEAM_COUNT[league] as usize).step_by(2) {
+    for i in (0..layout().team_count[league] as usize).step_by(2) {
         let (gh, ga) = (results[i], results[i + 1]);
         // The end marker is tested on the result byte here, not the team id.
         if gh == NO_MATCH {
@@ -192,7 +191,7 @@ pub fn top_scorers_rows(
     tier: usize,
     human_teams_only: bool,
 ) -> Vec<TopScorerRow> {
-    let teams = league_team_ids(tier);
+    let teams = layout().team_ids(tier);
     let managers = state.active_managers();
     let mut rows = Vec::new();
     let mut rank: u8 = 0;
@@ -228,7 +227,8 @@ pub fn goals_per_game_tenths(player: &Player) -> u16 {
 /// Fills the club table from MANA.DAT: crests and an empty form string for the
 /// 64 German clubs; strength, base strength, a random third strength part
 /// (5 lower for clubs above 64) and a random morale for all 200 clubs; the
-/// names; and the league order lists `0..18`, `18..38`, `38..58`.
+/// names; and the league order lists of the tiers (`0..18`, `18..38`, `38..58` in the
+/// original).
 ///
 /// RNG: per club `random_range(45, 55)` for each of the three parts, then one
 /// for the morale (800 draws). `main` calls it before the first seed, so the
@@ -985,12 +985,12 @@ mod tests {
                 s.players[1..].iter().all(|p| games(p) <= rounds),
                 "{path:?}"
             );
-            for tier in 0..LEAGUE_TEAM_COUNT.len() {
+            for tier in 0..3 {
                 let rows = top_scorers_rows(&s, &ord, tier, false);
                 for r in &rows {
                     let p = &s.players[r.player as usize];
                     assert!(
-                        league_team_ids(tier).contains(&p.team) && goals(p) >= 2,
+                        layout().team_ids(tier).contains(&p.team) && goals(p) >= 2,
                         "{path:?}"
                     );
                 }

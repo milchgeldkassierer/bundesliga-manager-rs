@@ -2,6 +2,7 @@
 //! sub icon) and the player info window `screen_player_info` (segment 24a4).
 //! Spec: `docs/re/logic/stats.md` §3.8, §3.9.
 
+use bmp_game::league_layout::layout;
 use bmp_game::rng::NumberFormat;
 use bmp_game::squad::squad_count_listed;
 use bmp_game::state::{GameState, SQUAD_COUNT, TRANSFER_LIST};
@@ -50,8 +51,6 @@ const SIDE_TEXT: [&[u8]; 3] = [b"LINKS", b"MITTE", b"RECHTS"];
 const MODE_TEXT: [&[u8]; 2] = [b"Liga", b"Spieler"];
 /// `DS:5340`: colours of the LIGA / SPIELER icons (`[mode]` and `[1 - mode]`).
 const MODE_COLORS: [u8; 2] = [0x11, 0x0a];
-/// `DS:2272`: first and last club of each tier.
-const TIER_RANGE: [(i8, i8); 3] = [(0, 17), (18, 37), (38, 57)];
 
 fn fill(host: &mut Host, x0: i16, y0: i16, x1: i16, y1: i16, color: u8) {
     ui_fill_rect(&mut host.g, &mut host.rp, x0, y0, x1, y1, color);
@@ -350,7 +349,11 @@ pub fn screen_top_scorers(
             let p = ord[si as usize];
             let pl = &state.players[p as usize];
             let team = pl.team as i8;
-            let (lo, hi) = TIER_RANGE[tier];
+            // DS:2272: first and last club of each tier.
+            let (lo, hi) = (
+                layout().first_team[tier] as i8,
+                layout().last_team(tier) as i8,
+            );
             if team < lo || team > hi {
                 si += 1;
                 continue;

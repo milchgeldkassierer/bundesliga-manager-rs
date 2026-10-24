@@ -8,9 +8,10 @@
 
 use bmp_game::ai::squad_recalc_team_strength;
 use bmp_game::league::{
-    LEAGUE_FIRST_TEAM, LEAGUE_ROUND_COUNT, LEAGUE_TEAM_COUNT, NO_MATCH, NOT_PLAYED, POINTS_PER_WIN,
-    RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
+    NO_MATCH, NOT_PLAYED, POINTS_PER_WIN, RoundMode, fixtures_build_round_pairings,
+    league_apply_round_and_sort,
 };
+use bmp_game::league_layout::layout;
 use bmp_game::rng::{NumberFormat, format_long_thousands, long_abs_diff};
 use bmp_game::season::calendar_compute_date;
 use bmp_game::state::{
@@ -37,10 +38,6 @@ const MATCHDAY: &[u8] = b"SPIELTAG";
 const MODE_SIDE: [u8; 3] = [0, 2, 1];
 /// `DS:226d`: European places marked in the Bundesliga table (rows 2..).
 const EURO_PLACES: i16 = 4;
-/// `DS:2265 + L`: promotion places marked in the table of league `L` (`L` > 0).
-const PROMOTION_PLACES: [i16; 3] = [0, 3, 4];
-/// `DS:2266`: relegation places per league.
-const RELEGATION_PLACES: [i16; 3] = [3, 4, 4];
 
 /// `LBL[70..73]`.
 const FIXTURES_GAMES: &[u8] = b"SPIELE  ";
@@ -205,9 +202,9 @@ fn col(v: [u8; 4], cols: u8) -> i16 {
 ///
 /// Origin: BMMAIN.EXE 27c2:1bb5 (league_tier_of_team)
 pub(crate) fn league_tier_of_team(t: u8) -> u8 {
-    if t < LEAGUE_FIRST_TEAM[1] {
+    if t < layout().first_team[1] {
         1
-    } else if t < LEAGUE_FIRST_TEAM[2] {
+    } else if t < layout().first_team[2] {
         2
     } else {
         4
@@ -410,8 +407,8 @@ pub fn league_table_row_text(
 /// Origin: BMMAIN.EXE 3a41:3891 (screen_strength_table, sort at 3a41:3acc)
 pub fn strength_order(state: &GameState, league: usize, part: u8) -> Vec<u8> {
     let (start, end) = part_range(part);
-    let n = usize::from(LEAGUE_TEAM_COUNT[league]);
-    let first = usize::from(LEAGUE_FIRST_TEAM[league]);
+    let n = usize::from(layout().team_count[league]);
+    let first = usize::from(layout().first_team[league]);
     let score: Vec<i16> = (0..n)
         .map(|k| {
             let c = &state.clubs[first + k];
@@ -490,7 +487,7 @@ pub fn head_to_head_text(state: &GameState, m: usize, t: u8, fmt: NumberFormat) 
 /// clamped to the last round, as the league table does around every sort.
 fn sort_table_clamped(state: &mut GameState, session: &mut Session, league: usize, cols: u8) {
     let saved = state.competition_rounds[league];
-    let last = LEAGUE_ROUND_COUNT[league] as i8;
+    let last = layout().round_count[league] as i8;
     let clamp = last <= saved as i8;
     if clamp {
         state.competition_rounds[league] = (last - 1) as u8;
@@ -535,7 +532,7 @@ pub fn screen_league_table(
     line(host, 7, 0xa9, 0x137, 0xa9, 1);
     host.set_font(2);
     text_at(host, TABLE_HEADER, 9, 0x17, 1);
-    let teams = i16::from(LEAGUE_TEAM_COUNT[league]);
+    let teams = i16::from(layout().team_count[league]);
     loop {
         if redraw {
             host.screen_fade(0)?;
@@ -564,7 +561,7 @@ pub fn screen_league_table(
                 fill(host, 9, 0x1c, 0x13, 0x22, 0xf);
                 fill(host, 9, 0x23, 0x13, 7 * EURO_PLACES + 0x22, 0xc);
             }
-            let rel = RELEGATION_PLACES[league];
+            let rel = i16::from(layout().relegation_places(league));
             fill(host, 9, 7 * (teams - rel + 4), 0x13, 7 * teams + 0x1b, 0x11);
             if league != 0 {
                 fill(
@@ -572,7 +569,7 @@ pub fn screen_league_table(
                     9,
                     0x1c,
                     0x13,
-                    7 * PROMOTION_PLACES[league] + 0x1b,
+                    7 * i16::from(layout().promotion_places(league)) + 0x1b,
                     0xc,
                 );
             }
@@ -657,12 +654,12 @@ pub fn screen_fixtures(
         count += 2;
     }
     line(host, 3, 0xe, 0x139, 0xe, 0xb);
-    let rounds = LEAGUE_ROUND_COUNT[league] as i8;
+    let rounds = layout().round_count[league] as i8;
     let mut round = state.competition_rounds[league] as i8;
     if round > rounds {
         round = 1;
     }
-    let teams = i16::from(LEAGUE_TEAM_COUNT[league]);
+    let teams = i16::from(layout().team_count[league]);
     loop {
         if redraw {
             fill(host, 6, 3, 0x13a, 0xd, 8);
@@ -881,8 +878,8 @@ pub fn screen_strength_table(
     centered(host, &title, 0x3d, 0xf8, 0x19, 1, 7);
     host.set_font(2);
     text_at(host, STRENGTH_HEADER, 0x41, 0x21, 1);
-    let teams = usize::from(LEAGUE_TEAM_COUNT[league]);
-    let first = LEAGUE_FIRST_TEAM[league];
+    let teams = usize::from(layout().team_count[league]);
+    let first = layout().first_team[league];
     let mut redraw = true;
     let mut ord = Vec::new();
     loop {
@@ -1065,7 +1062,7 @@ pub fn screen_team_fixtures(
     let code = league_tier_of_team(t);
     let tier = usize::from(code >> 1);
     let cur = state.competition_rounds[tier].wrapping_add(offset as u8);
-    let rounds = LEAGUE_ROUND_COUNT[tier] as i8;
+    let rounds = layout().round_count[tier] as i8;
     let mut second = i16::from(cur) > i16::from(rounds >> 1);
     let x0: i16 = 0x59 + 2 * i16::from(right);
     let y0: i16 = 0x37;
@@ -1112,7 +1109,7 @@ pub fn screen_team_fixtures(
         while r < end {
             fixtures_build_round_pairings(state, tier, r);
             let mut j = 0usize;
-            while j < usize::from(LEAGUE_TEAM_COUNT[tier]) {
+            while j < usize::from(layout().team_count[tier]) {
                 let [h, a] = state.matchday_pairings[tier][j / 2];
                 j += 2;
                 let (opp, side) = if h == t {

@@ -16,8 +16,9 @@ use crate::cups::{
     league_shuffle_teams, round_pairings,
 };
 use crate::finance::interest_rates_update;
+use crate::league_layout::layout;
 use crate::rng::{Rng, ldiv, lmul};
-use crate::runtime::{Runtime, SEASON_START_DAY, TIER_FIRST};
+use crate::runtime::{Runtime, SEASON_START_DAY};
 use crate::season::pick_random_free_team_in_tier;
 use crate::squad::{LineupRules, auto_lineup, squad_insert_player};
 use crate::state::{
@@ -680,7 +681,7 @@ fn draw_tier_slot(
     accept: impl Fn(&GameState, u8) -> bool,
 ) -> u8 {
     let t = usize::from(tf);
-    let lo = i16::from(TIER_FIRST[t] as i8);
+    let lo = i16::from(layout().first_team[t] as i8);
     let hi = lo + i16::from(rt.tier_team_count[t]) - 1;
     loop {
         let r = rng.random_range(lo, hi) as u8;
@@ -789,7 +790,12 @@ pub(crate) mod tests {
         fn after_pool_assignment(&mut self, _: &mut GameState, _: &mut Runtime, _: &mut Rng) {}
     }
 
-    fn choices(teams: &[u8], mode_flags: u8, level: u8, carousel_pos: i16) -> MenuChoices {
+    pub(crate) fn choices(
+        teams: &[u8],
+        mode_flags: u8,
+        level: u8,
+        carousel_pos: i16,
+    ) -> MenuChoices {
         MenuChoices {
             managers: std::array::from_fn(|m| ManagerChoice {
                 name: if m < teams.len() {
@@ -901,7 +907,7 @@ pub(crate) mod tests {
         probe.seed_from_time(1234);
         assert_eq!(draws_between(probe, rng), 330);
         for t in 0..3 {
-            let ids = crate::league::league_team_ids(t);
+            let ids = layout().team_ids(t);
             let mut clubs: Vec<u8> = ids
                 .clone()
                 .map(|c| {
@@ -918,8 +924,8 @@ pub(crate) mod tests {
             assert!(order.into_iter().eq(ids), "league order of tier {t}");
         }
         // The league order lists the slots by club: the club at slot league_teams[t][i] is
-        // the one MANA.DAT has at index TIER_FIRST[t] + i.
-        for (t, &first) in TIER_FIRST.iter().enumerate() {
+        // the one MANA.DAT has at index first_team[t] + i.
+        for (t, &first) in layout().first_team.iter().enumerate() {
             for i in 0..rt.tier_team_count[t] as usize {
                 let slot = s.league_teams[t][i] as usize;
                 let want = format!("CLUB {:03}", first as usize + i);
@@ -1440,7 +1446,7 @@ pub(crate) mod tests {
         for m in 0..count {
             let mgr = &s.managers[m];
             let tier = usize::from(mgr.league);
-            let first = TIER_FIRST[tier];
+            let first = layout().first_team[tier];
             assert!(
                 (first..first + rt.tier_team_count[tier] as u8).contains(&mgr.team),
                 "{what}: manager {m}"
@@ -1479,7 +1485,7 @@ pub(crate) mod tests {
                 "{what}"
             );
         }
-        for (t, &first) in TIER_FIRST.iter().enumerate() {
+        for (t, &first) in layout().first_team.iter().enumerate() {
             let n = rt.tier_team_count[t] as usize;
             let mut order = s.league_teams[t][..n].to_vec();
             order.sort_unstable();

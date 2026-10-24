@@ -31,6 +31,37 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
 - **Mod switch** (`bmp_game::mod2026::is_active`): the game and the team editor read it once at
   start-up into `Host::mod2026`, the flag mod behaviour switches on.
 
+## League structure
+
+- **One owner** (`crates/bmp-game/src/league_layout.rs`, PRD R1): the league tables of the
+  original (DS:225e..DS:2278: first club, club count and rounds per tier, relegation and play-off
+  places, the club ranges) and the season calendar (DS:2280) are one `LeagueLayout`.
+  `game::run_main` selects `MOD2026` when `Host::mod2026` is set and `ORIGINAL` otherwise,
+  before any game state is built; `Runtime::default` and `GameState::program_start` copy it,
+  every other reader calls `league_layout::layout()`.
+- **Mod values**: 18 / 18 / 20 clubs with the ids 0..=17, 18..=35 and 36..=55, the pool
+  56..=63 (no league), 34 / 34 / 38 rounds, 2 / 2 / 4 clubs relegated directly and a play-off
+  place in the Bundesliga and the 2. Bundesliga. Tables, fixtures, statistics, the top scorers,
+  the history graph and the season end follow them; the fixtures of the 18-club 2. Bundesliga
+  are the Bundesliga's round permutations. The history graph's bars and the high score's
+  position and season terms count from the league clubs (the original's immediates 0x3a, its 58
+  league clubs, and 0x39, its last league club id), so the last club of the 3. Liga draws one
+  line and scores nothing in both layouts. The save format is unchanged: the 18 / 18 / 20 tiers
+  fit the `[tier][20]` and `[tier][38][20]` blocks.
+- **Calendar**: the 2. Bundesliga plays on the Bundesliga's days. Week 23 (only a Bundesliga
+  round, `0x01`) gets a 2. Bundesliga round (`0x03`), weeks 7, 13, 25, 29 and 69 (2. Bundesliga
+  and 3. Liga, `0x06`) keep only the 3. Liga round (`0x04`). Without this the 2. Bundesliga
+  would play four more match days that replay round 17 without counting.
+- **DFB-Pokal draw** (PRD R2): the draw takes clubs up to the last club of the lowest tier
+  (DS:2277, 57 in the original), i.e. 0..=55 in the mod; the pool stays out like the original's
+  reserve clubs 58..63.
+- **Promotion and relegation**: the 3. Liga's four relegated clubs swap with pool clubs
+  (59 or 60, then 58, 57, 56). Only the Bundesliga play-off is played, so for now the
+  2. Bundesliga's play-off place goes down directly and three clubs of the 3. Liga go up; the
+  tables mark three promotion places in the 3. Liga.
+- **Not yet**: the 2. Bundesliga / 3. Liga play-off, the "3. LIGA" texts, which clubs fill the
+  pool (#177) and the team editor's tier groups (`crates/bmp/src/teamed/`, still 18 / 20 / 20).
+
 ## 2x display layer
 
 - **Display buffer** (`crates/bmp/src/display.rs`, `crates/bmp/src/gfx.rs`, PRD R5b): with

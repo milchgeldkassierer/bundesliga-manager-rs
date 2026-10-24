@@ -7,24 +7,11 @@
 //!
 //! Full documentation with addresses: `docs/re/logic/stats.md` §2.
 
+use crate::league_layout::layout;
 use crate::matchsim::league_result_cell;
 use crate::rng::{Rng, clamp_int, long_abs_diff};
 use crate::state::{Club, GERMAN_CLUBS, GameState, MatchHistory, TeamTable};
 
-/// DS:226e first team id of each league tier.
-pub const LEAGUE_FIRST_TEAM: [u8; 3] = [0, 18, 38];
-/// DS:225e teams per league tier.
-pub const LEAGUE_TEAM_COUNT: [u8; 3] = [18, 20, 20];
-
-/// The team ids of league tier `league` (the original also keeps them as a
-/// first/last table at DS:2272).
-pub fn league_team_ids(league: usize) -> std::ops::Range<u8> {
-    let first = LEAGUE_FIRST_TEAM[league];
-    first..first + LEAGUE_TEAM_COUNT[league]
-}
-
-/// DS:2262 rounds per league tier.
-pub const LEAGUE_ROUND_COUNT: [u8; 3] = [34, 38, 38];
 /// DS:2271 points for a win (2-point rule).
 pub const POINTS_PER_WIN: u8 = 2;
 /// Home-goals value of a result that has not been played yet.
@@ -103,8 +90,8 @@ const PAIRINGS: [&[u8]; 38] = [
 ///
 /// Origin: BMMAIN.EXE 3a41:10e3 (fixtures_build_round_pairings)
 pub fn fixtures_build_round_pairings(state: &mut GameState, league: usize, round: u8) {
-    let offset = LEAGUE_FIRST_TEAM[league];
-    let half = LEAGUE_ROUND_COUNT[league] >> 1;
+    let offset = layout().first_team[league];
+    let half = layout().round_count[league] >> 1;
     let mut round = round;
     let mut second_half = false;
     if half < round {
@@ -114,7 +101,7 @@ pub fn fixtures_build_round_pairings(state: &mut GameState, league: usize, round
     if half < round {
         round = half;
     }
-    let count = LEAGUE_TEAM_COUNT[league];
+    let count = layout().team_count[league];
     let perm = if count == 18 {
         PAIRINGS[round as usize]
     } else {
@@ -296,10 +283,10 @@ pub fn league_apply_round_and_sort(
         return;
     }
     let r = state.competition_rounds[league].wrapping_sub(1) as i8;
-    if r > LEAGUE_ROUND_COUNT[league] as i8 - 1 {
+    if r > layout().round_count[league] as i8 - 1 {
         return;
     }
-    let count = LEAGUE_TEAM_COUNT[league] as usize;
+    let count = layout().team_count[league] as usize;
     // TODO(re): for league 0 and round counter 0 the original reads the 20
     // bytes before FAR:6ddc as results; they are treated as unplayed here.
     if let Some(results) = round_results(state, league, r) {
@@ -499,22 +486,51 @@ mod tests {
 
     const EMPTY_FORM: [u8; 9] = *b"@@@@@@@@\0";
 
+    /// The (home, away) pairs of every round of `tier` under the selected layout, asserting
+    /// that each round holds every club of the tier once.
+    fn season_fixtures(tier: usize) -> Vec<[u8; 2]> {
+        let mut s = GameState::zeroed();
+        let n = usize::from(layout().team_count[tier]);
+        let mut fixtures = Vec::new();
+        for round in 1..=layout().round_count[tier] {
+            fixtures_build_round_pairings(&mut s, tier, round);
+            let pairs = &s.matchday_pairings[tier][..n / 2];
+            let mut seen: Vec<u8> = pairs.iter().flatten().copied().collect();
+            seen.sort_unstable();
+            assert_eq!(seen, layout().team_ids(tier).collect::<Vec<_>>());
+            fixtures.extend_from_slice(pairs);
+        }
+        fixtures
+    }
+
     #[test]
     fn pairings_cover_every_club_once_per_round() {
-        let mut s = GameState::zeroed();
         for tier in 0..3 {
-            for round in 1..=LEAGUE_ROUND_COUNT[tier] {
-                fixtures_build_round_pairings(&mut s, tier, round);
-                let n = LEAGUE_TEAM_COUNT[tier] as usize;
-                let mut seen: Vec<u8> = s.matchday_pairings[tier][..n / 2]
-                    .iter()
-                    .flatten()
-                    .copied()
-                    .collect();
-                seen.sort_unstable();
-                assert_eq!(seen, league_team_ids(tier).collect::<Vec<_>>());
-            }
+            season_fixtures(tier);
         }
+    }
+
+    #[test]
+    fn mod_fixtures_meet_every_pair_twice() {
+        use crate::league_layout::{MOD2026, with_layout};
+        with_layout(&MOD2026, || {
+            for (tier, rounds) in [(0, 34), (1, 34), (2, 38)] {
+                let fixtures = season_fixtures(tier);
+                assert_eq!(
+                    fixtures.len(),
+                    rounds * usize::from(MOD2026.team_count[tier]) / 2
+                );
+                let mut sorted = fixtures.clone();
+                sorted.sort_unstable();
+                sorted.dedup();
+                // Every ordered (home, away) pair once: each two clubs meet twice.
+                let ids = MOD2026.team_ids(tier);
+                let n = ids.len();
+                assert_eq!(sorted.len(), n * (n - 1), "tier {tier}");
+                assert_eq!(sorted.len(), fixtures.len());
+                assert!(sorted.iter().flatten().all(|t| ids.contains(t) && *t < 56));
+            }
+        });
     }
 
     #[test]
@@ -818,7 +834,7 @@ mod tests {
             let mut t = s.clone();
             let mut rng = Rng::new(1);
             for l in 0..3 {
-                let clubs = league_team_ids(l).map(usize::from);
+                let clubs = layout().team_ids(l).map(usize::from);
                 for c in clubs.clone() {
                     let r = &mut t.team_tables[c];
                     for col in [

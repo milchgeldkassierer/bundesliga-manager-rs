@@ -3,9 +3,8 @@
 //! six main icons with their 3x3 submenus. Spec: `docs/re/logic/flow.md` §6.
 
 use bmp_game::finance::season_goal_messages;
-use bmp_game::league::{
-    LEAGUE_ROUND_COUNT, RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
-};
+use bmp_game::league::{RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort};
+use bmp_game::league_layout::layout;
 use bmp_game::matchsim::has_rescheduled_match_today;
 use bmp_game::newgame::add_managers;
 use bmp_game::rng::{NumberFormat, format_long_thousands};
@@ -463,7 +462,7 @@ pub fn office_menu_dispatcher(
     let mut day_saved = state.day_counter;
     host.screen_fade(0)?;
     host.number_no_separators = true;
-    for (t, &rounds) in LEAGUE_ROUND_COUNT.iter().enumerate() {
+    for (t, &rounds) in layout().round_count.iter().enumerate() {
         if (state.competition_rounds[t] as i8) < rounds as i8 {
             let round = state.competition_rounds[t];
             fixtures_build_round_pairings(state, t, round);

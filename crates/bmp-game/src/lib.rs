@@ -5,6 +5,7 @@ pub mod cups;
 pub mod finance;
 pub mod highscore;
 pub mod league;
+pub mod league_layout;
 pub mod matchsim;
 pub mod mod2026;
 pub mod newgame;

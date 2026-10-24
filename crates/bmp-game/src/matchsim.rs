@@ -3018,7 +3018,7 @@ mod tests {
         for (path, save) in crate::test_saves::save_states() {
             let rounds_ok = (0..3).all(|t| {
                 let r = save.competition_rounds[t] as i8;
-                (1..=crate::league::LEAGUE_ROUND_COUNT[t] as i8).contains(&r)
+                (1..=crate::league_layout::layout().round_count[t] as i8).contains(&r)
             });
             if !rounds_ok {
                 continue;

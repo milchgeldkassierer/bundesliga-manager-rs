@@ -8,6 +8,7 @@
 use bmp_formats::savegame::{HIGHSCORE_ENTRIES, HighScoreEntry, HighScoreTable};
 
 use crate::finance::{CreditField, credit_sum};
+use crate::league::POINTS_PER_WIN;
 use crate::rng::{Rng, ldiv, lmul};
 use crate::state::GameState;
 use crate::stats::stadium_attraction;
@@ -18,11 +19,17 @@ use crate::transfer::player_value_calc;
 ///
 /// Origin: BMMAIN.EXE 422b:2864 (highscore_compute_score)
 pub fn highscore_compute_score(state: &GameState, m: usize) -> i32 {
-    /// `DS:226e`: first club id of each tier, as signed bytes.
-    const TIER_BASE: [i8; 4] = [0, 18, 38, 2];
+    let layout = crate::league_layout::layout();
+    // `DS:226e`: first club id of each tier, as signed bytes; index 3 reads DS:2271.
+    let first = layout.first_team;
+    let tier_base = [first[0], first[1], first[2], POINTS_PER_WIN].map(|b| b as i8);
     let man = &state.managers[m];
     let pos = state.team_tables[usize::from(man.team) % state.team_tables.len()].table_position;
-    let mut s = 0x39 - i32::from(pos) - i32::from(TIER_BASE[usize::from(man.league) & 3]);
+    // MOD2026: the original's immediates 0x39 and 0x3a are its last league club id and its
+    // number of league clubs, so the last club of the 3. Liga scores 0 in both layouts.
+    let mut s = i32::from(layout.last_team(2))
+        - i32::from(pos)
+        - i32::from(tier_base[usize::from(man.league) & 3]);
     if s < 0 {
         s = 0;
     }
@@ -34,7 +41,9 @@ pub fn highscore_compute_score(state: &GameState, m: usize) -> i32 {
     }
     let n = (state.logged_rounds as u8).min(50);
     for e in &man.round_log[..usize::from(n)] {
-        s = s.wrapping_add(i32::from((0x3a - i16::from(e[0])) / 2));
+        s = s.wrapping_add(i32::from(
+            (i16::from(layout.league_club_count()) - i16::from(e[0])) / 2,
+        ));
         let b = e[2];
         if b & 0x80 != 0 {
             s = s.wrapping_add(20);
@@ -182,6 +191,34 @@ mod tests {
         assert_eq!(names(&t), b"CABBDEFGHIJKLMNOPQRS");
         assert_eq!(t.entries[0].score, 250);
         assert_eq!((t.entries[2].score, t.entries[3].score), (190, 190));
+    }
+
+    /// The score of a manager of the 3. Liga in table position `pos` with `logged` seasons, each
+    /// in the last place of all league clubs.
+    fn third_tier_score(pos: u8, logged: u16) -> i32 {
+        let layout = crate::league_layout::layout();
+        let mut state = GameState::program_start();
+        let team = layout.first_team[2] + pos;
+        state.managers[0].team = team;
+        state.managers[0].league = 2;
+        state.team_tables[usize::from(team)].table_position = pos;
+        state.logged_rounds = logged;
+        for log in &mut state.managers[0].round_log[..usize::from(logged)] {
+            log[0] = layout.league_club_count();
+        }
+        highscore_compute_score(&state, 0)
+    }
+
+    #[test]
+    fn the_last_league_club_scores_nothing_in_both_layouts() {
+        use crate::league_layout::{MOD2026, ORIGINAL, with_layout};
+        for layout in [&ORIGINAL, &MOD2026] {
+            with_layout(layout, || {
+                assert_eq!(third_tier_score(layout.team_count[2] - 1, 0), 0);
+                // 19 / 2 for the first place, a last-place season adds nothing: (9 + 0) / 2.
+                assert_eq!(third_tier_score(0, 1), 40);
+            });
+        }
     }
 
     #[test]

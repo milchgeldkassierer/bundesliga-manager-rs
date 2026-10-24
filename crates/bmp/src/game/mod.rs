@@ -27,6 +27,7 @@ pub mod transfer_screen;
 pub mod widgets;
 
 use bmp_formats::mana::ManaDat;
+use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
 use bmp_game::newgame::{self, CupDraws};
 use bmp_game::rng::Rng;
 use bmp_game::runtime::Runtime;
@@ -213,6 +214,8 @@ fn run_main(
     session_slot: &mut Option<Session>,
     state_slot: &mut Option<GameState>,
 ) -> Result<Run<Exit>, String> {
+    // MOD2026: the league structure of the mod data, selected before any game state exists.
+    set_layout(if host.mod2026 { &MOD2026 } else { &ORIGINAL });
     host.load_palette_slots()?;
     let _ = host.screen_fade(0);
     // Sound Blaster present and sound not disabled: start the title tune.

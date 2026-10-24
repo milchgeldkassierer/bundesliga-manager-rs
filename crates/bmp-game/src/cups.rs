@@ -41,9 +41,10 @@
 //! qualifiers, the goal clearing and the draws `(c, false)` for c = 1..=3, and later
 //! `(0, false)` and `(c, true)` for c = 1..=3 (§9.4).
 
+use crate::league_layout::layout;
 use crate::matchsim::{CUP_ROW_CELLS, MatchHooks, cup_row, match_penalty_shootout, matchday_play};
 use crate::rng::Rng;
-use crate::runtime::{Runtime, TIER_FIRST};
+use crate::runtime::Runtime;
 use crate::state::{CLUB_COUNT, GERMAN_CLUBS, GameState, MANAGER_SLOTS};
 
 /// DS:07d6: clubs left after each cup round, i.e. the pairings played in round `idx >= 1`.
@@ -56,16 +57,10 @@ pub const TIE_LEVEL: u8 = 0x1e;
 pub const NO_QUALIFIER: u8 = 0x80;
 /// First foreign club id; lower ids are German.
 pub const FIRST_FOREIGN_TEAM: u8 = GERMAN_CLUBS as u8;
-/// DS:2277: highest club id of the DFB-Pokal draw.
-const DFB_LAST_TEAM: u8 = 57;
 /// Highest foreign club id of the European draws (0xc7).
 const LAST_FOREIGN_TEAM: u8 = (CLUB_COUNT - 1) as u8;
 /// DS:226d: UEFA-Cup places of the Bundesliga table.
 const UEFA_PLACES: u8 = 4;
-/// DS:2266: relegation places per league tier (Bundesliga: two direct plus the play-off).
-const RELEGATION_PLACES: [i8; 3] = [3, 4, 4];
-/// DS:226a: the league tier has a relegation play-off.
-const HAS_RELEGATION_PLAYOFF: [u8; 3] = [1, 0, 0];
 /// Last day of the season on which a level European tie goes by away goals.
 const PLAYOFF_DAY: i32 = 315;
 /// Index of DS:0608 ("show the DFB-Pokal draw") in [`GameState::options`]; DS:0609 (European
@@ -258,12 +253,13 @@ pub fn cup_draw_screen_open(state: &GameState, cup: u8, ui: &mut dyn CupDrawUi) 
 /// European draw (the screen opens, nothing is drawn).
 ///
 /// DFB-Pokal: every human manager's club gets a distinct random slot `random_range(0, 31)`,
-/// every other slot a club `random_range(0, 57)` re-drawn until it is in no earlier slot and
-/// no manager's club; then the amateur home rule. European cups: every slot gets a foreign
-/// club `random_range(64, 199)` re-drawn until it is in no earlier slot of this cup, no slot
-/// of the other European cups (which may still hold last season's draw) and no manager's
-/// club; then each German qualifier replaces the foreign club of slot `random_range(1, 31)`,
-/// re-drawn while that slot holds a German club. Managers whose club takes part get stage 1.
+/// every other slot a league club `random_range(0, last)` (DS:2277, 57 in the original)
+/// re-drawn until it is in no earlier slot and no manager's club; then the amateur home rule.
+/// European cups: every slot gets a foreign club `random_range(64, 199)` re-drawn until it is
+/// in no earlier slot of this cup, no slot of the other European cups (which may still hold
+/// last season's draw) and no manager's club; then each German qualifier replaces the foreign
+/// club of slot `random_range(1, 31)`, re-drawn while that slot holds a German club. Managers
+/// whose club takes part get stage 1.
 ///
 /// Origin: BMMAIN.EXE 27c2:09e0 (cup_draw_first_round)
 pub fn cup_draw_first_round(
@@ -285,7 +281,8 @@ pub fn cup_draw_first_round(
         let (lo, hi) = if euro {
             (FIRST_FOREIGN_TEAM, LAST_FOREIGN_TEAM)
         } else {
-            (0, DFB_LAST_TEAM)
+            // DS:2277: the last club of the lowest league tier.
+            (0, rt.tier_club_ranges[2][1])
         };
         let compared = if euro { 1..4 } else { 0..1 };
         if cup == 1 {
@@ -754,7 +751,7 @@ pub fn matchday_relegation_match<H: MatchHooks + ?Sized>(
 ///
 /// Origin: BMMAIN.EXE 1310:09c5 (league_shuffle_teams)
 pub fn league_shuffle_teams(state: &mut GameState, rt: &Runtime, rng: &mut Rng) {
-    for (tier, &lo) in TIER_FIRST.iter().enumerate() {
+    for (tier, &lo) in layout().first_team.iter().enumerate() {
         let count = rt.tier_team_count[tier];
         let hi = lo.wrapping_add(count as u8).wrapping_sub(1);
         for _ in 0..55 {
@@ -777,8 +774,9 @@ pub fn league_shuffle_teams(state: &mut GameState, rt: &Runtime, rng: &mut Rng) 
 /// A human manager with a balance below -2 000 000 in one of the two Bundesligas loses the
 /// licence: status 4, and the club moves to the bottom of its table, onto a relegation
 /// place. Per tier the bottom clubs then swap slots ([`GameState::team_swap_slots`]) with the
-/// top clubs of the tier below; the amateur tier swaps with the reserve clubs 61 or 62
-/// (`random_range(61, 62)`, the season's only random number), 60, 59 and 58. A Bundesliga
+/// top clubs of the tier below; the amateur tier swaps with the reserve clubs after the `n`
+/// league clubs (58 in the original): `n + 3` or `n + 4` (`random_range(n + 3, n + 4)`, the
+/// season's only random number), `n + 2`, `n + 1` and `n`. A Bundesliga
 /// club that won the play-off ([`GameState::relegation_result`] 0) keeps its slot. The tier
 /// relegates its places plus the licence withdrawals (in the Bundesliga plus one for a
 /// play-off it won) that exceed those places. A human manager going down gets status 2
@@ -809,7 +807,7 @@ pub fn season_promotion_relegation(state: &mut GameState, rt: &Runtime, rng: &mu
     }
 
     for l in 0..3 {
-        let places = RELEGATION_PLACES[l];
+        let places = layout().relegation_places(l) as i8;
         if l == 0 && state.relegation_result == 0 {
             extra[0] += 1;
         }
@@ -842,7 +840,7 @@ pub fn season_promotion_relegation(state: &mut GameState, rt: &Runtime, rng: &mu
             let playoff_slot = l == 0
                 && relegated - i16::from(k) == 1
                 && state.relegation_result == 0
-                && HAS_RELEGATION_PLAYOFF[0] != 0;
+                && layout().relegation_playoff[0];
             if !playoff_slot {
                 let r = state.manager_index_of_team(down, 0xff);
                 if r != 0 && state.managers[usize::from(r - 1)].value_140 == 0 {
@@ -1165,7 +1163,7 @@ mod tests {
         expected.sort();
         assert_eq!(sorted, expected);
         assert!(sorted.windows(2).all(|w| w[0] != w[1]));
-        assert!(sorted.iter().all(|&t| t <= DFB_LAST_TEAM));
+        assert!(sorted.iter().all(|&t| t <= 57));
         // After the amateur rule no amateur is away against a professional club.
         let row = slots(&s, 0);
         for s in (1..32).step_by(2) {
@@ -1693,10 +1691,77 @@ mod tests {
         assert_eq!(rt.relegation_mode, 0);
     }
 
+    #[test]
+    fn mod_dfb_draw_uses_league_clubs_once() {
+        use crate::league_layout::{MOD2026, with_layout};
+        with_layout(&MOD2026, || {
+            let rt = Runtime::default();
+            for seed in 0..20 {
+                let mut s = GameState::zeroed();
+                s.manager_count = 1;
+                s.managers[0].team = 20;
+                s.event_state[0] = 3;
+                let mut rng = Rng::new(seed);
+                cup_draw_first_round(&mut s, &rt, &mut rng, 0, false, &mut |_| false);
+                let mut sorted = slots(&s, 0).to_vec();
+                sorted.sort();
+                assert!(
+                    sorted.windows(2).all(|w| w[0] != w[1]),
+                    "seed {seed}: {sorted:?}"
+                );
+                assert!(sorted.iter().all(|&t| t <= 55), "seed {seed}: {sorted:?}");
+                assert!(sorted.contains(&20));
+            }
+        });
+    }
+
+    #[test]
+    fn mod_promotion_relegation_swaps_the_right_slots() {
+        use crate::league_layout::{MOD2026, with_layout};
+        with_layout(&MOD2026, || {
+            let rt = Runtime::default();
+            let start = Rng::new(4);
+            let reserve = Rng::new(4).random_range(59, 60) as u8;
+            let mut s = identity_state();
+            season_promotion_relegation(&mut s, &rt, &mut start.clone());
+            let swaps = [
+                (17, 18),
+                (16, 19),
+                (35, 36),
+                (34, 37),
+                (33, 38),
+                (55, reserve),
+                (54, 58),
+                (53, 57),
+                (52, 56),
+            ];
+            for (down, up) in swaps {
+                assert_eq!(
+                    (marker(&s, down), marker(&s, up)),
+                    (up, down),
+                    "{down}/{up}"
+                );
+            }
+            assert_eq!(marker(&s, 15), 15, "the play-off winner stays up");
+            assert_eq!(
+                marker(&s, 32),
+                32,
+                "three clubs go down from the 2. Bundesliga"
+            );
+            assert_eq!(marker(&s, 51), 51, "four clubs go down from the 3. Liga");
+            assert_eq!(s.competition_rounds, [1, 1, 1]);
+
+            let mut s = identity_state();
+            s.relegation_result = 1;
+            season_promotion_relegation(&mut s, &rt, &mut start.clone());
+            assert_eq!((marker(&s, 15), marker(&s, 20)), (20, 15));
+        });
+    }
+
     /// Identity final tables, club records marked with their id.
     fn identity_state() -> GameState {
         let mut s = GameState::zeroed();
-        for (t, &first) in TIER_FIRST.iter().enumerate() {
+        for (t, &first) in layout().first_team.iter().enumerate() {
             for i in 0..20 {
                 s.league_teams[t][i] = first + i as u8;
             }
@@ -1800,7 +1865,7 @@ mod tests {
         let mut rng = start;
         league_shuffle_teams(&mut s, &rt, &mut rng);
         assert_eq!(draws(start, rng), 330);
-        for (t, &first) in TIER_FIRST.iter().enumerate() {
+        for (t, &first) in layout().first_team.iter().enumerate() {
             let n = usize::from(rt.tier_team_count[t] as u8);
             let mut ids = s.league_teams[t][..n].to_vec();
             ids.sort();
@@ -1821,7 +1886,7 @@ mod tests {
         for seed in 0..40 {
             let mut s = identity_state();
             league_shuffle_teams(&mut s, &rt, &mut Rng::new(seed));
-            for (t, &first) in TIER_FIRST.iter().enumerate() {
+            for (t, &first) in layout().first_team.iter().enumerate() {
                 let last = usize::from(rt.tier_team_count[t] as u8) - 1;
                 moved[t][0] |= s.league_teams[t][0] != first;
                 moved[t][1] |= s.league_teams[t][last] != first + last as u8;

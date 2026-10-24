@@ -15,7 +15,7 @@
 //!
 //! Full documentation with addresses: `docs/re/logic/transfer.md`.
 
-use crate::league::{LEAGUE_ROUND_COUNT, league_team_ids};
+use crate::league_layout::layout;
 use crate::news::message_delete;
 use crate::rng::{Rng, clamp_int, ldiv, lmul, lshl, uldiv};
 use crate::squad::{InsertRejected, group, squad_insert_player, squad_remove_player};
@@ -243,11 +243,11 @@ fn refill_market_slot(state: &mut GameState, rng: &mut Rng, i: &mut i16) {
     let mut team = i16::from(state.players[pid].team);
     if state.manager_index_of_team(team as u8, 0xff) != 0 {
         let tier = (0..3)
-            .find(|&t| league_team_ids(t).contains(&(team as u8)))
+            .find(|&t| layout().team_ids(t).contains(&(team as u8)))
             .unwrap_or(2);
         *i = tier as i16;
         // DS:2272 holds the same ranges.
-        let ids = league_team_ids(tier);
+        let ids = layout().team_ids(tier);
         let (lo, hi) = (i16::from(ids.start), i16::from(ids.end) - 1);
         loop {
             team = rng.random_range(lo, hi);
@@ -316,7 +316,7 @@ fn season_left_percent(state: &GameState) -> i32 {
     let round = state.competition_rounds[league] as i8;
     ldiv(
         i32::from(round) * -100,
-        i32::from(LEAGUE_ROUND_COUNT[league]),
+        i32::from(layout().round_count[league]),
     ) + 100
 }
 

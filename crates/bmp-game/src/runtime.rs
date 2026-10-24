@@ -8,16 +8,11 @@
 
 use bmp_formats::savegame::HighScoreEntry;
 
+use crate::league_layout::layout;
 use crate::matchsim::CUP_ROW_CELLS;
 use crate::squad::LineupRules;
 use crate::state::{Layout, MANAGER_SLOTS, NewsRecord};
 
-/// DS:226e: first club index of each league tier.
-pub const TIER_FIRST: [u8; 3] = [0, 18, 38];
-/// DS:225e: number of clubs per league tier.
-pub const TIER_COUNT: [u8; 3] = [18, 20, 20];
-/// DS:2262: number of rounds per league tier.
-pub const TIER_ROUNDS: [u8; 3] = [34, 38, 38];
 /// Booking slot value of [`Runtime::booked_players`] that holds nobody.
 pub const NO_BOOKING: i8 = 0x7f;
 /// DS:224c: season start-day offset (0 in the shipped data).
@@ -137,16 +132,16 @@ pub struct Runtime {
 
 impl Default for Runtime {
     fn default() -> Self {
-        let last = |t: usize| TIER_FIRST[t] + TIER_COUNT[t] - 1;
+        let l = layout();
         Runtime {
-            tier_bounds: [TIER_FIRST[1] as i8, TIER_FIRST[2] as i8],
-            tier_team_count: TIER_COUNT.map(|n| n as i8),
-            tier_round_count: TIER_ROUNDS.map(|n| n as i8),
+            tier_bounds: [l.first_team[1] as i8, l.first_team[2] as i8],
+            tier_team_count: l.team_count.map(|n| n as i8),
+            tier_round_count: l.round_count.map(|n| n as i8),
             tier_club_ranges: [
-                [TIER_FIRST[0], last(0)],
-                [TIER_FIRST[1], last(1)],
-                [TIER_FIRST[2], last(2)],
-                [last(2) + 1, 255],
+                [l.first_team[0], l.last_team(0)],
+                [l.first_team[1], l.last_team(1)],
+                [l.first_team[2], l.last_team(2)],
+                [l.league_club_count(), 255],
             ],
             lineup_change_count: [0; MANAGER_SLOTS],
             live_match_shown: 0,

@@ -5,7 +5,7 @@
 use bmp_game::finance::{
     CreditField, credit_sum, finance_monthly_expenses, finance_monthly_income,
 };
-use bmp_game::league::{LEAGUE_FIRST_TEAM, LEAGUE_TEAM_COUNT};
+use bmp_game::league_layout::layout;
 use bmp_game::rng::NumberFormat;
 use bmp_game::state::{GameState, Manager};
 
@@ -232,7 +232,7 @@ pub fn finance_needed_attendance(state: &mut GameState) -> i32 {
     let m = current(state);
     let tier = usize::from(state.managers[m].league);
     // DS:225e[tier] - 1 as a signed byte (the table continues with DS:2261).
-    let games = i32::from((*LEAGUE_TEAM_COUNT.get(tier).unwrap_or(&34) as i8).wrapping_sub(1));
+    let games = i32::from((*layout().team_count.get(tier).unwrap_or(&34) as i8).wrapping_sub(1));
     let expenses = finance_monthly_expenses(state).wrapping_mul(12);
     let income = finance_monthly_income(state).wrapping_mul(12);
     let d = expenses.wrapping_sub(income);
@@ -712,7 +712,7 @@ pub fn history_cup_texts(league: u8, dfb: u8, euro: u8) -> ((Vec<u8>, u8), (Vec<
 }
 
 /// The bars of the development graph: one 5-pixel column per season from
-/// the table rank (0 = best of all 58 clubs) down to the bottom, as
+/// the table rank (0 = best of all league clubs) down to the bottom, as
 /// `(x0, x1, y, colour)` lines; brown in the amateur range, then the 2.
 /// Liga and Bundesliga colours.
 ///
@@ -722,12 +722,13 @@ pub fn history_graph_lines(ranks: &[u8]) -> Vec<(i16, i16, u8, u8)> {
     for (k, &v) in ranks.iter().enumerate() {
         let x = 5 * k as i16;
         let mut color = 0x1b;
-        let mut h: i16 = 0x3a;
+        // MOD2026: the original starts at its 58 league clubs (0x3a), the last rank.
+        let mut h = i16::from(layout().league_club_count());
         while h > 0 {
-            if i16::from(LEAGUE_FIRST_TEAM[2] as i8) + 1 > h {
+            if i16::from(layout().first_team[2] as i8) + 1 > h {
                 color = 0x1a;
             }
-            if i16::from(LEAGUE_FIRST_TEAM[1] as i8) + 1 > h {
+            if i16::from(layout().first_team[1] as i8) + 1 > h {
                 color = 0x19;
             }
             if i16::from(v) <= h {
@@ -797,7 +798,8 @@ pub fn screen_manager_history(
             if log[0] == 0xff {
                 text_at(host, HISTORY_NOT_YET, 0x2a, y, 1);
             } else {
-                let first = LEAGUE_FIRST_TEAM
+                let first = layout()
+                    .first_team
                     .get(usize::from(log[1]))
                     .copied()
                     .unwrap_or(0);
@@ -989,5 +991,16 @@ mod tests {
         assert_eq!(first[40].3, 0x19);
         let second: Vec<_> = lines.iter().filter(|l| l.0 == 12).collect();
         assert_eq!(second.len(), 2);
+    }
+
+    #[test]
+    fn the_last_league_club_draws_one_line_in_both_layouts() {
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        for l in [&ORIGINAL, &MOD2026] {
+            set_layout(l);
+            let lines = history_graph_lines(&[l.league_club_count()]);
+            assert_eq!(lines.len(), 1);
+        }
+        set_layout(&ORIGINAL);
     }
 }

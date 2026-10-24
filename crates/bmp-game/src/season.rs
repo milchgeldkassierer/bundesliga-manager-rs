@@ -24,6 +24,7 @@ use crate::ai::{league_strength_drift, match_attendance_estimate, squad_recalc_t
 use crate::cups::{self, NOT_IN_CUP};
 use crate::finance::{DAYS_IN_MONTH, FinanceEvent, finance_daily_processing, message_queue_add};
 use crate::highscore::{highscore_build_entry, highscore_game_end_insert};
+use crate::league_layout::layout;
 use crate::matchsim::{
     MATCH_DAY_MANAGER, MatchHooks, TickerEvent, has_rescheduled_match_today,
     league_postpone_matches_weather, match_pick_scorer, matchday_play, matchday_play_rescheduled,
@@ -36,7 +37,7 @@ use crate::news::{
 use crate::rng::{
     NumberFormat, Rng, clamp_int, format_long_thousands, ldiv, lmul, long_abs_diff, lrem, uldiv,
 };
-use crate::runtime::{LiveMatch, NO_BOOKING, Runtime, SEASON_START_DAY, TIER_FIRST};
+use crate::runtime::{LiveMatch, NO_BOOKING, Runtime, SEASON_START_DAY};
 use crate::squad::{
     auto_lineup, count_players_of_owner, find_player_by_id, player_init_random_attrs,
     squad_count_listed, squad_count_starters, squad_insert_player, squad_remove_player,
@@ -811,7 +812,7 @@ fn season_record_manager<U: SeasonUi + ?Sized>(
         ui.championship_winner(state, m)?;
     }
     let r = &mut state.managers[mu];
-    r.round_log[e][0] = r.round_log[e][0].wrapping_add(TIER_FIRST[tier]);
+    r.round_log[e][0] = r.round_log[e][0].wrapping_add(layout().first_team[tier]);
     r.round_log[e][1] = tier as u8;
     let won = |winner: u8| u16::from(team).wrapping_add(1) == u16::from(winner);
     r.round_log[e][2] = r.values_132[0]
@@ -2263,7 +2264,11 @@ pub fn season_end_messages<U: SeasonUi + ?Sized>(
         tier_count[usize::from(league)] += 1;
         let (rank, tier) = {
             let [pos, tier, ..] = state.managers[mu].round_log[hist];
-            let first = TIER_FIRST.get(usize::from(tier)).copied().unwrap_or(0);
+            let first = layout()
+                .first_team
+                .get(usize::from(tier))
+                .copied()
+                .unwrap_or(0);
             (
                 i32::from(u16::from(pos).wrapping_sub(i16::from(first as i8) as u16) as i16),
                 tier,
@@ -2719,7 +2724,7 @@ pub fn pick_random_free_team_in_tier(
         if rng.random_range(0, 5) == 0 {
             t = rng.random_range(0, 12) as u8;
         }
-        let t = t.wrapping_add(TIER_FIRST[k]);
+        let t = t.wrapping_add(layout().first_team[k]);
         if state.manager_index_of_team(t, 0xff) == 0 {
             return t;
         }
@@ -2835,6 +2840,8 @@ mod tests {
         start_year: u16,
         turns: u32,
         stop_at: u32,
+        /// Stop at the first season-end office turn.
+        stop_at_season_end: bool,
         /// The current manager and the argument of every office turn.
         office_turns: Vec<(i8, u8)>,
         draws_asked: Vec<u8>,
@@ -2874,6 +2881,7 @@ mod tests {
                 start_year: state.start_year,
                 turns: 0,
                 stop_at: u32::MAX,
+                stop_at_season_end: false,
                 office_turns: Vec::new(),
                 draws_asked: Vec::new(),
                 titles: Vec::new(),
@@ -2920,7 +2928,10 @@ mod tests {
             if self.turns == self.add_manager_at {
                 state.manager_count += 1;
             }
-            if state.start_year != self.start_year || self.turns > self.stop_at {
+            if state.start_year != self.start_year
+                || self.turns > self.stop_at
+                || (self.stop_at_season_end && arg == 0xff)
+            {
                 return Err(Done);
             }
             Ok(())
@@ -4454,7 +4465,7 @@ mod tests {
     /// [`two_managers`] in round `round` of a season whose tables hold every club in id order.
     fn league_season(round: u8) -> GameState {
         let mut s = two_managers();
-        for (tier, &first) in TIER_FIRST.iter().enumerate() {
+        for (tier, &first) in layout().first_team.iter().enumerate() {
             for i in 0..20 {
                 let club = first + i as u8;
                 s.league_teams[tier][i] = club;
@@ -4997,6 +5008,72 @@ mod tests {
         assert_eq!(rows[2], b"", "two entries");
         assert!(rows[..2].contains(&&b"ANNA"[..]) && rows[..2].contains(&&b"BERT"[..]));
         assert!(ui.table.entries[0].score >= ui.table.entries[1].score);
+    }
+
+    /// A new mod game with managers at clubs 2 (Bundesliga) and 20 (2. Bundesliga), played by
+    /// `ui`. Call inside `with_layout(&MOD2026, ..)`.
+    fn play_mod_game(ui: &mut Headless) -> (GameState, Result<GameOver, Done>) {
+        use crate::newgame::{CupDraws, MODE_ENDLESS, new_game, startup, tests};
+        let mana = tests::synthetic_mana();
+        let c = tests::choices(&[2, 20], MODE_ENDLESS, 2, 3);
+        let mut rt = Runtime::default();
+        let mut rng = Rng::default();
+        let mut draws = CupDraws(|_| false);
+        let mut s = startup(&mana, &mut rt, &mut rng, 35372, &mut draws);
+        new_game(&mut s, &mut rt, &mut rng, &mana, &c, 35400, &mut draws);
+        ui.start_year = s.start_year;
+        let end = season_main_loop(&mut s, &mut rt, &mut Rng::new(0x2026), ui, false);
+        (s, end)
+    }
+
+    #[test]
+    fn mod_season_plays_18_18_20() {
+        use crate::league_layout::{MOD2026, with_layout};
+        with_layout(&MOD2026, || {
+            let mut ui = Headless::new(&GameState::zeroed());
+            ui.stop_at_season_end = true;
+            let (s, end) = play_mod_game(&mut ui);
+            assert_eq!(end, Err(Done));
+
+            assert_eq!(ui.office_turns.last().map(|t| t.1), Some(0xff));
+            // Each tier had exactly its own number of match days.
+            assert_eq!(s.competition_rounds, [35, 35, 39]);
+            for (t, rounds) in [(0, 34), (1, 34), (2, 38)] {
+                let n = usize::from(MOD2026.team_count[t]);
+                let mut rows = s.league_teams[t][..n].to_vec();
+                rows.sort_unstable();
+                assert!(rows.iter().copied().eq(MOD2026.team_ids(t)), "tier {t}");
+                for &c in &rows {
+                    let p = s.team_tables[usize::from(c)].played;
+                    assert_eq!(p[0] + p[1], rounds, "tier {t} club {c}");
+                }
+            }
+            for c in MOD2026.league_club_count()..crate::state::GERMAN_CLUBS as u8 {
+                assert_eq!(
+                    s.team_tables[usize::from(c)].played[..2],
+                    [0, 0],
+                    "club {c}"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn mod_save_round_trips_mid_season() {
+        use crate::league_layout::{MOD2026, with_layout};
+        with_layout(&MOD2026, || {
+            let mut ui = Headless::new(&GameState::zeroed());
+            ui.stop_at = 40;
+            let (s, end) = play_mod_game(&mut ui);
+            assert_eq!(end, Err(Done));
+            assert!((2..=33).contains(&s.competition_rounds[1]));
+            let bytes = s.to_savegame().to_bytes().unwrap();
+            let back = GameState::from_savegame(&SaveGame::parse(&bytes).unwrap()).unwrap();
+            assert_eq!(back.to_savegame().to_bytes().unwrap(), bytes);
+            assert_eq!(back.league_teams, s.league_teams);
+            assert_eq!(back.league_results, s.league_results);
+            assert_eq!(back.week_competitions, s.week_competitions);
+        });
     }
 
     /// Every real save plays on into the first office turn of the next season, or to the end
