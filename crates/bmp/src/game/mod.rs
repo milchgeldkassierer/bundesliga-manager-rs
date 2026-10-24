@@ -8,6 +8,7 @@ pub mod disk;
 pub mod goal_scene;
 pub mod live_match;
 pub mod load_game;
+pub mod messages;
 pub mod negotiation;
 pub mod newspaper;
 pub mod office;

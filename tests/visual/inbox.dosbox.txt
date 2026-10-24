@@ -1,0 +1,62 @@
+# DOSBox side of the inbox scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads the fixture 00POST.MAN (six messages, new-message flag set, see the port script): the
+# inbox opens with the office. Page down three times, once more at the end, up once, exit;
+# then a click on the desk opens the mail again, exit. Load 07072019.MAN (no mail) from the
+# office and open the empty inbox, "down" (nothing happens), exit.
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+shot i01-unread
+click 254 210 240
+wait 2
+shot i02-down
+click 254 210 240
+wait 2
+shot i03-down
+click 254 210 240
+wait 2
+shot i04-last
+click 254 210 240
+wait 2
+shot i05-bottom
+click 254 130 240
+wait 2
+shot i06-up
+click 254 170 240
+wait 3
+shot i07-office
+click 150 200 240
+wait 3
+shot i08-desk
+click 254 170 240
+wait 3
+shot i09-office
+move 160 120 240
+click 291 173 240
+wait 2
+move 160 120 240
+click 107 132 240
+wait 4
+move 160 120 240
+click 40 90 240
+wait 1
+move 160 120 240
+click 40 90 240
+wait 6
+move 160 120 240
+click 150 200 240
+wait 3
+shot i10-empty
+click 254 210 240
+wait 2
+click 254 170 240
+wait 3
+shot i11-office

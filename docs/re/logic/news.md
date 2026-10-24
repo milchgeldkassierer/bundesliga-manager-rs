@@ -743,32 +743,55 @@ If `single == NULL`, the screen shows the inbox of `FAR:304a`. Otherwise it show
   0x7a. After each line `y += 8`, plus 2 more after the first (date) line. Text after the last `^`
   is not drawn. After a message, `y += 7`.
 * Empty inbox (`DS:0618[mgr] == 0 && single == NULL`): `"Keine Nachricht vorhanden."` (DS:2694),
-  drawn centred at y=0xb1 with shadow 1 and colour 0.
-* Paging loop (`i` = index of the last message shown, `row` = messages on this page):
+  drawn centred at y=0xb1 with colour 1 and shadow 0 (the same argument order as the message
+  lines: `ui_draw_text_centered_shadow(rp, s, 0x3a, 0xf5, 0xb1, 1, 0)`), then `i = -1`.
+* Paging loop (from the disassembly 4091:0780..0a54; `i` = SI = index of the message just drawn,
+  `row` = `[bp-6]` = messages on this page, `y` = DI, `sel` = `[bp-8]`):
 
 ```c
-if (row == 3 || count - i - 1 == 0 || single) {
-  again:
-    u8 sel = ui_messages_wait_button();             // 0..2 (1 if the abort flag is set)
-    u16 dy = sel * 0x28 + (sel == 2);
-    blit_bitmap(bm, 0x13, dy, rp, 0xf5, 0x71 + dy, 0x12, 0x28 + (sel == 2), 0xc0);   // pressed
-    do input_poll_mouse(*(far*)FAR:6dc0); while (FAR:2ea2 != 2 && !DS:05d4);
-    blit_bitmap(bm, 0, dy, rp, 0xf5, 0x71 + dy, 0x12, 0x28 + (sel == 2), 0xc0);      // released
-    if (sel == 0) { if (i > 2) { i -= row + 1; if (i < -1) i = -1; } else goto again; }
-    if (sel == 1) i = 0xff;                          // exit
-    if (sel == 2) { if (count > i + 1) i -= 2; else goto again; }
-    if (i == 0xff) exit;
-    for (k = 0; k < 3; k++) ui_fill_rect(rp, 0x3b, 0x72 + 41*k, 0xf0, 0x97 + 41*k, 4);
-    y = 0x7a; row = 0;
+i = 0; y = 0x7a; row = 0;
+for (;;) {
+    draw(single ? single : FAR:5524[cur*20 + i]);    // a NULL entry draws nothing
+    row++; y += 7;
+    if (count == 0 && single == NULL) { draw "Keine Nachricht vorhanden."; i = -1; }
+    if (row == 3 || count - i - 1 == 0 || single) {
+      again:
+        sel = ui_messages_wait_button();             // 0..3 (1 if the abort flag is set)
+        u16 dy = sel * 0x28 + (sel == 2);
+        blit_bitmap(bm, 0x13, dy, rp, 0xf5, 0x71 + dy, 0x12, 0x28 + (sel == 2), 0xc0);   // pressed
+        do input_poll_mouse(*(far*)FAR:6dc0); while (FAR:2ea2 != 2 && !DS:05d4);
+        blit_bitmap(bm, 0, dy, rp, 0xf5, 0x71 + dy, 0x12, 0x28 + (sel == 2), 0xc0);      // released
+        if (sel == 0) { if (i <= 2) sel = 3; else { i -= row + 1; if (i < -1) i = -1; } }
+        else if (sel == 1) i = 0xff;                     // exit
+        else if (sel == 2 && count <= i + 1) sel = 3;
+        if (sel == 3) goto again;
+        if (sel == 2) i -= 2;
+        if (i != 0xff)
+            for (k = 0; k < 3; k++) ui_fill_rect(rp, 0x3b, 0x72 + 41*k, 0xf0, 0x97 + 41*k, 4);
+        y = 0x7a; row = 0;
+    }
+    i++;
+    if (count <= i || single) break;                 // exit: i = 0x100
 }
-i++; continue while (count > i && single == NULL);
 ```
 
+  With a full page (`row == 3`, `i` = first + 2) both directions scroll by **one** message: "down"
+  continues at `i - 2 + 1` = first + 1, "up" at `i - 4 + 1` = first - 1. "Up" needs `i > 2`
+  (a message above the page), "down" a message after `i`; otherwise the button only flashes. The
+  strip test of `ui_messages_wait_button` lets y = 0xe7 (its last pixel row) return 3, which no
+  case handles: the pressed/released blits then copy PIC 2 rows 120..159 to y 0xe9 and the loop
+  waits again. The screen has no delete action: messages leave the inbox only through
+  `message_delete` (game logic, e.g. the weekly countdown of queued messages, §6.2).
+  With `single`, "down" pages (and the loop then leaves) only when `count > 1`, "up" never does.
 * On exit, the background is restored with
   `blit_bitmap_scaled_or_copy(*(far*)FAR:56fa, 0x39, 0x6e, *(far*)FAR:a6ca, 0x39, 0x6e, 0xce, 0x89, 0xc0, 7, 0, 0)`,
   then `bitmap_free(pic)`.
 * `count` is always `DS:0618[FAR:304a]`, also in the `single` case.
-* Callers: `message_post`, `office_menu_dispatcher`, 18bc:08f2, `season_end_messages`.
+* Callers: `message_post`, `office_menu_dispatcher` (the unread-mail flag `FAR:56e2[cur]` in the
+  office redraw, flow.md §6.2), 18bc:08f2 (`office_handle_free_click`, a click on the desk),
+  `season_end_messages`.
+* Port: `crates/bmp/src/game/messages.rs` (`screen_messages`, `screen_messages_inbox`); visual
+  scenario `inbox` (six messages, paging, the unread trigger, the desk click, the empty inbox).
 
 ### 6.5 `ui_messages_wait_button(void)` 4091:0aaa → i16
 

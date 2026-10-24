@@ -1,0 +1,86 @@
+# Port side of the inbox scenario (bmp run --script syntax, milliseconds): the office mail
+# (screen_messages 4091:05c4 without a message, docs/re/logic/news.md §6.4).
+# The fixture 00POST.MAN is the office of 28 February 1968 (2021-AUG.MAN played on in
+# automatic play, inbox.fixture.txt) with two training injuries in the inbox; visual-check
+# adds the four messages of inbox.messages.txt (six in all) and sets the new-message flag
+# FAR:56e2[0], so the inbox opens by itself when the loaded office is drawn (flow.md §6.2).
+# Page down three times (a page scrolls by one message), once more at the end (nothing
+# happens), up once, exit; then open the mail again with a click on the desk and exit.
+# Finally load 07072019.MAN (no mail) from the office and open the empty inbox ("Keine
+# Nachricht vorhanden."); "down" does nothing there, "exit" leaves.
+# fixture: inbox.fixture.txt 00POST.MAN 1000
+# fixture-patch: 00POST.MAN save_add_messages tests/visual/inbox.messages.txt --unread
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1500
+shot i01-unread
+move 254 210
+wait 100
+click 254 210
+wait 500
+shot i02-down
+click 254 210
+wait 500
+shot i03-down
+click 254 210
+wait 500
+shot i04-last
+click 254 210
+wait 500
+shot i05-bottom
+move 254 130
+wait 100
+click 254 130
+wait 500
+shot i06-up
+move 254 170
+wait 100
+click 254 170
+wait 1000
+shot i07-office
+move 150 200
+wait 100
+click 150 200
+wait 1000
+shot i08-desk
+move 254 170
+wait 100
+click 254 170
+wait 1000
+shot i09-office
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 132
+wait 100
+click 107 132
+wait 1000
+move 40 90
+wait 100
+click 40 90
+wait 500
+click 40 90
+wait 2000
+move 150 200
+wait 100
+click 150 200
+wait 1000
+shot i10-empty
+move 254 210
+wait 100
+click 254 210
+wait 500
+move 254 170
+wait 100
+click 254 170
+wait 1000
+shot i11-office

@@ -200,7 +200,8 @@ pub struct HeaderBitmaps {
 ///
 /// TODO(#82): a construction finished in the winter break or after the season's last day is
 /// shown at once by `message_find_owner` (4091:0a4e, the message viewer of
-/// `screen_messages` 4091:05c4, #32); the port does not show it.
+/// `screen_messages` 4091:05c4); the port does not show it yet (the viewer is
+/// `messages::screen_messages`, called with the message).
 ///
 /// Origin: BMMAIN.EXE 212a:0a6d (finance_daily_processing, 212a:0d1a..0e3e)
 pub fn finance_dialogs(

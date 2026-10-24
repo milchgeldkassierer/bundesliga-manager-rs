@@ -19,6 +19,8 @@
 # games start with: the port runs tests/visual/<generator> (with the seeds) on a fresh copy
 # of $BMP_DATA once and keeps the <file> it wrote in $BMP_HOLDOUT/fixtures/<scenario>/; that
 # file is then copied into the game directories of both the port and the DOSBox capture.
+# A "# fixture-patch: <file> <example> <args...>" line runs the bmp-formats example <example>
+# on a fixture <file> right after it was generated (e.g. save_add_messages to add inbox mail).
 # Fixtures and references belong together: delete both to regenerate them.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -42,6 +44,11 @@ for name in "${names[@]}"; do
     "$BIN" --data "$gdata" run --script "tests/visual/$gen" --shots "$gout" \
       ${fseed:+--time "$fseed"} ${fseed2:+--time2 "$fseed2"} </dev/null >/dev/null 2>&1 || true
     cp "$gdata/$file" "$fix/$file" && echo "fixture $name/$file generated"
+    while read -r pfile tool pargs; do
+      [ "$pfile" = "$file" ] || continue
+      # shellcheck disable=SC2086 # the arguments are split on purpose
+      cargo run -q -p bmp-formats --example "$tool" -- "$fix/$file" $pargs
+    done < <(sed -n 's/^# fixture-patch: *//p' "tests/visual/$name.port.txt")
     rm -rf "$gdata" "$gout"
   done < <(sed -n 's/^# fixture: *//p' "tests/visual/$name.port.txt")
   if [ ! -d "$ref" ]; then

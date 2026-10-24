@@ -20,6 +20,7 @@ use super::disk::{
     screen_settings,
 };
 use super::load_game::screen_load_game;
+use super::messages::screen_messages_inbox;
 use super::scorers::screen_top_scorers;
 use super::squad_screen::screen_squad_lineup;
 use super::stadium::screen_stadium;
@@ -417,7 +418,7 @@ fn office_handle_free_click(
         return Ok(2);
     }
     if sel == -1 && mx > 0x39 && my > 0x71 && mx < 0x108 && my < 0xfd {
-        // TODO(#32): screen_messages 4091:05c4 (mail).
+        screen_messages_inbox(host, state, auto)?;
     }
     Ok(0)
 }
@@ -520,7 +521,7 @@ pub fn office_menu_dispatcher(
         }
         if state.far_56e2[cur] != 0 {
             state.far_56e2[cur] = 0;
-            // TODO(#32): screen_messages 4091:05c4 (unread mail).
+            screen_messages_inbox(host, state, session.auto_play)?;
         }
         if reopen == 0 {
             host.screen_fade(1)?;

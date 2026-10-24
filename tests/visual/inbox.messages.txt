@@ -1,0 +1,8 @@
+# Messages that tools/visual-check.sh adds to the inbox fixture of the inbox scenario
+# (crates/bmp-formats/examples/save_add_messages.rs), oldest first, in the game's format and
+# character set ('^' ends a line, '{' = ä, '}' = ü, '~' = ß). They follow the message
+# templates DS:267c (docs/re/logic/news.md §6.1).
+26. Februar 1968^OVERATH k}ndigt an,^da~ er seinen Vertrag nicht^mehr verl{ngern wird.^
+27. Februar 1968^BAYERN M]NCHEN^ist an HEISS^interessiert.^
+27. Februar 1968^SEELER h{ngt den^Fu~balljob im Alter von^31 Jahren an den Nagel.^
+28. Februar 1968^NETZER bietet an,^von 2 auf 4^Jahre zu verl{ngern.^

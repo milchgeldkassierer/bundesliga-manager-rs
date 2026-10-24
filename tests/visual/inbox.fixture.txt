@@ -1,0 +1,44 @@
+# Fixture generator of the inbox scenario (bmp run --script syntax, milliseconds): loads
+# 2021-AUG.MAN (21 January 1968), switches automatic play on with a click on (1, 1), lets a
+# week pass and stops automatic play with the pointer on (0, 0) in the office of 28 February
+# 1968 (two training injuries in the inbox), then saves the game as 00POST.MAN. Run with
+# --time 1000. tools/visual-check.sh then adds the messages of inbox.messages.txt and sets
+# the new-message flag ("# fixture-patch:" of inbox.port.txt). The stop time depends on the
+# port's timing: when the generator is changed, check the save's date and inbox, and capture
+# fixtures and references again together.
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 98
+wait 500
+click 40 98
+wait 1000
+move 1 1
+wait 100
+click 1 1
+wait 100
+move 160 120
+wait 2500
+move 0 0
+wait 2000
+move 160 120
+wait 500
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 174
+wait 100
+click 107 174
+wait 1000
+move 100 178
+wait 100
+click 100 178
+wait 250
+type 00post
+wait 250
+key enter
+wait 1000

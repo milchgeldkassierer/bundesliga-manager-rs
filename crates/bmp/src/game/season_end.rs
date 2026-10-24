@@ -10,6 +10,7 @@ use bmp_game::rng::format_long_thousands;
 use bmp_game::season::SeasonEndEvent;
 use bmp_game::state::GameState;
 
+use super::messages::screen_messages;
 use super::season::ScreenSeason;
 use super::squad_screen::squad_list_draw;
 use super::tables::LEAGUE_NAMES;
@@ -18,10 +19,8 @@ use super::{
     GAME_OPTION_A, GAME_OPTION_B, append_ordinal_suffix, office_show_cached_background,
     text_to_upper_de,
 };
-use crate::gfx::{
-    BitmapId, ui_draw_frame, ui_draw_line, ui_draw_text_centered_shadow, ui_fill_rect,
-};
-use crate::host::{Host, LEFT_DOWN, LEFT_UP, Run};
+use crate::gfx::{BitmapId, ui_draw_line, ui_draw_text_centered_shadow, ui_fill_rect};
+use crate::host::{Host, Run};
 
 /// `DS:2744`, `DS:2748`, `DS:274c`.
 const YOU_FINISHED: &[u8] = b"Sie beendeten Ihre Saison";
@@ -168,7 +167,8 @@ pub(super) fn season_end_event(
         SeasonEndEvent::Retirement { message } => {
             let m = (state.current_manager as usize).min(3);
             let count = state.message_counts[m];
-            screen_messages_single(ui.host, message, count, auto)
+            let inbox = state.messages.get(m).map_or(&[][..], Vec::as_slice);
+            screen_messages(ui.host, inbox, count, Some(message), auto)
         }
         SeasonEndEvent::SeparationsDone => {
             delay(ui.host, auto, 70)?;
@@ -290,89 +290,6 @@ fn season_end_report(
     Ok(())
 }
 
-/// Waits for a click on one of the three buttons of the message strip (0 up, 1 exit,
-/// 2 down); automatic play exits.
-///
-/// Origin: BMMAIN.EXE 4091:0aaa (ui_messages_wait_button)
-fn ui_messages_wait_button(host: &mut Host, auto: bool) -> Run<i16> {
-    if auto {
-        return Ok(1);
-    }
-    loop {
-        let ev = host.input_poll_mouse()?;
-        if ev != LEFT_DOWN {
-            continue;
-        }
-        let (x, y) = host.mouse_xy();
-        if y > 0x6b && y < 0xe8 && x > 0xf5 && x < 0x106 {
-            return Ok((y - 0x6c) / 0x29);
-        }
-    }
-}
-
-/// The lines of a message: the `^`-terminated parts (text after the last `^` is not drawn).
-fn message_lines(text: &[u8]) -> Vec<&[u8]> {
-    let mut parts: Vec<&[u8]> = text.split(|&c| c == b'^').collect();
-    parts.pop();
-    parts
-}
-
-/// The message viewer with a single message (`screen_messages(msg)`): the text in the first of
-/// the three panels, the button strip of `PIC\2.VGA`. "Exit" leaves, and so does "down" when
-/// the inbox of the current manager holds more than one message (`count`, `DS:0618[m]`); the
-/// other clicks only flash the button. The background is restored from VRAM page 2.
-///
-/// TODO(#32): the inbox mode (`msg == NULL`, paging through the messages) is the office mail;
-/// only the single message is ported.
-///
-/// Origin: BMMAIN.EXE 4091:05c4 (screen_messages)
-pub(super) fn screen_messages_single(
-    host: &mut Host,
-    text: &[u8],
-    count: u8,
-    auto: bool,
-) -> Run<()> {
-    let pic = host.load_picture(2).expect("PIC\\2.VGA");
-    fill(host, 0x3b, 0x72, 0xf5, 0xea, 4);
-    ui_draw_frame(&mut host.g, &mut host.rp, 0x39, 0x70, 0x106, 0xea, 7);
-    for k in 0..3i16 {
-        let d = 41 * k;
-        let (g, rp) = (&mut host.g, &mut host.rp);
-        let l = |v: i16| v as u8;
-        ui_draw_line(g, rp, 0x3a, l(0x71 + d), 0xf2, l(0x71 + d), 1);
-        ui_draw_line(g, rp, 0x3a, l(0x71 + d), 0x3a, l(0x97 + d), 1);
-        ui_draw_line(g, rp, 0x3b, l(0x98 + d), 0xf3, l(0x98 + d), 7);
-        ui_draw_line(g, rp, 0xf3, l(0x72 + d), 0xf3, l(0x98 + d), 7);
-    }
-    blit(host, pic, 0, 0, 0xf5, 0x71, 0x12, 0x7a);
-    host.set_font(1);
-    host.screen_fade(1)?;
-    let mut y: i16 = 0x7a;
-    for (i, line) in message_lines(text).iter().enumerate() {
-        let color = if i == 0 { 0x19 } else { 0x18 };
-        centered(host, line, 0x3a, 0xf5, y, color, 0);
-        y += 8 + if i == 0 { 2 } else { 0 };
-    }
-    loop {
-        let sel = ui_messages_wait_button(host, auto)?;
-        let dy = sel * 0x28 + i16::from(sel == 2);
-        let h = 0x28 + i16::from(sel == 2);
-        blit(host, pic, 0x13, dy, 0xf5, 0x71 + dy, 0x12, h);
-        while !auto && host.input_poll_mouse()? != LEFT_UP {}
-        blit(host, pic, 0, dy, 0xf5, 0x71 + dy, 0x12, h);
-        if sel == 1 || (sel == 2 && count > 1) {
-            break;
-        }
-    }
-    if let Some(work) = host.ui.work {
-        let screen = host.screen();
-        host.g
-            .blit_bitmap_or_restore_page2(work, 0x39, 0x6e, screen, 0x39, 0x6e, 0xce, 0x89);
-    }
-    host.g.free(pic);
-    Ok(())
-}
-
 /// The last screen of a game whose last season is over: "ENDE" on black, then a click.
 ///
 /// Origin: BMMAIN.EXE 2a58:000c (game_end_screen)
@@ -381,17 +298,4 @@ pub(super) fn game_end_screen(host: &mut Host, auto: bool) -> Run<()> {
     host.set_font(3);
     centered(host, THE_END, 8, 0x13f, 0x73, 1, 0xff);
     input_wait_click(host, auto)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_message_text_keeps_the_lines_before_the_last_separator() {
-        let parts = message_lines(b"1. Juli 1968^Kuntz h{ngt^die Schuhe an den Nagel.^rest");
-        assert_eq!(parts.len(), 3);
-        assert_eq!(parts[2], b"die Schuhe an den Nagel.");
-        assert!(message_lines(b"no separator").is_empty());
-    }
 }
