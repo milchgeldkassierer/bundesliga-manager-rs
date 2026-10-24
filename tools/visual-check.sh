@@ -29,7 +29,9 @@
 # Fixtures and references belong together: delete both to regenerate them.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-DATA=${BMP_DATA:?set BMP_DATA to the game directory}
+# Default: the read-only pristine copy of the game (see tools/check.sh), never the play directory.
+DATA=${BMP_DATA:-${BMP_REFERENCE_DATA:-$HOME/Apps/bmp-pristine}}
+[ -d "$DATA" ] || { echo "set BMP_DATA to the game directory" >&2; exit 2; }
 HOLDOUT=${BMP_HOLDOUT:-$HOME/Apps/bmp-holdout}
 cargo build -q -p bmp
 BIN=${CARGO_TARGET_DIR:-target}/debug/bmp
@@ -45,7 +47,7 @@ for name in "${names[@]}"; do
     [ -f "$fix/$file" ] && continue
     mkdir -p "$fix"
     gdata=$(mktemp -d); gout=$(mktemp -d)
-    cp -r "$DATA"/. "$gdata"
+    cp -r "$DATA"/. "$gdata" && chmod -R u+w "$gdata"
     "$BIN" --data "$gdata" run --script "tests/visual/$gen" --shots "$gout" \
       ${fseed:+--time "$fseed"} ${fseed2:+--time2 "$fseed2"} </dev/null >/dev/null 2>&1 || true
     cp "$gdata/$file" "$fix/$file" && echo "fixture $name/$file generated"
@@ -87,7 +89,7 @@ PY
   fi
   out=$(mktemp -d)
   data=$(mktemp -d)
-  cp -r "$DATA"/. "$data"
+  cp -r "$DATA"/. "$data" && chmod -R u+w "$data"
   [ -d "$fix" ] && cp -r "$fix"/. "$data"
   seed=$(sed -n 's/^# seed: *\([0-9]*\).*/\1/p' "tests/visual/$name.port.txt")
   seed2=$(sed -n 's/^# seed2: *\([0-9]*\).*/\1/p' "tests/visual/$name.port.txt")

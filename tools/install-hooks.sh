@@ -15,7 +15,7 @@ while read -r _local_ref local_sha _remote_ref _remote_sha; do
   tmp="$(mktemp -d)"
   git worktree add --quiet --detach "$tmp/wt" "$local_sha"
   status=0
-  CARGO_TARGET_DIR="$main_root/target/pre-push" BMP_DATA="${BMP_DATA:-$main_root/BMP}" \
+  CARGO_TARGET_DIR="$main_root/target/pre-push" \
     # Prefer the pushed commit's own gate; branches cut before tools/check.sh existed
     # fall back to the main checkout's copy (issue #21).
     script="$tmp/wt/tools/check.sh"
