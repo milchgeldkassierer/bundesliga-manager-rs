@@ -253,6 +253,8 @@ Its error strings are `LIB-Error`, `GRAFIK-Error`, `DISK-Error`, `FONT-Error`, `
 
 ### TEAMED.EXE (team editor, EXEPACKed, 214 functions)
 
+Full map, screens and the library reuse table: [teamed/overview.md](teamed/overview.md).
+
 | Segments | Content |
 |---|---|
 | 1000, 12a5, 1579 | Editor logic |

@@ -1,0 +1,22 @@
+# DOSBox side of the team-editor start scenario (tools/dosbox-capture.sh syntax, seconds).
+# exe: TEAMED.EXE
+# The editor shows 242 lines; the capture's pointer mapping is off by about one game pixel
+# in x in this mode, so the x values differ slightly from the port side (same hit areas).
+wait 5
+shot t01-start
+move 21 100 242
+wait 1
+shot t02-hover-fck
+move 61 30 242
+wait 1
+shot t03-panel-cleared
+click 317 120 242
+wait 2
+shot t04-liga-page2
+click 317 120 242
+wait 2
+click 78 78 242
+wait 2
+shot t05-save-question
+click 197 190 242
+wait 2

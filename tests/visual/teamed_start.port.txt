@@ -1,0 +1,21 @@
+# Port side of the team-editor start scenario (bmp teamed --script syntax, milliseconds).
+# command: teamed
+# The pointer starts at (160, 120) over the HSV crest: the panel shows its data.
+wait 2000
+shot t01-start
+move 20 100
+wait 300
+shot t02-hover-fck
+move 60 30
+wait 300
+shot t03-panel-cleared
+click 318 120
+wait 500
+shot t04-liga-page2
+click 318 120
+wait 500
+click 77 78
+wait 500
+shot t05-save-question
+click 196 190
+wait 500

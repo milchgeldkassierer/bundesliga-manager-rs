@@ -27,6 +27,11 @@ use crate::video::{Mode, Vga, WIDTH};
 pub const SCREEN_W: i16 = 320;
 /// Screen height in pixels.
 pub const SCREEN_H: i16 = 240;
+/// Height of TEAMED.EXE's screen descriptor (`16b7:028A`, 0x149): the visible 242 lines
+/// plus off-screen rows below.
+pub const TEAMED_SCREEN_H: i16 = 0x149;
+/// Lines TEAMED.EXE's CRTC table displays.
+pub const TEAMED_VISIBLE_LINES: i16 = 242;
 /// Bytes per row and plane in Mode X.
 pub const ROW_BYTES: u16 = 80;
 /// Size of one 320x240 page in each plane (`0x4B00`).
@@ -74,11 +79,18 @@ pub enum Storage {
 }
 
 /// A bitmap descriptor `{u16 w; u16 h; u8 far *data}`.
+///
+/// `TEAMED.EXE`'s wrapper layer (segment `1a46`) uses a 12-byte descriptor with an origin
+/// `{+8 x, +0A y}` that every rastport and blit wrapper adds to the coordinates (the
+/// team editor's crest grid is a view of the screen starting at row 75). `BMMAIN.EXE`'s
+/// descriptors have no origin; it is `(0, 0)` for every bitmap the game creates.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Bitmap {
     pub width: i16,
     pub height: i16,
     pub storage: Storage,
+    /// Origin added by the TEAMED wrappers (`+8`, `+0A`); always `(0, 0)` in BMMAIN.
+    pub origin: (i16, i16),
 }
 
 impl Bitmap {
@@ -89,6 +101,7 @@ impl Bitmap {
             width,
             height,
             storage: Storage::Mem(vec![0; len]),
+            origin: (0, 0),
         }
     }
 
@@ -98,6 +111,7 @@ impl Bitmap {
             width: img.width as i16,
             height: img.height as i16,
             storage: Storage::Mem(img.pixels.clone()),
+            origin: (0, 0),
         }
     }
 
@@ -107,6 +121,7 @@ impl Bitmap {
             width,
             height,
             storage: Storage::Vram(offset),
+            origin: (0, 0),
         }
     }
 
@@ -212,6 +227,8 @@ pub struct Gfx {
     pub blanked: bool,
     /// True after `vga_set_mode_x_320x240`, false after `vga_set_text_mode`.
     pub mode_x: bool,
+    /// Lines the CRTC displays: 240 (BMMAIN's register table), 242 in TEAMED.EXE.
+    pub visible_lines: i16,
     /// VGA DAC, 6 bits per channel.
     pub dac: [[u8; 3]; 256],
     /// Screen palette arrays (`screen + 8`): R at 0..256, G at 0x100.., B at 0x200..
@@ -365,6 +382,7 @@ impl Gfx {
             busy: false,
             blanked: false,
             mode_x: false,
+            visible_lines: SCREEN_H,
             dac: [[0; 3]; 256],
             palette: [0; 0x300],
             pointer: Pointer {
@@ -392,6 +410,7 @@ impl Gfx {
             width: 11,
             height: 11,
             storage: Storage::Mem(DEFAULT_POINTER.to_vec()),
+            origin: (0, 0),
         });
         let bg = g.alloc(Bitmap::new_mem(11, 11));
         g.pointer.screen = screen;
@@ -495,6 +514,20 @@ impl Gfx {
         }
         self.crtc_start = 0;
         self.mode_x = true;
+        self.visible_lines = SCREEN_H;
+    }
+
+    /// TEAMED.EXE's copy of [`Gfx::vga_set_mode_x_320x240`]: the same code, but the
+    /// library's screen descriptor (`CS:028A`) is 320x329 and the CRTC table at
+    /// `CS:039E` sets the vertical display end (register 0x12) to `0xE3` instead of
+    /// `0xDF`, so 242 lines are visible.
+    ///
+    /// Origin: TEAMED.EXE 16b7:1ca0 (vga_set_mode_x_320x240)
+    pub fn vga_set_mode_x_teamed(&mut self) {
+        self.vga_set_mode_x_320x240();
+        let screen = self.pointer.screen;
+        self.bitmap_mut(screen).height = TEAMED_SCREEN_H;
+        self.visible_lines = TEAMED_VISIBLE_LINES;
     }
 
     /// Back to text mode via INT10.
@@ -570,8 +603,12 @@ impl Gfx {
 
     /// Copies the page the CRTC shows (and the DAC) into `vga` for presentation.
     pub fn to_vga(&self, vga: &mut Vga) {
-        vga.mode = Mode::ModeX;
-        for y in 0..SCREEN_H {
+        vga.mode = if self.visible_lines == TEAMED_VISIBLE_LINES {
+            Mode::ModeX242
+        } else {
+            Mode::ModeX
+        };
+        for y in 0..self.visible_lines {
             for x in 0..SCREEN_W {
                 let v = if self.blanked {
                     0
@@ -828,6 +865,7 @@ impl Gfx {
             width: 11,
             height: 11,
             storage: Storage::Mem(DEFAULT_POINTER.to_vec()),
+            origin: (0, 0),
         });
         let bg = self.alloc(Bitmap::new_mem(11, 11));
         self.pointer.image = image;
@@ -989,6 +1027,9 @@ impl Gfx {
         h: i16,
         transparent: bool,
     ) {
+        // TEAMED.EXE 1a46:09a8/0878 add both bitmaps' origins (zero in BMMAIN).
+        let (sx, sy) = self.with_origin(src, sx, sy);
+        let (dx, dy) = self.with_origin(dst, dx, dy);
         if self.bitmap(src).is_screen() && self.bitmap(dst).is_screen() {
             // Temporary w x h buffer (mem_alloc without zero fill in the original).
             let tmp = self.alloc(Bitmap::new_mem(w, h));
@@ -1426,6 +1467,7 @@ impl Gfx {
                     width: gw,
                     height: gh,
                     storage: Storage::Mem(buf),
+                    origin: (0, 0),
                 });
                 self.blit_rect_impl(tmp, 0, 0, bm, x, top, gw, gh, mode == 0);
                 self.free(tmp);
@@ -1649,6 +1691,16 @@ impl Gfx {
 
     // ----- rastport layer (4930) ------------------------------------------------------
 
+    /// `(x, y)` plus the bitmap's origin: what TEAMED's wrappers (`1a46`) pass to the
+    /// assembly library. BMMAIN's bitmaps have origin `(0, 0)`, so this is the identity
+    /// for the game.
+    ///
+    /// Origin: TEAMED.EXE 1a46:0215 (rastport_draw_text, `ES:[BX+8]`/`ES:[BX+0A]` added)
+    pub fn with_origin(&self, bm: BitmapId, x: i16, y: i16) -> (i16, i16) {
+        let (ox, oy) = self.bitmap(bm).origin;
+        (x.wrapping_add(ox), y.wrapping_add(oy))
+    }
+
     /// Attach a font handle; refused (returns -1) when the handle word is -1.
     ///
     /// Origin: BMMAIN.EXE 4930:0261 (rastport_set_font)
@@ -1667,9 +1719,8 @@ impl Gfx {
     /// Origin: BMMAIN.EXE 4930:0291 (rastport_draw_text)
     pub fn rastport_draw_text(&mut self, rp: &RastPort, text: &[u8]) {
         if let Some(font) = rp.font {
-            self.draw_text(
-                rp.bitmap, rp.pen_x, rp.pen_y, font, rp.fg, rp.bg, rp.mode, text,
-            );
+            let (x, y) = self.with_origin(rp.bitmap, rp.pen_x, rp.pen_y);
+            self.draw_text(rp.bitmap, x, y, font, rp.fg, rp.bg, rp.mode, text);
         }
     }
 
@@ -1690,10 +1741,12 @@ impl Gfx {
     ///
     /// Origin: BMMAIN.EXE 4930:033b (rastport_line_to)
     pub fn rastport_line_to(&mut self, rp: &mut RastPort, x: i16, y: i16) {
+        let (x0, y0) = self.with_origin(rp.bitmap, rp.pen_x, rp.pen_y);
+        let (x1, y1) = self.with_origin(rp.bitmap, x, y);
         if rp.mode == 2 {
-            self.draw_line_xor(rp.pen_x, rp.pen_y, x, y, rp.bitmap);
+            self.draw_line_xor(x0, y0, x1, y1, rp.bitmap);
         } else {
-            self.draw_line(rp.pen_x, rp.pen_y, x, y, rp.fg, rp.bitmap);
+            self.draw_line(x0, y0, x1, y1, rp.fg, rp.bitmap);
         }
         rp.pen_x = x;
         rp.pen_y = y;
@@ -1703,6 +1756,7 @@ impl Gfx {
     ///
     /// Origin: BMMAIN.EXE 4930:03ce (rastport_put_pixel)
     pub fn rastport_put_pixel(&mut self, rp: &RastPort, x: i16, y: i16) {
+        let (x, y) = self.with_origin(rp.bitmap, x, y);
         if rp.mode == 2 {
             self.xor_pixel(x, y, rp.bitmap);
         } else {
@@ -1712,6 +1766,7 @@ impl Gfx {
 
     /// Origin: BMMAIN.EXE 4930:043a (rastport_get_pixel)
     pub fn rastport_get_pixel(&self, rp: &RastPort, x: i16, y: i16) -> u16 {
+        let (x, y) = self.with_origin(rp.bitmap, x, y);
         self.get_pixel(x, y, rp.bitmap)
     }
 
@@ -1722,6 +1777,7 @@ impl Gfx {
     pub fn rastport_fill_rect(&mut self, rp: &RastPort, x0: i16, y0: i16, x1: i16, y1: i16) {
         let w = x1.wrapping_sub(x0).wrapping_add(1);
         let h = y1.wrapping_sub(y0).wrapping_add(1);
+        let (x0, y0) = self.with_origin(rp.bitmap, x0, y0);
         if rp.mode == 2 {
             self.fill_rect_xor(rp.bitmap, x0, y0, w, h);
         } else {
@@ -2310,17 +2366,45 @@ mod tests {
     }
 
     #[test]
+    fn teamed_bitmap_origin_offsets_rastport_and_blits() {
+        let mut g = Gfx::new();
+        g.vga_set_mode_x_teamed();
+        assert_eq!(g.visible_lines, TEAMED_VISIBLE_LINES);
+        let mut view = Bitmap::vram(SCREEN_W, TEAMED_SCREEN_H, 0);
+        view.origin = (2, 75);
+        let view = g.alloc(view);
+        let mut rp = RastPort::new(view);
+        Gfx::rastport_set_color(&mut rp, 7);
+        g.rastport_fill_rect(&rp, 0, 0, 0, 0);
+        assert_eq!(g.page_pixel(0, 2, 75), 7);
+        assert_eq!(g.rastport_get_pixel(&rp, 0, 0), 7);
+        let src = g.alloc(Bitmap {
+            width: 1,
+            height: 1,
+            storage: Storage::Mem(vec![9]),
+            origin: (0, 0),
+        });
+        g.blit_bitmap(src, 0, 0, view, 1, 0, 1, 1);
+        assert_eq!(g.page_pixel(0, 3, 75), 9);
+        let mut vga = Vga::new();
+        g.to_vga(&mut vga);
+        assert_eq!(vga.height(), 242);
+    }
+
+    #[test]
     fn blit_clipping_and_transparency() {
         let mut g = Gfx::new();
         let src = g.alloc(Bitmap {
             width: 3,
             height: 2,
             storage: Storage::Mem(vec![1, 0, 3, 4, 5, 0]),
+            origin: (0, 0),
         });
         let dst = g.alloc(Bitmap {
             width: 4,
             height: 3,
             storage: Storage::Mem(vec![9; 12]),
+            origin: (0, 0),
         });
         g.blit_rect_transparent(src, 0, 0, dst, -1, 1, 3, 2);
         let Storage::Mem(d) = &g.bitmap(dst).storage else {

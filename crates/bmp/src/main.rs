@@ -4,6 +4,7 @@ mod game;
 mod gfx;
 mod host;
 mod intro;
+mod teamed;
 mod video;
 
 use std::path::{Path, PathBuf};
@@ -16,6 +17,7 @@ const USAGE: &str = "usage: bmp [--data <dir>] [--version]
        bmp [--data <dir>] show-pic <name> [--palette <0..2>] [--screenshot <out.png>]
        bmp [--data <dir>] run [--script <file> --shots <dir>] [--time <seconds>] [--time2 <seconds>]
                               [--nosound] [--skip-intro] [0]
+       bmp [--data <dir>] teamed [--script <file> --shots <dir>]
        bmp [--data <dir>] render-music <out.wav> [--tail <ms>] [--opl-log <out.txt>]
        bmp [--data <dir>] play-sound music|1..5
        bmp compare <port.png> <reference.png> [--diff <out.png>] [--threshold <percent>]
@@ -27,6 +29,8 @@ const USAGE: &str = "usage: bmp [--data <dir>] [--version]
   that of the second one, read when a new game starts (default: --time when given,
   else the clock at that moment); --nosound or a trailing 0 (BMP.BAT's argument)
   disable sound like `bmmain 0` (no title music: the title is shown only briefly)
+  teamed starts the team editor (TEAMED.EXE), which edits MANA.DAT in the data
+  directory; with --script it runs headless like run
   render-music writes the title tune (SOUND/BM2TITLE.CMF) as rendered by the OPL2
   emulation to a 16-bit mono WAV file at 49716 Hz, plus <ms> (default 1000) of release;
   --opl-log lists the OPL register writes as \"<ms> <register> <value>\" lines (hex)
@@ -204,6 +208,29 @@ fn run_game(args: &Args) -> Result<(), String> {
     Ok(())
 }
 
+/// Starts the team editor in a window, or headless driven by an input script.
+fn run_teamed(args: &Args) -> Result<(), String> {
+    let mut rest = args.rest[1..].to_vec();
+    let script = take_opt(&mut rest, "--script")?;
+    let shots = take_opt(&mut rest, "--shots")?.unwrap_or_else(|| ".".into());
+    if let Some(extra) = rest.first() {
+        return Err(format!("unexpected argument '{extra}'\n{USAGE}"));
+    }
+    let dir = data_dir(args)?;
+    // TEAMED has no sound.
+    let mut host = match script {
+        Some(path) => {
+            let text = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+            std::fs::create_dir_all(&shots).map_err(|e| format!("{shots}: {e}"))?;
+            host::Host::with_script(&dir, host::parse_script(&text)?, Path::new(&shots), false)?
+        }
+        None => host::Host::with_window(&dir, 3, false)?,
+    };
+    match teamed::run(&mut host)? {
+        Ok(teamed::Exit::Ended) | Err(host::Quit) => Ok(()),
+    }
+}
+
 /// Takes `flag` out of `rest`; whether it was present.
 fn take_flag(rest: &mut Vec<String>, flag: &str) -> bool {
     let found = rest.iter().position(|a| a == flag);
@@ -310,6 +337,7 @@ fn run() -> Result<ExitCode, String> {
         Some("show-pic") => show_pic(&args).map(|()| ExitCode::SUCCESS),
         Some("compare") => compare_frames(&args),
         Some("run") => run_game(&args).map(|()| ExitCode::SUCCESS),
+        Some("teamed") => run_teamed(&args).map(|()| ExitCode::SUCCESS),
         Some("render-music") => render_music(&args).map(|()| ExitCode::SUCCESS),
         Some("play-sound") => play_sound(&args).map(|()| ExitCode::SUCCESS),
         Some("--help") | Some("-h") => {

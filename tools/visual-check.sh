@@ -29,6 +29,8 @@
 # A "# fixture-delete: <path>" line removes the file <path> (e.g. PIC/33.VGA) from the game
 # directories of both the port and the DOSBox capture, e.g. to provoke a fatal error.
 # Fixtures and references belong together: delete both to regenerate them.
+# A "# command: <subcommand>" line in the port script runs another bmp subcommand than
+# "run" (e.g. "teamed" for the team editor; its DOSBox script then has "# exe: TEAMED.EXE").
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 # Default: the read-only pristine copy of the game (see tools/check.sh), never the play directory.
@@ -97,7 +99,8 @@ PY
   for file in $(sed -n 's/^# fixture-delete: *//p' "tests/visual/$name.port.txt"); do rm -f "$data/$file"; done
   seed=$(sed -n 's/^# seed: *\([0-9]*\).*/\1/p' "tests/visual/$name.port.txt")
   seed2=$(sed -n 's/^# seed2: *\([0-9]*\).*/\1/p' "tests/visual/$name.port.txt")
-  "$BIN" --data "$data" run --script "tests/visual/$name.port.txt" --shots "$out" \
+  cmd=$(sed -n 's/^# command: *\([a-z-]*\).*/\1/p' "tests/visual/$name.port.txt")
+  "$BIN" --data "$data" "${cmd:-run}" --script "tests/visual/$name.port.txt" --shots "$out" \
     ${seed:+--time "$seed"} ${seed2:+--time2 "$seed2"} 2>/dev/null
   for shot in "$ref"/*.png; do
     base=$(basename "$shot")

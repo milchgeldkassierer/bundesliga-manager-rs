@@ -7,7 +7,7 @@
 use std::path::Path;
 
 pub const WIDTH: usize = 320;
-pub const MAX_HEIGHT: usize = 240;
+pub const MAX_HEIGHT: usize = 242;
 
 /// Video modes used by the original game.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -16,6 +16,9 @@ pub enum Mode {
     Mode13h,
     /// Unchained 320x240, 256 colors.
     ModeX,
+    /// The team editor's unchained mode: TEAMED.EXE's CRTC table (`16b7:039E`) shows
+    /// 242 lines (vertical display end `0xE3`).
+    ModeX242,
 }
 
 impl Mode {
@@ -23,6 +26,7 @@ impl Mode {
         match self {
             Mode::Mode13h => 200,
             Mode::ModeX => 240,
+            Mode::ModeX242 => 242,
         }
     }
 }

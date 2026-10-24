@@ -21,6 +21,9 @@
 # runs load a mapper file (built from one bundled with DOSBox Staging) that binds it to ctrl+F7;
 # that map has no screenshot binding, so "shot" does not work in audio runs.
 # BMP_ARGS is passed to BMP.BAT (e.g. 0 = no sound).
+# A "# exe: <program> [<args>]" line in <script> starts that program of the game directory
+# instead of BMP.BAT, e.g. "# exe: TEAMED.EXE" for the team editor (DOSBOX_EXE does the same
+# from the environment; the script line wins).
 # DOSBOX_SEED=<n> aims the game's first RNG seed (the low word of MSC's time(), read about
 # DOSBOX_SEED_DELAY seconds, default 12, after this script starts) at <n>: DOSBox reports the
 # host's local time, so a TZ offset is chosen from the current time. MSC's time() adds 8 hours
@@ -36,6 +39,8 @@ DOSBOX=${DOSBOX:-$(ls -d "$HOME"/Apps/dosbox-staging*/ | head -1)dosbox}
 GAME=${BMP_DOS_DIR:-$HOME/Apps/bmp-dos/game}
 DISP=${CAPTURE_DISPLAY:-:77}
 WORK=$(mktemp -d); mkdir -p "$OUT" "$WORK/cap"
+EXE=$(sed -n 's/^# exe: *//p' "$SCRIPT" | head -1)
+EXE=${EXE:-${DOSBOX_EXE:-BMP.BAT ${BMP_ARGS:-}}}
 if [ -n "${DOSBOX_SEED:-}" ]; then
   TZ=$(python3 -I - "$DOSBOX_SEED" "${DOSBOX_SEED_DELAY:-12}" <<'PY'
 import datetime, sys, time
@@ -89,7 +94,7 @@ default_image_capture_formats = raw
 [autoexec]
 mount c "$GAME"
 c:
-BMP.BAT ${BMP_ARGS:-}
+$EXE
 CONF
 Xvfb "$DISP" -screen 0 1280x1024x24 >/dev/null 2>&1 & XPID=$!
 # DOSBox may ignore SIGTERM and the launcher can fork, so SIGKILL every process
