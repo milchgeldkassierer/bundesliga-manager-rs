@@ -4,6 +4,7 @@
 //! reconstructed from.
 
 pub mod cp;
+pub mod exepack;
 pub mod font;
 pub mod mana;
 pub mod pal;
