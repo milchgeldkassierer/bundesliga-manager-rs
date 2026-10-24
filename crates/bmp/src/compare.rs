@@ -1,5 +1,5 @@
-//! Port frame vs. DOSBox reference frame comparison (`docs/re/TOLERANCES.md`),
-//! with the same semantics as `tools/compare.py`.
+//! Port frame vs. DOSBox reference frame comparison; the single implementation of
+//! the tolerance rules in `docs/re/TOLERANCES.md`.
 
 use std::fmt;
 use std::path::Path;
