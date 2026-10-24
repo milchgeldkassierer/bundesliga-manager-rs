@@ -79,31 +79,24 @@ never merged into `main`.
   - Squads and market values come from Transfermarkt (transfermarkt.de), club logos from
     Wikipedia/Wikimedia Commons or the clubs' sites.
   - Every value records its source URL and fetch date.
-  - The repository is private, but is kept ready for publication (see "Public readiness").
-  - These may be committed:
-    - club facts: names, leagues, last season's tables;
-    - player names and positions;
-    - converted crest and font images. The owner accepts the risk for the crests.
-  - **Market values are never committed.** They are only used to choose the 20 players, and stay
-    in the local research directory `~/Apps/bmp-mod2026/research/`. The committed squad lists
-    only the chosen players, together with the source URL and fetch date.
+  - The repository is private. Everything may be committed here: the researched data including
+    market values, converted crests and fonts, and screenshots. Only original game files stay
+    out (invariant 3).
+  - Market values and other raw research data go under `docs/mod2026/research/`. The public copy
+    leaves that directory out.
 
-## Public readiness -- owner decision 2026-10-24
+## Publication -- owner decision 2026-10-24
 
-The repository stays private but must be publishable at any time with
-`tools/prepare-public.sh`. That script writes a cleaned copy and never touches this repository
-or its remote. Rules for every change:
+This repository stays private and nothing in it needs to be cleaned. A future public release
+will be a **new repository** made by `tools/prepare-public.sh`. The script writes a cleaned copy
+of the history and never touches this repository or its remote. The copy:
 
-- **No original artwork, sound or text dumps.** This means no screenshots or other images showing
-  original game graphics, in the tree or in docs. Progress screenshots stay in the git-ignored
-  `progress/`. The README describes the game in words.
-- **No personal data:** no local absolute paths (`/home/...`, `/media/...`), no e-mail
-  addresses, no machine names. Commits use the GitHub noreply identity.
-- **Short German texts only:** verbatim German in-game strings appear in code and specs only
-  where the port needs them, and only as short excerpts.
-- **Disclaimer:** the README states that the project is not affiliated with Software 2000, the
-  DFL/DFB or any club, and that it ships no original game data.
-  - Original game files never are (invariant 3).
+- leaves out images showing original game graphics (`docs/screenshots/`), raw research data
+  (`docs/mod2026/research/`, market values) and any other path in `tools/public-exclude.txt`;
+- maps every commit identity to the GitHub noreply address;
+- reports local absolute paths and e-mail addresses that remain in the files;
+- gets a README disclaimer: not affiliated with Software 2000, the DFL/DFB or any club, and no
+  original game data included.
 
 ## Hard invariants -- not tunable by any issue
 

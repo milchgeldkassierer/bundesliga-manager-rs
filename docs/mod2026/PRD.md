@@ -165,9 +165,9 @@ Everything else plays like version 1.0.0.
 ### R4 Squads
 
 - `docs/mod2026/data/squads.json` lists, for each club, the first-team squad as of October 2026:
-  player name and position, with the source and the date fetched. The market values used for
-  the cut are kept only in `~/Apps/bmp-mod2026/research/` and are never committed (MISSION.md,
-  branch section).
+  player name, position and market value in euros, with the source and the date fetched. Raw
+  research data such as market values goes under `docs/mod2026/research/`, which the public copy
+  leaves out (MISSION.md, Publication).
 - **Squad cut:** a club has at most 20 player slots. If the squad is larger, the players with the
   lowest market value are left out. On a tie, the younger player is kept.
 
