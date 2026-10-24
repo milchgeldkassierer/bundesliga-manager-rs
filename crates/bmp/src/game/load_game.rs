@@ -471,7 +471,8 @@ pub enum LoadError {
 }
 
 /// Loads `path` and checks it like the original: signature, version, session
-/// save-id history (the id is remembered before the blocks are read).
+/// save-id history (the id is remembered before the blocks are read, and
+/// forgotten again when the save is refused as [`LoadError::Corrupt`]).
 ///
 /// A file too short for the header is judged like the original judges it: the
 /// short `file_read` leaves the rest of its stack buffer stale, so a file shorter
@@ -497,6 +498,7 @@ pub fn read_save(saves: &mut SaveSession, path: &Path) -> Result<GameState, Load
         .get(29..33)
         .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
         .ok_or(LoadError::Disk)?;
+    let history = saves.loaded_ids.clone();
     if !saves.remember_id(id) {
         return Err(LoadError::AlreadyLoaded);
     }
@@ -505,12 +507,20 @@ pub fn read_save(saves: &mut SaveSession, path: &Path) -> Result<GameState, Load
         Err(savegame::Error::Checksum { .. }) => return Err(LoadError::Checksum),
         Err(_) => return Err(LoadError::Disk),
     };
-    GameState::from_savegame(&save).map_err(|e| match e {
+    let result = GameState::from_savegame(&save).map_err(|e| match e {
         StateError::PositionCode { .. }
         | StateError::SquadPlayerId { .. }
         | StateError::SavedIndex { .. } => LoadError::Corrupt,
         StateError::BlockSize { .. } | StateError::BlockCount => LoadError::Disk,
-    })
+    });
+    // DEVIATION: the original has no corrupt-save refusal (it loads the save and
+    // hangs or reads past its tables later). The port forgets the id of a refused
+    // corrupt save again, the dropped oldest id included, so picking the same
+    // file again shows the corrupt-save message instead of "already loaded".
+    if matches!(result, Err(LoadError::Corrupt)) {
+        saves.loaded_ids = history;
+    }
+    result
 }
 
 /// The endless "DER GROSSE MOGELGURU" screen shown for a manipulated save.
@@ -775,6 +785,59 @@ mod tests {
         assert_eq!(result, Err(LoadError::Corrupt));
     }
 
+    /// A corrupt save is refused again on every pick and leaves the save-id
+    /// history unchanged, even a full one; a checksum error and a valid save
+    /// keep their id, so the second pick is "already loaded".
+    #[test]
+    fn a_refused_corrupt_save_is_not_remembered() {
+        let dir = std::env::temp_dir().join(format!("bmp-corrupt-again-{}", std::process::id()));
+        let Some(corrupt) = write_corrupt_save(&dir, corrupt_position_code) else {
+            return;
+        };
+        let checksum = dir.join("CHECKSUM.MAN");
+        std::fs::write(
+            &checksum,
+            patched_save(|b| b[savegame::ENCRYPTED_START + 100] ^= 1).unwrap(),
+        )
+        .unwrap();
+        let valid = dir.join("VALID.MAN");
+        std::fs::write(&valid, patched_save(|_| {}).unwrap()).unwrap();
+
+        let mut saves = SaveSession {
+            loaded_ids: (100..150).collect(),
+            ..SaveSession::default()
+        };
+        let full = saves.loaded_ids.clone();
+        let mut corrupt_results = Vec::new();
+        for _ in 0..2 {
+            corrupt_results.push((
+                read_save(&mut saves, &corrupt).err(),
+                saves.loaded_ids.clone(),
+            ));
+        }
+        let mut saves_2 = SaveSession::default();
+        let checksum_results = [
+            read_save(&mut saves_2, &checksum).err(),
+            read_save(&mut saves_2, &checksum).err(),
+        ];
+        let mut saves_3 = SaveSession::default();
+        let valid_results = [
+            read_save(&mut saves_3, &valid).err(),
+            read_save(&mut saves_3, &valid).err(),
+        ];
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        for (i, (err, ids)) in corrupt_results.into_iter().enumerate() {
+            assert_eq!(err, Some(LoadError::Corrupt), "corrupt pick {i}");
+            assert_eq!(ids, full, "corrupt pick {i}: history unchanged");
+        }
+        assert_eq!(
+            checksum_results,
+            [Some(LoadError::Checksum), Some(LoadError::AlreadyLoaded)]
+        );
+        assert_eq!(valid_results, [None, Some(LoadError::AlreadyLoaded)]);
+    }
+
     /// Writes `CORRUPT.MAN` into `dir`: the first real save changed by `corrupt`
     /// and with the copy-protection flag `ds_05fa[0]` cleared, so a successful
     /// load would change `copy_protection_ok`. `None` without `BMP_DATA`.
@@ -999,7 +1062,9 @@ mod tests {
 
     /// The [`LoadError::Corrupt`] arm end to end: the file selector returns
     /// `CORRUPT.MAN`, the message box is shown and dismissed with its OKAY
-    /// button, and nothing is loaded or remembered.
+    /// button, and nothing is loaded or remembered. A second pick of the same
+    /// file in the same session shows the message box again (the timed
+    /// "already loaded" box would leave the OKAY click unused).
     #[cfg(unix)]
     #[test]
     fn loading_a_corrupt_save_shows_the_message_and_loads_nothing() {
@@ -1029,10 +1094,20 @@ mod tests {
         session.saves.last_name = b"CORRUPT".to_vec();
         let result = screen_load_game(&mut host, &mut session, &pics, 0, b"");
         let clicks_left = host.script_clicks_left();
+        let ids_after_first = session.saves.loaded_ids.clone();
+        let (again, again_clicks_left) =
+            load_with_script(&dir, &mut session, b"CORRUPT", "wait 1000\nclick 191 165\n");
         std::fs::remove_dir_all(&dir).unwrap();
 
         assert!(matches!(result, Ok(None)), "nothing is loaded");
         assert_eq!(clicks_left, 0, "the message box took the OKAY click");
+        assert!(ids_after_first.is_empty(), "no id was remembered");
+        assert!(matches!(again, Ok(None)), "second pick: nothing is loaded");
+        assert_eq!(again_clicks_left, 0, "second pick: the message box again");
+        assert!(
+            session.saves.loaded_ids.is_empty(),
+            "still no id remembered"
+        );
         assert_eq!(session.saves.last_name, b"CORRUPT", "last name unchanged");
         assert!(session.copy_protection_ok, "copy-protection flag unchanged");
     }

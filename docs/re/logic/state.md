@@ -69,8 +69,9 @@ refused at load time whenever the original would hang **or** read outside its ta
 game-written saves must keep loading byte-exactly. `from_savegame` therefore checks the decoded state
 (code marker `// DEVIATION:`), and `screen_load_game` shows every such rejection as a `dialog_okay` box
 ("Achtung ! / Spielstand / ist fehlerhaft ! / Vorgang abgebrochen.", a text the original does not have)
-and loads nothing. As with a checksum error, the save id is already in the session history, so picking
-the same file again in this session gives `LoadError::AlreadyLoaded`.
+and loads nothing. Unlike a checksum error (whose id stays in the session history, as in the original,
+so a second pick gives `LoadError::AlreadyLoaded`), `read_save` restores the history it had before the
+pick (#116, `// DEVIATION:`), so picking the same corrupt file again in this session shows the same box.
 
 **Position codes** (`StateError::PositionCode { player }`). The original hangs once a player whose
 `Player::position_value` is 100 or more is available (`slot == 0`, status available) in records 0..23 of
