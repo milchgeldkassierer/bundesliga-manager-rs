@@ -1,3 +1,4 @@
+mod compare;
 mod video;
 
 use std::path::{Path, PathBuf};
@@ -8,7 +9,9 @@ use video::{Mode, Vga, Window};
 
 const USAGE: &str = "usage: bmp [--data <dir>] [--version]
        bmp [--data <dir>] show-pic <name> [--palette <0..2>] [--screenshot <out.png>]
-  <name> is a file below PIC/, e.g. 47.CP or 120.VGA";
+       bmp compare <port.png> <reference.png> [--diff <out.png>] [--threshold <percent>]
+  <name> is a file below PIC/, e.g. 47.CP or 120.VGA
+  compare exits 0 when at least <percent> (default 90) of the pixels match, 1 otherwise";
 
 struct Args {
     data: Option<PathBuf>,
@@ -106,17 +109,53 @@ fn show_pic(args: &Args) -> Result<(), String> {
     }
 }
 
-fn run() -> Result<(), String> {
+/// Prints the match share of a port frame against a reference frame and
+/// fails the comparison (exit 1) below the threshold or on a size mismatch.
+fn compare_frames(args: &Args) -> Result<ExitCode, String> {
+    let mut rest = args.rest[1..].to_vec();
+    let diff = take_opt(&mut rest, "--diff")?;
+    let threshold = take_opt(&mut rest, "--threshold")?
+        .map(|t| t.parse::<f64>().map_err(|e| format!("--threshold: {e}")))
+        .transpose()?
+        .unwrap_or(compare::DEFAULT_THRESHOLD);
+    let [port, reference] = rest.as_slice() else {
+        return Err(USAGE.to_string());
+    };
+    let port = compare::RgbImage::load_png(Path::new(port))?;
+    let reference = compare::RgbImage::load_png(Path::new(reference))?;
+    let result = match compare::compare(&port, &reference) {
+        Ok(result) => result,
+        Err(mismatch) => {
+            println!("{mismatch}");
+            return Ok(ExitCode::FAILURE);
+        }
+    };
+    println!("{result}");
+    if let Some(out) = diff {
+        result
+            .diff_image(&reference)
+            .save_png(Path::new(&out))
+            .map_err(|e| format!("{out}: {e}"))?;
+    }
+    Ok(if result.passes(threshold) {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
+fn run() -> Result<ExitCode, String> {
     let args = parse_args()?;
     if args.rest.iter().any(|a| a == "--version") {
         println!("bmp {}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
+        return Ok(ExitCode::SUCCESS);
     }
     match args.rest.first().map(String::as_str) {
-        Some("show-pic") => show_pic(&args),
+        Some("show-pic") => show_pic(&args).map(|()| ExitCode::SUCCESS),
+        Some("compare") => compare_frames(&args),
         Some("--help") | Some("-h") => {
             println!("{USAGE}");
-            Ok(())
+            Ok(ExitCode::SUCCESS)
         }
         Some(other) => Err(format!("unknown command '{other}'\n{USAGE}")),
         None => Err(USAGE.to_string()),
@@ -125,10 +164,69 @@ fn run() -> Result<(), String> {
 
 fn main() -> ExitCode {
     match run() {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(e) => {
             eprintln!("{e}");
             ExitCode::from(2)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use compare::RgbImage;
+
+    fn compare_args(rest: &[&str]) -> Args {
+        Args {
+            data: None,
+            rest: std::iter::once("compare")
+                .chain(rest.iter().copied())
+                .map(String::from)
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn compare_frames_maps_results_to_exit_codes() {
+        let dir = std::env::temp_dir().join(format!("bmp-compare-exit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let save = |name: &str, width: u32, pixels: Vec<[u8; 3]>| {
+            let path = dir.join(name);
+            let height = pixels.len() as u32 / width;
+            RgbImage {
+                width,
+                height,
+                pixels,
+            }
+            .save_png(&path)
+            .unwrap();
+            path.to_str().unwrap().to_string()
+        };
+        let reference = save("ref.png", 2, vec![[100; 3]; 4]);
+        let one_off = save("one-off.png", 2, vec![[100; 3], [100; 3], [100; 3], [0; 3]]);
+        let wide = save("wide.png", 4, vec![[100; 3]; 4]);
+        let diff = dir.join("diff.png").to_str().unwrap().to_string();
+        let missing = dir.join("missing.png").to_str().unwrap().to_string();
+        let run = |rest: &[&str]| compare_frames(&compare_args(rest));
+
+        assert_eq!(run(&[&reference, &reference]), Ok(ExitCode::SUCCESS));
+        assert_eq!(run(&[&one_off, &reference]), Ok(ExitCode::FAILURE));
+        assert_eq!(
+            run(&[&one_off, &reference, "--threshold", "75"]),
+            Ok(ExitCode::SUCCESS)
+        );
+        assert_eq!(run(&[&wide, &reference]), Ok(ExitCode::FAILURE));
+        assert!(run(&[&missing, &reference]).is_err());
+        assert!(run(&[&reference]).is_err());
+        assert!(run(&[&reference, &reference, "--threshold", "x"]).is_err());
+
+        assert_eq!(
+            run(&[&one_off, &reference, "--diff", &diff]),
+            Ok(ExitCode::FAILURE)
+        );
+        let diff = RgbImage::load_png(Path::new(&diff)).unwrap();
+        assert_eq!(diff.pixels, [[33; 3], [33; 3], [33; 3], [255, 0, 255]]);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -82,21 +82,21 @@ impl Vga {
 
     /// Writes the visible area as an RGB PNG at native resolution.
     pub fn save_png(&self, path: &Path) -> std::io::Result<()> {
-        let file = std::fs::File::create(path)?;
-        let mut enc = png::Encoder::new(
-            std::io::BufWriter::new(file),
-            WIDTH as u32,
-            self.height() as u32,
-        );
-        enc.set_color(png::ColorType::Rgb);
-        enc.set_depth(png::BitDepth::Eight);
-        let mut writer = enc.write_header().map_err(std::io::Error::other)?;
-        writer
-            .write_image_data(&self.to_rgb24())
-            .map_err(std::io::Error::other)?;
-        writer.finish().map_err(std::io::Error::other)?;
-        Ok(())
+        write_rgb_png(path, WIDTH as u32, self.height() as u32, &self.to_rgb24())
     }
+}
+
+/// Writes packed 8-bit RGB24 pixels, rows top to bottom, as a PNG.
+pub fn write_rgb_png(path: &Path, width: u32, height: u32, rgb24: &[u8]) -> std::io::Result<()> {
+    let file = std::fs::File::create(path)?;
+    let mut enc = png::Encoder::new(std::io::BufWriter::new(file), width, height);
+    enc.set_color(png::ColorType::Rgb);
+    enc.set_depth(png::BitDepth::Eight);
+    let mut writer = enc.write_header().map_err(std::io::Error::other)?;
+    writer
+        .write_image_data(rgb24)
+        .map_err(std::io::Error::other)?;
+    writer.finish().map_err(std::io::Error::other)
 }
 
 /// Window presenting a [`Vga`] with integer scaling and 4:3 aspect correction.
