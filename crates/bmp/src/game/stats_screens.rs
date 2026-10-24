@@ -126,6 +126,21 @@ pub(crate) const CUP_NAMES: [&[u8]; 4] = [
     b"Pokal der Pokalsieger",
     b"UEFA-Pokal",
 ];
+
+/// `UI[120..131)`: the stage texts followed by the competition names, as
+/// one run of the string table. `UI[127]` is both the last stage text and
+/// the first competition name. Stage 7 of a European cup (`UI[128]`) reads
+/// past the stage texts into the competition names, like the original.
+fn ui_stage_text(index: usize) -> &'static [u8] {
+    match index.checked_sub(120) {
+        Some(i) if i < DFB_STAGES.len() => DFB_STAGES[i],
+        Some(i) => CUP_NAMES
+            .get(i + 1 - DFB_STAGES.len())
+            .copied()
+            .unwrap_or(b""),
+        None => b"",
+    }
+}
 /// The history shows at most this many seasons.
 const HISTORY_MAX: i16 = 50;
 /// First season year (`0x7ab`); later starts add 28 years.
@@ -678,7 +693,7 @@ pub fn history_cup_texts(league: u8, dfb: u8, euro: u8) -> ((Vec<u8>, u8), (Vec<
         color = 0xb;
     } else if euro & 7 != 0 {
         // UI[121 + stage]: the stage names without the empty first entry.
-        scratch = DFB_STAGES[usize::from(euro & 7) + 1].to_vec();
+        scratch = ui_stage_text(121 + usize::from(euro & 7)).to_vec();
     }
     if euro & 0xf8 == 0 {
         scratch = NOT_TAKING_PART.to_vec();
@@ -943,6 +958,16 @@ mod tests {
         assert_eq!(e, b"HALBFINALE UEFA-POKAL");
         let (_, (e, _)) = history_cup_texts(0, 3, 0x13);
         assert_eq!(e, b"VIERTELFINALE POKAL DER POKALS.");
+        // Stage 7 reads UI[128], past the stage texts: the name of the
+        // Pokal der Landesmeister.
+        let (_, (e, _)) = history_cup_texts(0, 3, 0x0f);
+        assert_eq!(e, b"POKAL DER LANDESMEISTERPOKAL DER LANDESM.");
+        let (_, (e, _)) = history_cup_texts(0, 3, 0x17);
+        assert_eq!(e, b"POKAL DER LANDESMEISTERPOKAL DER POKALS.");
+        let (_, (e, _)) = history_cup_texts(0, 3, 0x1f);
+        assert_eq!(e, b"POKAL DER LANDESMEISTERUEFA-POKAL");
+        assert_eq!(ui_stage_text(127), CUP_NAMES[0]);
+        assert_eq!(ui_stage_text(129), CUP_NAMES[2]);
         // Stage 0 of a cup keeps the buffer: the league name after a won
         // DFB-Pokal.
         let (_, (e, _)) = history_cup_texts(1, 0x80, 0x18);

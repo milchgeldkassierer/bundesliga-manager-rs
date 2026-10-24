@@ -124,7 +124,7 @@ office turn of a season played on from every shipped save (checked once when the
 | `SquadPlayer::injury`, `Club::crest`, `Manager::slot` | – | | no: `%`, a `match` with a default, or bit tests and clipped blits |
 | `event_state[0..4]` = 0 on a cup day | the 32-slot rows of `cup_goal_minutes` / `cup_pairings` | 0 at program start and inside `cup_draw_first_round` | no: a game-written value |
 | `winner_07ac` / `dfb_cup_runner_up` = 0 | `clubs` through holder - 1 = 0xff (cups.md §3.2) | 0 = none (the runner-up at program start) | no: a game-written value |
-| `Manager::round_log[..][3]` stage `& 7 == 7` | the port's `DFB_STAGES` (8) | stage 1..6 | no: the original reads the next UI string, inside its string table |
+| `Manager::round_log[..][3]` stage `& 7` | `UI[121 + stage]` (`ui_stage_text`, stage texts then competition names) | stage 1..7; 7 reads `UI[128]` = "Pokal der Landesmeister" | no: every value 0..=7 resolves inside the string table, as in the original |
 | `league_teams` duplicates | `cups.rs` qualifier table | a permutation | no: not a range; each id is in range |
 
 Not table indices, so not part of this guard: `day_counter` (debug overflow, or a day of month 0 that
