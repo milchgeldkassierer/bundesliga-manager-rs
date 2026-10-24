@@ -1,0 +1,51 @@
+# Port side of the shootout scenario (bmp run --script syntax, milliseconds): the penalty
+# shoot-out of a human cup tie (match_penalty_shootout 1310:356d). The fixture 00SHOOT.MAN is a
+# patched copy of 07072019.MAN (25 October 1965, OLIVER at BAYER 05 UERDINGEN; tools/
+# visual-check.sh "# fixture-edit:", crates/bmp-game/examples/save_patch.rs) whose slot of
+# today is a DFB-Pokal day with the final UERDINGEN against FREIBURGER FC. Load it and end the
+# turn: the final is played live and ends level, then the "Elfmeterschiessen" screen with both
+# clubs (waits for a click), the live screen with the first score panel while the kicks run
+# through the ticker, the "Endergebnis: 4 : 3   n.E." screen (waits for a click), the cup
+# winner's title screen and the next office turn. The draw depends on the seed: about one
+# seed in ten ends in a shoot-out; seed 1004 was found with the port and aimed at by the
+# capture; every frame matches exactly. The live frame e02-kicks depends on the timing: the
+# port's wait after the click has to reach the same kick (the chances counter, 2.6 to 3.2
+# seconds) and the same phase of the crowd animation, which flips every 100-150 ms (2.75 to
+# 2.85 seconds match exactly; a wrong phase costs 541 pixels).
+# fixture-edit: 00SHOOT.MAN 07072019.MAN id 1003 cup-final 0 36 63 week 0 8
+# seed: 1004
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+shot e00-office
+move 280 75
+wait 100
+click 280 75
+wait 70000
+shot e01-shootout
+move 160 120
+wait 100
+click 160 120
+wait 2800
+shot e02-kicks
+wait 40000
+shot e03-final-score
+move 160 120
+wait 100
+click 160 120
+wait 5000
+shot e04-winner
+move 160 120
+wait 100
+click 160 120
+wait 5000
+shot e05-office
+quit

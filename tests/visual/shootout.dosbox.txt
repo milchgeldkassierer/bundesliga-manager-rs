@@ -1,0 +1,35 @@
+# DOSBox side of the shootout scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads the fixture 00SHOOT.MAN (see the port script) and ends the turn: the DFB-Pokal final
+# of the human club ends level, then the penalty shoot-out screens, the cup winner's title
+# screen and the next office turn.
+# aim-seed: 1004
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+shot e00-office
+wait 1.5
+click 280 75 240
+wait 110
+shot e01-shootout
+wait 1.5
+click 160 120 240
+wait 2.5
+shot e02-kicks
+wait 60
+shot e03-final-score
+wait 1.5
+click 160 120 240
+wait 7
+shot e04-winner
+wait 1.5
+click 160 120 240
+wait 7.5
+shot e05-office
