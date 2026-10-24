@@ -7,6 +7,9 @@ license.workspace = true
 [dependencies]
 bmp-formats.workspace = true
 
+[dev-dependencies]
+serde_json = "1.0"
+
 [[example]]
 name = "save_patch"
 test = true
