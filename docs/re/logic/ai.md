@@ -690,7 +690,7 @@ for (k = 0; k < n; k++) {
 | FAR:5788 | i32 | `stat_quick_sim_goals` | – |
 | FAR:57dd + 0x25*id | struct | player table (`+0x1f` natural position, `+0x20` natural role) | 17 |
 | FAR:6db0 | i32 | `stat_goal_chances` | – |
-| FAR:6dbc/6dbd | u8 | `quick_sim_result_home/away` | – |
+| FAR:6dbc/6dbd | u8 | `quick_sim_result_home/away`; the Rust port's `match_simulate_quick_result` returns it (`Some` for store = 0, `None` when skipped or stored), and only `match_reschedule_chances` keeps it in `Runtime::quick_sim_result` (the previous value is read when the fixture's result cell is 0x1e) | – |
 | FAR:6dc8 | s8[] | league result table (`(c*38+round)*20 + s`) | 6 (from FAR:6ddc) |
 | FAR:76ca | u8[] | cup fixture team table | 28 |
 | FAR:774a + 0x34*(sq*25+i) | struct | squad player record | 18 |

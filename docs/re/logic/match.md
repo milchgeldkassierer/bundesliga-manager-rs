@@ -820,6 +820,13 @@ for (i16 s = 0; s < 2; s++) {
 `match_simulate_quick_result` stores (see §3, 1f9d:08e9). `FAR:5710[m]`/`FAR:5778[m]` count the
 chances already played in this period (incremented by `match_ticker_events`, §4.1).
 
+FAR:6dbc/6dbd is written only by the store = 0 call above and read only here. When the fixture's
+result cell is 0x1e the quick result writes nothing, so this function reads the value its previous
+call left (after that call's subtraction). The Rust port carries it the same way without the global
+write in the callee: `match_simulate_quick_result` returns `Some(score)` for store = 0 (`None`
+when skipped), and `match_reschedule_chances` copies it into `Runtime::quick_sim_result` only when
+it is `Some`, so the stale value survives on purpose.
+
 ### 1310:356d `match_penalty_shootout`
 
 `void far match_penalty_shootout(u8 c, u8 p, u8 cmask, u8 m_unused)`. Caller: `cup_round_helper`
@@ -1182,7 +1189,7 @@ literals `DS:5383` " !", `DS:538b` " (", `DS:538e` ")".
 | FAR:57dc | u8 | relegation_in_progress | — |
 | FAR:57dd + 0x25id | struct | player database | 17 |
 | FAR:6db0 | i32 | chances_played_total | — |
-| FAR:6dbc/6dbd | u8 | recomputed chances (store = 0) | — |
+| FAR:6dbc/6dbd | u8 | recomputed chances (store = 0); returned by the Rust `match_simulate_quick_result`, kept in `Runtime::quick_sim_result` by `match_reschedule_chances` (§ 1310:347f) | — |
 | FAR:6ddc | i8[3][38][20] | league_results | 6 |
 | FAR:6dc0 | far ptr | mouse_state | — |
 | FAR:76ca + 32c | u8[32] | cup_pairings | 28 |

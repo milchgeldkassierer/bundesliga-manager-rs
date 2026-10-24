@@ -59,7 +59,11 @@ pub struct Runtime {
     /// (1310:15db), set by its gate-money hook (2a58:20b2) and by the cup extra-time check
     /// (27c2:1226); card and injury events (1310:2ee5) only happen while it is set.
     pub live_match_shown: u8,
-    /// FAR:6dbc/6dbd: home and away goals of the last unstored quick result.
+    /// FAR:6dbc/6dbd: home and away goals of the last unstored quick result, as left by
+    /// `match_reschedule_chances` (1310:347f) after its subtraction. Only that function reads
+    /// and writes it: `match_simulate_quick_result` (1f9d:08e9) returns its unstored result
+    /// instead of writing here, and the field stays because 1310:347f reads the previous
+    /// value when the quick result skips a fixture whose result cell is 0x1e.
     pub quick_sim_result: [u8; 2],
     /// FAR:21da + 2 * m: home and away goals of manager `m`'s last quick-simulated match.
     pub manager_last_score: [[u8; 2]; MANAGER_SLOTS],

@@ -621,9 +621,12 @@ pub fn match_minute_card_injury_events<H: MatchHooks + ?Sized>(
 /// `from..to` minus the chances the manager's match already had this period gives the
 /// remaining chance counts, whose minutes are drawn in `minute..=to`.
 ///
-/// The fresh result is read from [`Runtime::quick_sim_result`]; for a fixture whose result
-/// cell is 0x1e the quick result writes nothing and the previous value is read, as in the
-/// original. The original's unused cup-mask parameter is not taken.
+/// The fresh result is the one [`match_simulate_quick_result`] returns, kept in
+/// [`Runtime::quick_sim_result`] (FAR:6dbc/6dbd) together with the subtraction below. For a
+/// fixture whose result cell is 0x1e the quick result returns nothing and the previous value
+/// of that cell is used on purpose, as in the original (a forfeited fixture holds 0x1e while
+/// its period is planned, and nothing here proves a manager's match cannot be one). The
+/// original's unused cup-mask parameter is not taken.
 ///
 /// Origin: BMMAIN.EXE 1310:347f (match_reschedule_chances)
 #[allow(clippy::too_many_arguments)]
@@ -641,7 +644,7 @@ pub fn match_reschedule_chances(
     m: u8,
 ) {
     let mi = usize::from(m);
-    match_simulate_quick_result(
+    if let Some(score) = match_simulate_quick_result(
         state,
         rt,
         rng,
@@ -652,7 +655,9 @@ pub fn match_reschedule_chances(
         from.into(),
         to.into(),
         false,
-    );
+    ) {
+        rt.quick_sim_result = score;
+    }
     for s in 0..2 {
         let cur = rt.manager_last_score[mi][s] as i8;
         if i16::from(cur) <= i16::from(rt.quick_sim_result[s]) {
@@ -1945,6 +1950,27 @@ mod tests {
             assert!(mins[..n].iter().all(|m| (10..=45).contains(m)));
         }
         assert!(draws(start, rng) >= 5);
+    }
+
+    #[test]
+    fn rescheduled_chances_replace_the_previous_quick_result() {
+        let mut s = GameState::zeroed();
+        s.competition_rounds[0] = 1;
+        let mut rt = Runtime {
+            quick_sim_result: [7, 7],
+            ..Runtime::default()
+        };
+        let start = Rng::new(4);
+        let (mut s2, mut rt2, mut rng2) = (s.clone(), rt.clone(), start);
+        let fresh = match_simulate_quick_result(
+            &mut s2, &mut rt2, &mut rng2, 0, 4, HOME, AWAY, 1, 45, false,
+        )
+        .unwrap();
+        let mut rng = start;
+        match_reschedule_chances(&mut s, &mut rt, &mut rng, 0, 4, HOME, AWAY, 10, 1, 45, 0);
+        // Manager 0 had no chances yet, so nothing is subtracted from the fresh result.
+        assert_eq!(rt.quick_sim_result, fresh);
+        assert_eq!(rt.manager_last_score[0], fresh);
     }
 
     #[test]

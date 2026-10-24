@@ -320,7 +320,9 @@ fn quick_goal_max(d: i16) -> i16 {
 /// (league tier 0..=2, or cup row + 10) between minutes `t0` and `t1` from the clubs' overall
 /// strength at `t0`. A league fixture whose result cell holds 0x1e is skipped without any RNG
 /// call. With `store` the goal minutes are generated and human managers' last scores are
-/// updated; without it the result goes to [`Runtime::quick_sim_result`]. The result cells
+/// updated and `None` is returned; without it the score is returned (the original writes it
+/// to FAR:6dbc/6dbd, which the Rust port leaves to the caller, see
+/// [`Runtime::quick_sim_result`]). A skipped fixture returns `None`. The result cells
 /// themselves are left to the caller. The original also adds the goals to a statistics
 /// counter (FAR:5788) that nothing in the game reads.
 ///
@@ -337,7 +339,7 @@ pub fn match_simulate_quick_result(
     t0: i16,
     t1: i16,
     store: bool,
-) {
+) -> Option<[u8; 2]> {
     let home_manager = state.manager_index_of_team(home, 0xff);
     let away_manager = state.manager_index_of_team(away, 0xff);
     // TODO(re): for cups (comp >= 10) the original reads FAR:6dc8 + (comp * 38 +
@@ -348,7 +350,7 @@ pub fn match_simulate_quick_result(
             [league_result_index(state, comp, slot)]
             == NOT_PLAYED
     {
-        return;
+        return None;
     }
     let mut gh = rng.random_range(0, 1);
     let mut ga: i16 = 0;
@@ -429,8 +431,9 @@ pub fn match_simulate_quick_result(
                 rt.manager_last_score[usize::from(m) - 1] = score;
             }
         }
+        None
     } else {
-        rt.quick_sim_result = score;
+        Some(score)
     }
 }
 
@@ -1263,16 +1266,18 @@ mod tests {
         let mut s = match_state();
         let mut rt = Runtime::default();
         let mut rng = Rng::new(1);
-        match_simulate_quick_result(&mut s, &mut rt, &mut rng, 0, 2, HOME, AWAY, 0, 90, false);
-        assert_eq!(rt.quick_sim_result, [12, 6]);
+        let r =
+            match_simulate_quick_result(&mut s, &mut rt, &mut rng, 0, 2, HOME, AWAY, 0, 90, false);
+        assert_eq!(r, Some([12, 6]));
         assert_eq!(rng, advanced(Rng::new(1), 9));
 
         // Seed 3 (48, 7196, 9294, 9091, 7031, 23577, 17702, 23503, 27217, 12168): gh = 0,
         // r1 = 1, r2 = 3, pick (9091 odd): goal_pick(1, 3) = 3, ga = 0, ga = 2, gh = 6,
         // gh > 4 and 27217 odd: gh = 5.
         let mut rng = Rng::new(3);
-        match_simulate_quick_result(&mut s, &mut rt, &mut rng, 0, 2, HOME, AWAY, 0, 90, false);
-        assert_eq!(rt.quick_sim_result, [10, 4]);
+        let r =
+            match_simulate_quick_result(&mut s, &mut rt, &mut rng, 0, 2, HOME, AWAY, 0, 90, false);
+        assert_eq!(r, Some([10, 4]));
         assert_eq!(rng, advanced(Rng::new(3), 10));
     }
 
@@ -1316,8 +1321,11 @@ mod tests {
             set_overall(&mut s, AWAY, away);
             let mut rt = Runtime::default();
             let mut rng = Rng::new(seed);
-            match_simulate_quick_result(&mut s, &mut rt, &mut rng, 0, 2, HOME, AWAY, 0, 90, false);
-            assert_eq!(rt.quick_sim_result, result, "seed {seed}, {home} vs {away}");
+            let r = match_simulate_quick_result(
+                &mut s, &mut rt, &mut rng, 0, 2, HOME, AWAY, 0, 90, false,
+            );
+            assert_eq!(r, Some(result), "seed {seed}, {home} vs {away}");
+            assert_eq!(rt, Runtime::default(), "seed {seed}");
             assert_eq!(rng, advanced(Rng::new(seed), draws), "seed {seed}");
         }
     }
@@ -1329,9 +1337,14 @@ mod tests {
         s.league_results[1][4][6] = NOT_PLAYED;
         let mut rt = Runtime::default();
         let mut rng = Rng::new(1);
-        match_simulate_quick_result(&mut s, &mut rt, &mut rng, 1, 6, HOME, AWAY, 0, 90, true);
-        assert_eq!(rng, Rng::new(1));
-        assert_eq!(rt, Runtime::default());
+        for store in [true, false] {
+            let r = match_simulate_quick_result(
+                &mut s, &mut rt, &mut rng, 1, 6, HOME, AWAY, 0, 90, store,
+            );
+            assert_eq!(r, None, "store {store}");
+            assert_eq!(rng, Rng::new(1), "store {store}");
+            assert_eq!(rt, Runtime::default(), "store {store}");
+        }
     }
 
     #[test]
@@ -1343,8 +1356,8 @@ mod tests {
         set_club(&mut s, AWAY, [30, 0, 30]);
         let mut rt = Runtime::default();
         let run = |s: &mut GameState, rt: &mut Runtime, t0, t1| {
-            match_simulate_quick_result(s, rt, &mut Rng::new(5), 0, 0, HOME, AWAY, t0, t1, false);
-            rt.quick_sim_result
+            match_simulate_quick_result(s, rt, &mut Rng::new(5), 0, 0, HOME, AWAY, t0, t1, false)
+                .unwrap()
         };
         // 0 vs > 20 forces 0:8; 8 * 90 / 45 = 16.
         assert_eq!(run(&mut s, &mut rt, 0, 90), [0, 16]);
@@ -1369,7 +1382,9 @@ mod tests {
         let mut rt = Runtime::default();
         rt.league_goal_minutes[2][4] = [77; 8];
         let mut rng = Rng::new(5);
-        match_simulate_quick_result(&mut s, &mut rt, &mut rng, 2, 4, HOME, AWAY, 0, 90, true);
+        let r =
+            match_simulate_quick_result(&mut s, &mut rt, &mut rng, 2, 4, HOME, AWAY, 0, 90, true);
+        assert_eq!(r, None);
         // Both clubs' managers get the score; managers 3 and 4 are not playing.
         assert_eq!(rt.manager_last_score, [[0, 16], [0, 16], [0, 0], [0, 0]]);
         assert_eq!(rt.quick_sim_result, [0, 0]);
