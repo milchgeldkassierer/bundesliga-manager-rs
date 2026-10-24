@@ -9,7 +9,7 @@
 
 use bmp_game::ai::squad_recalc_team_strength;
 use bmp_game::squad::{InsertRejected, LineupRules, auto_lineup, squad_count_listed};
-use bmp_game::state::GameState;
+use bmp_game::state::{GameState, TRANSFER_LIST};
 use bmp_game::transfer::{
     ListRejected, MarketBid, answer_listed_player_offer, answer_squad_player_offer,
     human_bid_allowed, list_squad_player, listed_player_offer, mark_bid_rejected, market_bid,
@@ -30,7 +30,7 @@ use crate::gfx::{Gfx, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shado
 use crate::host::{Host, LEFT_DOWN, RIGHT_DOWN, Run};
 
 /// The squad group of the transfer market.
-const MARKET: usize = 4;
+const MARKET: usize = TRANSFER_LIST;
 /// Column mask of the own list: ART, NAME, STÄRKEN, ST, STATUS, TD.
 const OWN_COLUMNS: u32 = 0x0000_90c6;
 /// Column mask of the market list: ART, NAME, STÄRKEN, WERT.
