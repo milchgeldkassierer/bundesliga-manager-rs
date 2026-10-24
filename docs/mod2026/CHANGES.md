@@ -19,6 +19,13 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   the `--from` directory (or inside it) nor `<repo>/BMP` (or inside it); these are refused with a
   non-zero exit code before anything is written. A new command, so the original game is not
   affected.
+- **Crest pictures** (`crates/bmp-game/src/mod2026.rs`, `crates/bmp-game/build.rs`, PRD R5):
+  the generator encodes every `docs/mod2026/crests/<n>.png` (embedded in the program by
+  `build.rs`) with the game's compressor `vga::encode`, in the PNG's size and palette indices,
+  and writes it as `PIC/<n>.VGA`, replacing the copied original picture; picture numbers
+  without a PNG keep the original. A crest PNG that is not 8-bit indexed is refused before
+  anything is written. The game and the team editor load the crests unchanged, so the mod
+  clubs show their 2026 crests wherever a crest is drawn.
 - **Strength grouping** (`crates/bmp-game/src/strength.rs`, `strength::MOD2026`): the team
   editor's strength recomputation moved unchanged from `bmp` to `bmp-game`, with its league
   grouping as a parameter. The generator runs it with the groups 0..17 / 18..35 / 36..55 /

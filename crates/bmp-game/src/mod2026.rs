@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use bmp_formats::font::encode_cp437;
 use bmp_formats::mana::{GERMAN_CLUB_COUNT, ManaDat, PLAYER_NAME_LEN, PLAYERS_PER_CLUB};
+use bmp_formats::vga::{self, VgaImage};
 use serde_json::Value;
 
 use crate::rng::Rng;
@@ -25,17 +26,23 @@ const CLUBS_JSON: &str = include_str!("../../../docs/mod2026/data/clubs.json");
 /// The squads of the 64 German slots.
 const SQUADS_JSON: &str = include_str!("../../../docs/mod2026/data/squads.json");
 
+/// The crest pictures `docs/mod2026/crests/<n>.png` as (picture number, PNG bytes), sorted by
+/// number (embedded by `build.rs`).
+pub const CRESTS: &[(u8, &[u8])] = include!(concat!(env!("OUT_DIR"), "/mod2026_crests.rs"));
+
 /// Whether `data_dir` holds mod data, i.e. contains [`MARKER`].
 pub fn is_active(data_dir: &Path) -> bool {
     data_dir.join(MARKER).is_file()
 }
 
 /// Writes the mod data directory `out`: a copy of every file below `from` with the mod clubs
-/// written into `MANA.DAT`, then [`MARKER`].
+/// written into `MANA.DAT` and every crest of [`CRESTS`] written as `PIC/<n>.VGA` (replacing
+/// the copied original picture; numbers without a PNG keep it), then [`MARKER`].
 ///
 /// Refuses, before anything is created or written, an `out` that is `from` or lies inside
 /// it, one that is or lies inside the owner's play directory `<repo>/BMP`, one that
-/// already holds files, a `from` without a valid `MANA.DAT` and a dataset that does not fit it. The
+/// already holds files, a `from` without a valid `MANA.DAT`, a dataset that does not fit it
+/// and a crest PNG that is not an 8-bit indexed picture. The
 /// copies are written as new files, so they do not inherit the read-only permissions of the
 /// pristine copy.
 pub fn build(from: &Path, out: &Path) -> Result<(), String> {
@@ -65,9 +72,45 @@ pub fn build(from: &Path, out: &Path) -> Result<(), String> {
         }
     }
     let mana = mod_mana(&source)?;
+    let crests = CRESTS
+        .iter()
+        .map(|&(n, png)| {
+            Ok((
+                n,
+                vga::encode(&decode_crest(png).map_err(|e| format!("crest {n}.png: {e}"))?),
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     copy_tree(&source, &target).map_err(|e| format!("{}: {e}", out.display()))?;
     fs::write(target.join("MANA.DAT"), mana).map_err(|e| format!("{}: {e}", out.display()))?;
+    for (n, bytes) in crests {
+        let path = target.join(vga::file_name(n));
+        fs::create_dir_all(path.parent().expect("PIC/<n>.VGA has a parent"))
+            .and_then(|()| fs::write(&path, bytes))
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+    }
     fs::write(target.join(MARKER), MARKER_CONTENT).map_err(|e| format!("{}: {e}", out.display()))
+}
+
+/// The palette indices of an 8-bit indexed crest PNG, in its own size.
+pub fn decode_crest(png: &[u8]) -> Result<VgaImage, String> {
+    let mut reader = png::Decoder::new(png)
+        .read_info()
+        .map_err(|e| e.to_string())?;
+    let info = reader.info();
+    if (info.color_type, info.bit_depth) != (png::ColorType::Indexed, png::BitDepth::Eight) {
+        return Err("not an 8-bit indexed picture".into());
+    }
+    let size = |v: u32| u16::try_from(v).map_err(|_| format!("size {v} above 65535"));
+    let (width, height) = (size(info.width)?, size(info.height)?);
+    let mut pixels = vec![0; reader.output_buffer_size()];
+    let frame = reader.next_frame(&mut pixels).map_err(|e| e.to_string())?;
+    pixels.truncate(frame.buffer_size());
+    Ok(VgaImage {
+        width,
+        height,
+        pixels,
+    })
 }
 
 /// The `MANA.DAT` of `source` with [`write_mod_clubs`] applied, as file bytes.
@@ -263,8 +306,12 @@ mod tests {
         build(&data, &out).unwrap();
         let copied = tree(&out);
         let original = tree(&data);
+        let crests: Vec<PathBuf> = CRESTS
+            .iter()
+            .map(|&(n, _)| PathBuf::from(vga::file_name(n)))
+            .collect();
         for file in &original {
-            if file.0 == Path::new("MANA.DAT") {
+            if file.0 == Path::new("MANA.DAT") || crests.contains(&file.0) {
                 continue;
             }
             assert!(copied.contains(file), "{} not copied", file.0.display());
@@ -288,7 +335,8 @@ mod tests {
         build(&from, &dir.join("a")).unwrap();
         build(&from, &dir.join("b")).unwrap();
         let a = tree(&dir.join("a"));
-        assert_eq!(a.len(), 3);
+        // MANA.DAT, the marker and the crests; PIC/80.VGA is one of them.
+        assert_eq!(a.len(), 2 + CRESTS.len());
         assert_eq!(a, tree(&dir.join("b")));
         fs::remove_dir_all(&dir).unwrap();
     }

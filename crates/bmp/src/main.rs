@@ -42,7 +42,8 @@ const USAGE: &str = "usage: bmp [--data <dir>] [--version]
   4 injury, 5 miss) on the default audio device
   mod2026 build writes the Mod 2026 data directory <out> (it must not exist or be empty;
   never <repo>/BMP or the --from directory): a copy of the data in <from> with the mod
-  clubs in MANA.DAT, plus the marker MOD2026.DAT, which switches mod behaviour on
+  clubs in MANA.DAT and their crests in PIC/<n>.VGA, plus the marker MOD2026.DAT, which
+  switches mod behaviour on
   compare exits 0 when at least <percent> (default 90) of the pixels match, 1 otherwise";
 
 struct Args {
