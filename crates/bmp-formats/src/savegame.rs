@@ -147,6 +147,8 @@ pub const BLOCK_MANAGERS: usize = 13;
 pub const BLOCK_CLUBS: usize = 15;
 /// Index of the player table (FAR:57dd, 151 x 37 bytes) in [`BLOCKS`].
 pub const BLOCK_PLAYERS: usize = 17;
+/// Index of the competition slots (FAR:57aa, 18 bytes) in [`BLOCKS`].
+pub const BLOCK_COMPETITION_SLOTS: usize = 26;
 
 /// Number of manager records in FAR:2242.
 pub const MANAGER_COUNT: usize = 4;

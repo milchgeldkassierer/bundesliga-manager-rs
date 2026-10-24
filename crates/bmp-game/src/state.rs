@@ -214,8 +214,9 @@ record! {
         pub round_log: [[u8; 4]; 50],
         /// +0x106..0x109 not yet traced.
         pub unknown_106: [u8; 4],
-        /// +0x10a (FAR:234c) new game: `(scenario + 8) * 2 - 3 * league`.
-        /// Read by the stadium screens.
+        /// +0x10a (FAR:234c) popularity; new game: `(scenario + 8) * 2 -
+        /// 3 * league`. Read by the stadium screens and
+        /// `match_attendance_estimate` 1f9d:11e0.
         pub value_10a: u8,
         /// +0x10b (FAR:234d) league-position history, one byte per round
         /// (38 rounds), 0-based table position. Initialized to 10 on a new
@@ -225,8 +226,9 @@ record! {
         /// just updated (the write happens for all managers, whatever
         /// their own tier).
         pub position_history: [u8; 38],
-        /// +0x131 (FAR:2373) initialized to 0x10; read by `screen_lineup`,
-        /// `manager_ai_weekly`.
+        /// +0x131 (FAR:2373) lineup (tactic) slider 0..=34, initialized to
+        /// 0x10 (neutral); set by the lineup screen, read by
+        /// `squad_recalc_team_strength` 1f9d:0002.
         pub value_131: u8,
         /// +0x132 (FAR:2374) 5 bytes initialized to 0x1e (30);
         /// `startup_clear_state` re-sets `[2..5]` to 0x1e.
@@ -241,8 +243,13 @@ record! {
         /// booked: `random(7, 18)` after a booking, decremented daily by
         /// `finance_daily_processing` 212a:0a6d.
         pub camp_cooldown: u8,
-        /// +0x13a..0x13e per-manager state bytes (training, AI).
-        pub values_13a: [u8; 5],
+        /// +0x13a..0x13c per-manager state bytes (training, AI).
+        pub values_13a: [u8; 3],
+        /// +0x13d (FAR:237f) match aggression 0..=40, or 100 when fewer than
+        /// 8 players start (`squad_recalc_team_strength` 1f9d:0002).
+        pub aggression: u8,
+        /// +0x13e per-manager state byte.
+        pub value_13e: u8,
         /// +0x13f (FAR:2381) training intensity 0..=0x22 (`screen_training`);
         /// drives a monthly cost and [`Manager::fatigue_sum`].
         pub training_intensity: u8,
@@ -1106,6 +1113,29 @@ pub(crate) mod tests {
         assert_eq!(s.manager_index_of_team(9, 7), 0x81);
         assert_eq!(s.manager_index_of_team(1, 9), 0x82);
         assert_eq!(s.manager_index_of_team(11, 11), 0);
+    }
+
+    #[test]
+    fn named_record_bytes_keep_their_offsets() {
+        let mut bytes = vec![0u8; SquadPlayer::LEN];
+        bytes[0x03] = 7;
+        bytes[0x06] = 21;
+        bytes[0x13] = 130;
+        bytes[0x19] = 0xff;
+        bytes[0x1a] = 6;
+        let p = SquadPlayer::from_bytes(&bytes).unwrap();
+        assert_eq!(p.goals, [7, 0, 0]);
+        assert_eq!(p.appearances, [21, 0, 0]);
+        assert_eq!(p.exhaustion, 130);
+        assert_eq!(p.board_col, -1);
+        assert_eq!(p.board_row, 6);
+        assert_eq!(p.to_bytes(), bytes);
+
+        let mut bytes = vec![0u8; Manager::LEN];
+        bytes[0x13d] = 100;
+        let m = Manager::from_bytes(&bytes).unwrap();
+        assert_eq!(m.aggression, 100);
+        assert_eq!(m.to_bytes(), bytes);
     }
 
     #[test]
