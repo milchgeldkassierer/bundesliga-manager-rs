@@ -58,8 +58,8 @@ void date_from_slot(u16 n) {                 // 1310:1190 "matchday_refresh"
     else {
         if (n == 0x78) n = 0;
         FAR:2eba = (u32)((n >> 1) * 7);       // u16 MUL, high word forced to 0
-        if (n & 1) FAR:2eba += 4;
-        FAR:2eba += (i32)(i8)DS:224c;
+        if (n & 1) FAR:2eba += 4;             // odd slot: jumps straight to the store
+        else FAR:2eba += (i32)(i8)DS:224c;    // even slot only (1310:11f8)
     }
     FAR:a7a0 = (i32)(u16)DS:07e0;
     FAR:2eba += 210;                          // day 0 = 29 July
@@ -71,7 +71,7 @@ void date_from_slot(u16 n) {                 // 1310:1190 "matchday_refresh"
 }
 ```
 
-So match slot `n` is played on day `(n/2)*7 + (n odd ? 4 : 0) + DS:224c`. Day 0 is 29 July, day 322 is
+So match slot `n` is played on day `(n/2)*7 + (n odd ? 4 : DS:224c)`. Day 0 is 29 July, day 322 is
 16 June of the next year. Weekday shown on screens: `DS:242c[((day + 4) % 7)]` (0 = "Montag" ...
 6 = "Sonntag"; `lrem`, so day 0 is "Freitag"). Month names: `DS:23fc[month]` ("Januar" ...
 "Dezember").
