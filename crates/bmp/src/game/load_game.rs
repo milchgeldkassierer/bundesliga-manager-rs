@@ -470,8 +470,21 @@ pub enum LoadError {
 
 /// Loads `path` and checks it like the original: signature, version, session
 /// save-id history (the id is remembered before the blocks are read).
+///
+/// A file too short for the header is judged like the original judges it: the
+/// short `file_read` leaves the rest of its stack buffer stale, so a file shorter
+/// than the 24 compared signature bytes is "Kein ... Spielstand", and a file with
+/// the signature but without the two version bytes is a wrong version (the
+/// buffer still starts with the signature's "We").
 pub fn read_save(saves: &mut SaveSession, path: &Path) -> Result<GameState, LoadError> {
     let bytes = std::fs::read(path).map_err(|_| LoadError::Disk)?;
+    let check = savegame::SIGNATURE_CHECK_LEN;
+    if bytes.get(..check) != Some(&savegame::SIGNATURE[..check]) {
+        return Err(LoadError::NotASave);
+    }
+    if bytes.get(25..27) != Some(&b">V"[..]) {
+        return Err(LoadError::WrongVersion);
+    }
     let parsed = SaveGame::parse(&bytes);
     let save = match parsed {
         Err(savegame::Error::BadSignature) => return Err(LoadError::NotASave),
@@ -921,6 +934,38 @@ mod tests {
         let result = read_save(&mut SaveSession::default(), &file);
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(result, Err(LoadError::Corrupt));
+    }
+
+    /// Files too short for the header get the original's header dialogs, not the
+    /// disk error: no signature (empty, 23 bytes) is "Kein ... Spielstand", the
+    /// signature without the version bytes a wrong version; the id is not
+    /// remembered.
+    #[test]
+    fn short_files_fail_the_header_checks() {
+        use bmp_formats::savegame::SIGNATURE;
+        let dir = std::env::temp_dir().join(format!("bmp-short-save-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut sig_v = SIGNATURE.to_vec();
+        sig_v.extend_from_slice(b">V");
+        let cases: [(&[u8], LoadError); 5] = [
+            (b"", LoadError::NotASave),
+            (&SIGNATURE[..23], LoadError::NotASave),
+            (&SIGNATURE[..], LoadError::WrongVersion),
+            (&sig_v[..26], LoadError::WrongVersion),
+            (&sig_v[..], LoadError::Disk),
+        ];
+        let mut saves = SaveSession::default();
+        let mut results = Vec::new();
+        for (i, (bytes, _)) in cases.iter().enumerate() {
+            let file = dir.join(format!("SHORT{i}.MAN"));
+            std::fs::write(&file, bytes).unwrap();
+            results.push(read_save(&mut saves, &file));
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+        for (result, (bytes, want)) in results.into_iter().zip(cases) {
+            assert_eq!(result.err(), Some(want), "{} bytes", bytes.len());
+        }
+        assert!(saves.loaded_ids.is_empty());
     }
 
     /// The [`LoadError::Corrupt`] arm end to end: the file selector returns

@@ -1495,6 +1495,10 @@ savegame.md.
   }
   out: DS:9440 = 0; return 0;
   ```
+  `sig` and `version` share the stack buffer `[BP-0xf4]`, and a short `read` leaves the rest of
+  it stale: a file shorter than 24 bytes fails the signature check ("Kein ... !!!", not a disk
+  error), and a file with the signature but fewer than two version bytes fails the version
+  check (the buffer still starts with the signature's `"We"`).
   The `ui_dialog_box` boxes are timed (no click). Port: `crates/bmp/src/game/load_game.rs`
   (`screen_load_game`); the deviations are listed in §7a.
 
