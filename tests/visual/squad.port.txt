@@ -6,6 +6,8 @@
 # xdotool clicks of the DOSBox run (the list hover and the board cursor
 # react to the motion).
 # seed: 35372
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
 wait 500
 click 160 120
 wait 4000

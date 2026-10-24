@@ -1,5 +1,7 @@
 # Port side of the start-menu scenario (bmp run --script syntax, milliseconds).
 # seed: 35372
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
 wait 500
 shot r01-title
 click 160 120

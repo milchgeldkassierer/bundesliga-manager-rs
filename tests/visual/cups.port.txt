@@ -4,6 +4,8 @@
 # club info of a German home club, a foreign club and a German away club from
 # them, and return to the office.
 # seed: 35372
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
 wait 500
 click 160 120
 wait 4000

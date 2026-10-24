@@ -3,6 +3,7 @@ mod compare;
 mod game;
 mod gfx;
 mod host;
+mod intro;
 mod video;
 
 use std::path::{Path, PathBuf};
@@ -14,12 +15,14 @@ use video::{Mode, Vga, Window};
 const USAGE: &str = "usage: bmp [--data <dir>] [--version]
        bmp [--data <dir>] show-pic <name> [--palette <0..2>] [--screenshot <out.png>]
        bmp [--data <dir>] run [--script <file> --shots <dir>] [--time <seconds>] [--time2 <seconds>]
-                              [--nosound] [0]
+                              [--nosound] [--skip-intro] [0]
        bmp [--data <dir>] render-music <out.wav> [--tail <ms>] [--opl-log <out.txt>]
        bmp [--data <dir>] play-sound music|1..5
        bmp compare <port.png> <reference.png> [--diff <out.png>] [--threshold <percent>]
   <name> is a file below PIC/, e.g. 47.CP or 120.VGA
-  run starts the game; with --script it runs headless on a virtual clock
+  run starts the game like BMP.BAT: the Software 2000 logo intro (BMINTRO, ended by
+  any key; --skip-intro leaves it out), then the title; with --script it runs headless
+  on a virtual clock
   (see host::parse_script); --time fixes the time of the first RNG seed and --time2
   that of the second one, read when a new game starts (default: --time when given,
   else the clock at that moment); --nosound or a trailing 0 (BMP.BAT's argument)
@@ -174,6 +177,7 @@ fn run_game(args: &Args) -> Result<(), String> {
     let time = parse("--time", take_opt(&mut rest, "--time")?)?;
     let time2 = parse("--time2", take_opt(&mut rest, "--time2")?)?.or(time);
     let time = time.unwrap_or_else(game::time_now);
+    let skip_intro = take_flag(&mut rest, "--skip-intro");
     let sound = sound_enabled(&mut rest);
     if let Some(extra) = rest.first() {
         return Err(format!("unexpected argument '{extra}'\n{USAGE}"));
@@ -187,6 +191,10 @@ fn run_game(args: &Args) -> Result<(), String> {
         }
         None => host::Host::with_window(&dir, 3, sound)?,
     };
+    // BMP.BAT: `bmintro`, then `bmmain %1`.
+    if !skip_intro && intro::run(&mut host)?.is_err() {
+        return Ok(());
+    }
     match game::run(&mut host, time, time2)? {
         Ok(game::Exit::EndOfTurn) => eprintln!("end of turn (the season loop is not ported yet)"),
         Err(host::Quit) => {}
@@ -194,13 +202,21 @@ fn run_game(args: &Args) -> Result<(), String> {
     Ok(())
 }
 
+/// Takes `flag` out of `rest`; whether it was present.
+fn take_flag(rest: &mut Vec<String>, flag: &str) -> bool {
+    let found = rest.iter().position(|a| a == flag);
+    if let Some(i) = found {
+        rest.remove(i);
+    }
+    found.is_some()
+}
+
 /// Takes the sound switches out of the arguments after the command: `--nosound`, and
 /// the program argument that `BMP.BAT` passes through to `bmmain`; `main`
 /// (18bc:0418) clears the sound flag `DS:018c` when it is `0`.
 fn sound_enabled(rest: &mut Vec<String>) -> bool {
     let mut sound = true;
-    if let Some(i) = rest.iter().position(|a| a == "--nosound") {
-        rest.remove(i);
+    if take_flag(rest, "--nosound") {
         sound = false;
     }
     if let Some(i) = rest.iter().position(|a| !a.starts_with("--")) {

@@ -1,0 +1,15 @@
+# Port side of the intro scenario (bmp run --script syntax, milliseconds).
+# The port runs one BMINTRO iteration per 70.086 Hz retrace; frame n is visible
+# from n / 70.086 s on. The original's pace depends on the CPU, so the shot times
+# are aligned to the iterations the DOSBox references show (recovered once per
+# reference set, like a seed): reveal at iteration 196, gradient box and marquee
+# at 252, the finished logo from 343 on. Any key then ends the intro.
+wait 2803
+shot i01-reveal
+wait 800
+shot i02-gradient
+wait 2400
+shot i03-logo
+key space
+wait 500
+shot i04-title

@@ -61,7 +61,7 @@ pub enum ScriptStep {
 
 /// Parses a script: one step per line, `#` comments. Commands: `wait <ms>`,
 /// `click <x> <y>`, `rclick <x> <y>`, `move <x> <y>`, `press <x> <y>`, `release`, `type <text>`,
-/// `key enter|backspace|esc`, `shot <name>`, `quit`.
+/// `key enter|space|backspace|esc`, `shot <name>`, `quit`.
 pub fn parse_script(text: &str) -> Result<Vec<ScriptStep>, String> {
     let mut steps = Vec::new();
     for (n, line) in text.lines().enumerate() {
@@ -107,6 +107,7 @@ pub fn parse_script(text: &str) -> Result<Vec<ScriptStep>, String> {
             "type" => ScriptStep::Keys(bmp_formats::font::encode_cp437(rest)),
             "key" => ScriptStep::Keys(vec![match rest {
                 "enter" => b'\r',
+                "space" => b' ',
                 "backspace" => 8,
                 "esc" => 0x1b,
                 _ => return Err(err("unknown key")),
@@ -159,6 +160,12 @@ pub struct Host {
     /// `DS:014a`: last `screen_fade` state.
     fade_state: u8,
     keys: VecDeque<u8>,
+    /// A key went down that produced no character (e.g. a cursor key); read by
+    /// [`Host::key_hit`].
+    key_down: bool,
+    /// The program draws `vga` itself (BMINTRO's mode 13h) instead of the library
+    /// screen being converted on every present.
+    raw_video: bool,
     backend: Backend,
     vga: Vga,
     /// The sound card; `None` when sound is disabled (`DS:018c` = 0).
@@ -186,6 +193,8 @@ impl Host {
             office_bg_cached: false,
             fade_state: 0xff,
             keys: VecDeque::new(),
+            key_down: false,
+            raw_video: false,
             backend,
             vga: Vga::new(),
             card,
@@ -281,7 +290,18 @@ impl Host {
                             Keycode::Return | Keycode::KpEnter => self.keys.push_back(b'\r'),
                             Keycode::Backspace => self.keys.push_back(8),
                             Keycode::Escape => self.keys.push_back(0x1b),
-                            _ => {}
+                            Keycode::LShift
+                            | Keycode::RShift
+                            | Keycode::LCtrl
+                            | Keycode::RCtrl
+                            | Keycode::LAlt
+                            | Keycode::RAlt
+                            | Keycode::LGui
+                            | Keycode::RGui
+                            | Keycode::CapsLock
+                            | Keycode::NumLockClear
+                            | Keycode::ScrollLock => {}
+                            _ => self.key_down = true,
                         },
                         Event::TextInput { text, .. } => self
                             .keys
@@ -296,7 +316,9 @@ impl Host {
                 }
                 if last_present.elapsed() >= Duration::from_millis(14) {
                     *last_present = Instant::now();
-                    self.g.to_vga(&mut self.vga);
+                    if !self.raw_video {
+                        self.g.to_vga(&mut self.vga);
+                    }
                     win.present(&self.vga).map_err(|_| Quit)?;
                 } else {
                     std::thread::sleep(Duration::from_micros(500));
@@ -353,7 +375,9 @@ impl Host {
                 }
                 ScriptStep::Keys(k) => self.keys.extend(k),
                 ScriptStep::Shot(name) => {
-                    self.g.to_vga(&mut self.vga);
+                    if !self.raw_video {
+                        self.g.to_vga(&mut self.vga);
+                    }
                     let path = shots.join(format!("{name}.png"));
                     self.vga.save_png(&path).map_err(|_| Quit)?;
                     eprintln!("screenshot {}", path.display());
@@ -396,6 +420,33 @@ impl Host {
             }
             self.pump()?;
         }
+    }
+
+    /// Whether a key was pressed (INT 21h AH=06h DL=FFh returns ZF clear): takes
+    /// one pending character, or the press of a key without one.
+    pub fn key_hit(&mut self) -> bool {
+        let hit = self.keys.pop_front().is_some() || self.key_down;
+        self.key_down = false;
+        hit
+    }
+
+    /// Seconds since the program started (virtual time when scripted).
+    pub fn now_secs(&self) -> f64 {
+        match &self.backend {
+            Backend::Window { start, .. } => start.elapsed().as_secs_f64(),
+            Backend::Script { now_ms, .. } => *now_ms as f64 / 1000.0,
+        }
+    }
+
+    /// Hands the video output to the caller (`true`): from now on `pump` presents
+    /// [`Host::vga_mut`] as it is. `false` returns to the library screen.
+    pub fn set_raw_video(&mut self, on: bool) {
+        self.raw_video = on;
+    }
+
+    /// The emulated VGA output (see [`Host::set_raw_video`]).
+    pub fn vga_mut(&mut self) -> &mut Vga {
+        &mut self.vga
     }
 
     /// Reads a pending key without waiting (`dos_direct_console_io`, INT 21h
@@ -641,7 +692,7 @@ mod tests {
     #[test]
     fn script_parses_all_commands() {
         let steps = parse_script(
-            "# comment\nwait 10\nclick 1 2\nrclick 3 4\nmove 7 8\npress 5 6\nrelease\ntype ab\nkey enter\nshot x\nquit\n",
+            "# comment\nwait 10\nclick 1 2\nrclick 3 4\nmove 7 8\npress 5 6\nrelease\ntype ab\nkey enter\nkey space\nshot x\nquit\n",
         )
         .unwrap();
         assert_eq!(
@@ -663,6 +714,7 @@ mod tests {
                 ScriptStep::Release { right: false },
                 ScriptStep::Keys(b"ab".to_vec()),
                 ScriptStep::Keys(vec![b'\r']),
+                ScriptStep::Keys(vec![b' ']),
                 ScriptStep::Shot("x".into()),
                 ScriptStep::Quit,
             ]

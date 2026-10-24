@@ -214,7 +214,8 @@ All game randomness goes through `random_range(lo,hi)` 176b:0cc7, which returns
 
 ### BMINTRO.EXE (not packed, 11 functions, no CRT, hand-written assembly)
 
-`BMP.BAT` runs `bmintro` and then `bmmain %1`. BMINTRO is the animated Software 2000 logo intro.
+`BMP.BAT` runs `bmintro` and then `bmmain %1`. BMINTRO is the animated Software 2000 logo intro;
+the full description is in [logic/intro.md](logic/intro.md). Nothing starts `BMLOADER.EXE`.
 
 | Ghidra addr | Purpose |
 |---|---|
@@ -223,10 +224,10 @@ All game randomness goes through `random_range(lo,hi)` 176b:0cc7, which returns
 | 1000:0ad5 | Set the graphics mode: VGA via INT10 + palette (1000:0aba); EGA via INT10 and GC write mode 2; Hercules via ports 3BF/3B8/3B4 with a 12-register CRTC table at `DS:0035` |
 | 1000:0b4a | Restore the text mode (Hercules CRTC table `DS:0041`) |
 | 1000:0bbb | Wait for vertical retrace (3DA bit 3, or 3BA bit 7 on Hercules) |
-| 1000:0087 | Frame step: every 3rd tick advance the reveal counter, then walk 0xD6 cell records at `DS:0ac2` (start frame, x/y, type, stage) |
+| 1000:0087 | Reveal step: every 3rd iteration advance the step, then draw each of the 0xD6 cell records at `DS:0ac2` (start step, cell index, type, stage) that is due, in colour stage + 2 |
 | 1000:01a7 / 1000:0345 | Draw an 8x8 logo cell, masked or solid, for each adapter: VGA linear 320 px, EGA planar 80-byte rows, Hercules 4-bank interleave |
-| 1000:0484 | Second phase: scroll/reveal text lines (table `DS:0305`, glyph data `DS:16ca`) |
-| 1000:05c2 | Third phase: shift text rows horizontally (marquee) |
+| 1000:0484 | Second phase: one line of the gradient box per iteration (line table `DS:0305`, colours at `DS:0585`, edge masks at `DS:0aa2`) |
+| 1000:05c2 | Marquee: shift the interlaced "SOFTWARE 2000" rows 193..199 by one pixel and feed the next bits from `DS:12da` |
 
 ### BMLOADER.EXE (EXEPACKed, 178 functions after unpacking)
 

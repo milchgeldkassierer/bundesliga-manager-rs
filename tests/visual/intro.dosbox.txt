@@ -1,0 +1,13 @@
+# DOSBox side of the intro scenario (tools/dosbox-capture.sh syntax, seconds):
+# BMP.BAT starts BMINTRO, the Software 2000 logo.
+# BMINTRO's main loop waits until the vertical retrace is active, so its speed
+# depends on the CPU: at "cycles max" the whole animation is over before the
+# first shot. At 1000 fixed cycles one iteration takes longer than the retrace
+# pulse and shorter than a frame, so DOSBox runs one iteration per frame, like the
+# port (see docs/re/logic/intro.md).
+# cycles: fixed 1000
+shot i01-reveal
+wait 0.5
+shot i02-gradient
+wait 3
+shot i03-logo

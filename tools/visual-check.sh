@@ -9,6 +9,8 @@
 # read from the "# seed: <n>" line of the port script; it has to be recovered once
 # for a new reference set when the scenario depends on random data. A "# seed2: <n>"
 # line fixes the second seed, read when a new game starts.
+# A "# cycles: <setting>" line in the DOSBox script sets DOSBox's CPU speed for its
+# capture (e.g. "fixed 1000" for the CPU-paced intro; default max).
 # The port runs on a temporary copy of $BMP_DATA, so scenarios may save. A
 # "# compare-file: <name>" line compares the file <name> the port wrote with the
 # one the original wrote (fetched into the reference directory) byte for byte.
@@ -26,7 +28,9 @@ status=0
 for name in "${names[@]}"; do
   ref="$HOLDOUT/visual/$name"
   if [ ! -d "$ref" ]; then
-    tools/dosbox-capture.sh "$ref" "tests/visual/$name.dosbox.txt"
+    cycles=$(sed -n 's/^# cycles: *//p' "tests/visual/$name.dosbox.txt")
+    DOSBOX_CYCLES=${cycles:-${DOSBOX_CYCLES:-max}} \
+      tools/dosbox-capture.sh "$ref" "tests/visual/$name.dosbox.txt"
   fi
   out=$(mktemp -d)
   data=$(mktemp -d)
