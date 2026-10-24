@@ -11,6 +11,7 @@ use bmp_game::runtime::Runtime;
 use bmp_game::season::{GameOver, SeasonEndEvent, SeasonUi, SpecialDate, Title};
 use bmp_game::state::GameState;
 
+use super::cup_screens::DrawBoard;
 use super::disk::{HighscoreMode, highscore_load, highscore_screen};
 use super::live_match::LiveView;
 use super::office::{self, OfficeBitmaps};
@@ -40,6 +41,8 @@ pub struct ScreenSeason<'a> {
     /// Glyph widths of game font 2 for [`SeasonUi::news_env`].
     text_width: Box<TextWidth>,
     pub(crate) live: LiveView,
+    /// The cup draw screen.
+    draw: DrawBoard,
 }
 
 impl<'a> ScreenSeason<'a> {
@@ -67,6 +70,7 @@ impl<'a> ScreenSeason<'a> {
             fmt_lent: false,
             text_width,
             live: LiveView::default(),
+            draw: DrawBoard::default(),
         }
     }
 
@@ -172,7 +176,7 @@ impl SeasonUi for ScreenSeason<'_> {
     fn championship_winner(&mut self, state: &GameState, m: u8) -> Result<(), Quit> {
         self.check()?;
         let auto = self.session.auto_play;
-        super::live_match::screen_title_winner(self.host, state, m, auto)
+        super::live_match::screen_title_winner(self.host, state, m, 0, auto)
     }
 
     fn clear_screen(&mut self) {
@@ -197,9 +201,38 @@ impl SeasonUi for ScreenSeason<'_> {
         self.check()
     }
 
-    fn ask_draw(&mut self, _cup: u8) -> bool {
-        // TODO(#15): the "An Alle ... AUSLOSUNG BEIWOHNEN ?" question and the draw screens.
-        false
+    fn ask_draw(&mut self, cup: u8) -> bool {
+        if self.quitting() {
+            return false;
+        }
+        let auto = self.session.auto_play;
+        let r = self.draw.ask(self.host, auto, cup);
+        r.unwrap_or_else(|q| {
+            self.quit = Some(q);
+            false
+        })
+    }
+
+    fn draw_slot(&mut self, state: &GameState, cup: u8, slot: u8, team: u8) {
+        if !self.quitting() {
+            let r = self.draw.animate_slot(self.host, state, cup, slot, team);
+            self.keep(r);
+        }
+    }
+
+    fn draw_close(&mut self, state: &mut GameState, cup: u8) {
+        if !self.quitting() {
+            let r = self.draw.close(self.host, self.session, state, cup);
+            self.keep(r);
+        }
+    }
+
+    fn cup_winner(&mut self, state: &GameState, m: u8, comp: u8) {
+        if !self.quitting() {
+            let auto = self.session.auto_play;
+            let r = super::live_match::screen_title_winner(self.host, state, m, comp, auto);
+            self.keep(r);
+        }
     }
 
     fn forfeit_penalty(&mut self, _state: &GameState, _m: u8) {

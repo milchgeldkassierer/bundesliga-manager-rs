@@ -351,6 +351,8 @@ Notes for bit-exactness:
   German qualifier.
 * A German qualifier can be drawn into a slot already holding another German qualifier only if the foreign
   check passes, i.e. never; two qualifiers can face each other.
+* A human manager's slot skips only the retry loop: `cup_draw_animate_slot` still runs for it, so a shown
+  DFB-Pokal draw animates all 32 slots in slot order (checked against DOSBox, scenario `cup_draw`).
 
 ### 3.2 `euro_cup_qualifiers_build` 27c2:0ef2
 
@@ -654,7 +656,11 @@ draw_label_at(x, y):
     vga_wait_vretrace(); fill_rect_planar(0x140, 0xf0, x-2, y, 0x78, 0x0e, 2)
 ```
 
-All blits use minterm 0xc0. No RNG.
+All blits use minterm 0xc0. No RNG. `fast` is the sticky "left click seen" flag of the draw loop: the
+loop polls the mouse once before each slot, so the label in flight when the player clicks still completes
+its animation and every later label is drawn at its place at once. The drum rise takes
+`(12 + 11 + ... + 6) / 3` = 19 timer ticks (`delay_ticks` divides by 3); the flight draws the label on every
+second step, each after a vertical retrace (verified frame-exactly against DOSBox in scenario `cup_draw`).
 
 ### 5.3 `cup_draw_screen_close(i8 c)` 27c2:089a
 

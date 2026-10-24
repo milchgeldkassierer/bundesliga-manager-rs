@@ -1377,8 +1377,18 @@ pub trait SeasonUi {
     /// (highscore_screen, mode 0) and 2a58:000c (game_end_screen)
     fn game_end(&mut self, state: &GameState, table: &HighScoreTable) -> Result<(), Self::Stop>;
 
-    /// The "An Alle … AUSLOSUNG BEIWOHNEN ?" question of cup row `cup`'s draw.
+    /// The "An Alle … AUSLOSUNG BEIWOHNEN ?" question of cup row `cup`'s draw
+    /// ([`cups::CupDrawUi::ask`]).
     fn ask_draw(&mut self, cup: u8) -> bool;
+
+    /// A club drawn into a slot of a shown cup draw ([`cups::CupDrawUi::animate_slot`]).
+    fn draw_slot(&mut self, _state: &GameState, _cup: u8, _slot: u8, _team: u8) {}
+
+    /// The end of a shown cup draw ([`cups::CupDrawUi::close`]).
+    fn draw_close(&mut self, _state: &mut GameState, _cup: u8) {}
+
+    /// Manager `m`'s club won the cup final of `comp` ([`cups::CupDrawUi::title_winner`]).
+    fn cup_winner(&mut self, _state: &GameState, _m: u8, _comp: u8) {}
 
     /// Manager `m`'s match is lost because their club cannot field a team ("Ihr Spiel wird mit 0:2
     /// gewertet").
@@ -1500,6 +1510,27 @@ pub trait SeasonUi {
     fn ticker_event_end(&mut self, _state: &GameState, _rt: &Runtime, _event: &TickerEvent) {}
 }
 
+/// The cup draw screens of the season loop.
+struct SeasonDraws<'a, U: SeasonUi + ?Sized>(&'a mut U);
+
+impl<U: SeasonUi + ?Sized> cups::CupDrawUi for SeasonDraws<'_, U> {
+    fn ask(&mut self, cup: u8) -> bool {
+        self.0.ask_draw(cup)
+    }
+
+    fn animate_slot(&mut self, state: &GameState, cup: u8, slot: u8, team: u8) {
+        self.0.draw_slot(state, cup, slot, team);
+    }
+
+    fn close(&mut self, state: &mut GameState, cup: u8) {
+        self.0.draw_close(state, cup);
+    }
+
+    fn title_winner(&mut self, state: &GameState, m: u8, comp: u8) {
+        self.0.cup_winner(state, m, comp);
+    }
+}
+
 /// The match engine's hooks of the season loop.
 struct SeasonHooks<'a, U: SeasonUi + ?Sized>(&'a mut U);
 
@@ -1607,7 +1638,7 @@ impl<U: SeasonUi + ?Sized> MatchHooks for SeasonHooks<'_, U> {
         rng: &mut Rng,
         euro: u8,
     ) {
-        cups::cup_round_complete(state, rt, rng, euro, &mut |c| self.0.ask_draw(c));
+        cups::cup_round_complete(state, rt, rng, euro, &mut SeasonDraws(&mut *self.0));
     }
 
     fn match_rate_players_and_newspaper(
@@ -1992,7 +2023,7 @@ fn season_final<U: SeasonUi + ?Sized>(
     }
     cups::cup_clear_match_goals(state);
     // UI: office_free_bitmaps(3) 18bc:02ef and office_load_bitmaps(3) 18bc:034d around the draws.
-    let ask = &mut |c| ui.ask_draw(c);
+    let ask = &mut SeasonDraws(ui);
     for cup in 0..4 {
         cups::cup_draw_first_round(state, rt, rng, cup, false, ask);
     }
@@ -4538,7 +4569,7 @@ mod tests {
             manager_compute_wage_budget(&mut want, &mut want_rng, m);
         }
         cups::cup_clear_match_goals(&mut want);
-        let ask = &mut |_| false;
+        let ask = &mut |_: u8| false;
         for cup in 0..4 {
             cups::cup_draw_first_round(&mut want, &want_rt, &mut want_rng, cup, false, ask);
         }

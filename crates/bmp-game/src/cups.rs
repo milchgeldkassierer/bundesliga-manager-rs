@@ -21,16 +21,18 @@
 //!     cups::cup_check_ties_extra_time(state, rt, rng, self, cup_mask, count, shootout)
 //! }
 //! fn cup_round_complete(&mut self, state, rt, rng, euro) {
-//!     cups::cup_round_complete(state, rt, rng, euro, &mut |cup| self.watch_draw(cup))
+//!     cups::cup_round_complete(state, rt, rng, euro, &mut self.draw_screens)
 //! }
 //! ```
 //!
 //! Whether a draw is shown changes the logic (the amateur home rule of
 //! [`cup_draw_next_round`]), and for most rounds the original asks the players first. The
-//! draws therefore take an `ask` callback: it receives the cup row and answers the dialog
-//! "MÖCHTEN SIE DEM UNÜBERTROFFENEM SCHAUSPIEL ... AUSLOSUNG BEIWOHNEN ?" (false under
-//! automatic play, DS:05d4). The copy-protection check of the draw screen is taken as passed,
-//! so it draws no random number (cups.md §1). The screens themselves (§5..§7) are not here.
+//! draws therefore take a [`CupDrawUi`]: its [`CupDrawUi::ask`] receives the cup row and
+//! answers the dialog "MÖCHTEN SIE DEM UNÜBERTROFFENEM SCHAUSPIEL ... AUSLOSUNG BEIWOHNEN ?"
+//! (false under automatic play, DS:05d4); a plain `FnMut(u8) -> bool` is such a hook. Its other
+//! methods are the screens (§5, §7), called where the original calls them and no-ops by
+//! default; they draw no random numbers. The copy-protection check of the draw screen is
+//! taken as passed, so it draws no random number either (cups.md §1).
 //!
 //! Call order at a season change (`season_main_loop`, #31): play-off, then
 //! [`season_promotion_relegation`], [`league_shuffle_teams`], [`euro_cup_qualifiers_build`];
@@ -197,12 +199,48 @@ pub fn cup_tie_winner(state: &GameState, cup: u8, slot: u8) -> u8 {
     0
 }
 
+/// The screens of the cup draws (cups.md §5) and of a won cup final (§7). The logic calls them
+/// where the original does; none of them may touch the random generator.
+pub trait CupDrawUi {
+    /// The office background with the cup name and the question "An Alle: MÖCHTEN SIE DEM
+    /// UNÜBERTROFFENEM SCHAUSPIEL EINER DFB-POKAL-/EUROPA-POKAL- AUSLOSUNG BEIWOHNEN ?" of cup
+    /// row `cup`'s draw. On "yes" the draw board is shown; on "no" (and under automatic play)
+    /// the screen is cleared (`cup_draw_screen_close` with FAR:57c8 = 0).
+    ///
+    /// Origin: BMMAIN.EXE 27c2:0006 (cup_draw_screen_open), the screen
+    fn ask(&mut self, cup: u8) -> bool;
+
+    /// The club `team` drawn into slot `slot` of a shown draw (`state.event_state[cup]` is the
+    /// round being drawn).
+    ///
+    /// Origin: BMMAIN.EXE 27c2:0378 (cup_draw_animate_slot)
+    fn animate_slot(&mut self, _state: &GameState, _cup: u8, _slot: u8, _team: u8) {}
+
+    /// The end of a shown draw: "TASTE DRÜCKEN" when the board was shown, then the new
+    /// pairings (`screen_cup_matches`, which overwrites the date globals).
+    ///
+    /// Origin: BMMAIN.EXE 27c2:089a (cup_draw_screen_close)
+    fn close(&mut self, _state: &mut GameState, _cup: u8) {}
+
+    /// Manager `m`'s club won the final of competition `comp` (1 = DFB-Pokal, 2..4 = European
+    /// cups 1..3).
+    ///
+    /// Origin: BMMAIN.EXE 27c2:274d (screen_title_winner)
+    fn title_winner(&mut self, _state: &GameState, _m: u8, _comp: u8) {}
+}
+
+impl<F: FnMut(u8) -> bool> CupDrawUi for F {
+    fn ask(&mut self, cup: u8) -> bool {
+        self(cup)
+    }
+}
+
 /// Whether the draw of cup row `cup` is shown (FAR:57c8): never when the settings switch it
 /// off (DS:0608 for the DFB-Pokal, DS:0609 for the European cups), always for the DFB-Pokal
 /// final draw, otherwise as the players answer `ask(cup)`.
 ///
 /// Origin: BMMAIN.EXE 27c2:0006 (cup_draw_screen_open), without the screen
-pub fn cup_draw_screen_open(state: &GameState, cup: u8, ask: &mut dyn FnMut(u8) -> bool) -> bool {
+pub fn cup_draw_screen_open(state: &GameState, cup: u8, ui: &mut dyn CupDrawUi) -> bool {
     if state.options[SHOW_DRAW_OPTION + usize::from(cup != 0)] == 0 {
         return false;
     }
@@ -210,8 +248,7 @@ pub fn cup_draw_screen_open(state: &GameState, cup: u8, ask: &mut dyn FnMut(u8) 
     if cup == 0 && teams < 4 {
         return true;
     }
-    // UI: the cup name on the office background, then the dialog.
-    ask(cup)
+    ui.ask(cup)
 }
 
 /// Draws the first round of cup row `cup`, or with `redisplay` only shows an existing
@@ -232,13 +269,13 @@ pub fn cup_draw_first_round(
     rng: &mut Rng,
     cup: u8,
     redisplay: bool,
-    ask: &mut dyn FnMut(u8) -> bool,
+    ui: &mut dyn CupDrawUi,
 ) {
     let c = usize::from(cup);
+    let mut shown = false;
     state.event_state[c] = 0;
     if cup == 0 || redisplay {
-        // Being shown only animates this draw.
-        cup_draw_screen_open(state, cup, ask);
+        shown = cup_draw_screen_open(state, cup, ui);
     }
     if cup == 0 || !redisplay {
         let euro = cup != 0;
@@ -271,22 +308,26 @@ pub fn cup_draw_first_round(
             }
         }
         for i in 0..32u8 {
-            if cup == 0 && human_slot[..managers].contains(&i) {
-                continue;
-            }
-            loop {
-                let t = rng.random_range(lo.into(), hi.into()) as u8;
-                slots_mut(state, cup)[usize::from(i)] = t;
-                let drawn = compared.clone().any(|j| {
-                    let lim = if j == cup { usize::from(i) } else { 32 };
-                    slots(state, j)[..lim].contains(&t)
-                });
-                let managed = state.active_managers().iter().any(|m| m.team == t);
-                if !drawn && !managed {
-                    break;
+            // A human manager's slot keeps its club but is animated like the others.
+            let human = cup == 0 && human_slot[..managers].contains(&i);
+            if !human {
+                loop {
+                    let t = rng.random_range(lo.into(), hi.into()) as u8;
+                    slots_mut(state, cup)[usize::from(i)] = t;
+                    let drawn = compared.clone().any(|j| {
+                        let lim = if j == cup { usize::from(i) } else { 32 };
+                        slots(state, j)[..lim].contains(&t)
+                    });
+                    let managed = state.active_managers().iter().any(|m| m.team == t);
+                    if !drawn && !managed {
+                        break;
+                    }
                 }
             }
-            // UI: cup_draw_animate_slot for a shown DFB-Pokal draw.
+            if cup == 0 && shown {
+                let team = slots(state, 0)[usize::from(i)];
+                ui.animate_slot(state, 0, i, team);
+            }
         }
         if cup == 0 {
             amateur_home_swaps(state, rt, 32);
@@ -314,8 +355,16 @@ pub fn cup_draw_first_round(
             }
         }
     }
-    // UI: a shown European draw is animated here and the screen closed.
+    if cup != 0 && shown {
+        for i in 0..32u8 {
+            let team = slots(state, cup)[usize::from(i)];
+            ui.animate_slot(state, cup, i, team);
+        }
+    }
     state.event_state[c] = 1;
+    if shown {
+        ui.close(state, cup);
+    }
 }
 
 /// Builds the German qualifiers of the European cups from the final tables
@@ -480,7 +529,7 @@ pub fn cup_draw_next_round(
     rt: &Runtime,
     rng: &mut Rng,
     cup: u8,
-    ask: &mut dyn FnMut(u8) -> bool,
+    ui: &mut dyn CupDrawUi,
 ) {
     let c = usize::from(cup);
     let round = state.event_state[c];
@@ -491,7 +540,7 @@ pub fn cup_draw_next_round(
     if cup != 0 {
         state.cup_first_leg_goals = [0; 96];
     }
-    let shown = cup_draw_screen_open(state, cup, ask);
+    let shown = cup_draw_screen_open(state, cup, ui);
     state.event_state[c] = round.wrapping_add(1);
     let row = slots_mut(state, cup);
     for i in 0..usize::from(n).min(16) {
@@ -504,12 +553,15 @@ pub fn cup_draw_next_round(
     }
     if shown {
         state.event_state[c] = round;
-        // UI: cup_draw_animate_slot for each of the `n` slots.
+        for i in 0..n {
+            let team = slots(state, cup)[usize::from(i)];
+            ui.animate_slot(state, cup, i, team);
+        }
         if cup == 0 {
             amateur_home_swaps(state, rt, n);
         }
         state.event_state[c] = round.wrapping_add(1);
-        // UI: cup_draw_screen_close.
+        ui.close(state, cup);
     }
     if cup == 0 {
         amateur_home_swaps(state, rt, n);
@@ -535,7 +587,7 @@ pub fn cup_round_complete(
     rt: &Runtime,
     rng: &mut Rng,
     euro: u8,
-    ask: &mut dyn FnMut(u8) -> bool,
+    ui: &mut dyn CupDrawUi,
 ) {
     let n2 = usize::from(round_pairings(state.event_state[usize::from(euro != 0)]) << 1);
     let managers = state.active_managers().len();
@@ -580,7 +632,10 @@ pub fn cup_round_complete(
                     } else {
                         0
                     };
-                    // UI: screen_title_winner when a human manager's club won.
+                    let r = state.manager_index_of_team(winner, 0xff);
+                    if r != 0 {
+                        ui.title_winner(state, r - 1, cup + 1);
+                    }
                     slots_mut(state, cup)[..2].copy_from_slice(&final_pair);
                 }
             }
@@ -610,7 +665,10 @@ pub fn cup_round_complete(
         if n2 == 2 {
             state.winner_07ac = decided.0.wrapping_add(1);
             state.dfb_cup_runner_up = decided.1.wrapping_add(1);
-            // UI: screen_title_winner when a human manager's club won.
+            let r = state.manager_index_of_team(slots(state, 0)[0], 0xff);
+            if r != 0 {
+                ui.title_winner(state, r - 1, 1);
+            }
             slots_mut(state, 0)[..2].copy_from_slice(&final_pair);
         }
     }
@@ -627,7 +685,7 @@ pub fn cup_round_complete(
     let cups = if euro != 0 { 1..4 } else { 0..1 };
     for cup in cups {
         if playing && (cup == 0 || state.euro_second_leg_pending[usize::from(cup) - 1] == 0) {
-            cup_draw_next_round(state, rt, rng, cup, ask);
+            cup_draw_next_round(state, rt, rng, cup, ui);
         }
     }
 }
@@ -1220,6 +1278,152 @@ mod tests {
         assert_eq!(finalists, [10, 13]);
         assert_eq!(draws(start, rng), 40);
         assert_eq!((s.winner_07ac, s.dfb_cup_runner_up), (0, 0));
+    }
+
+    /// Records the screen hooks of the draws.
+    #[derive(Default)]
+    struct DrawLog {
+        answer: bool,
+        asked: Vec<u8>,
+        /// (cup, slot, team, round counter while animating)
+        slots: Vec<(u8, u8, u8, u8)>,
+        closed: Vec<(u8, u8)>,
+        winners: Vec<(u8, u8)>,
+    }
+
+    impl CupDrawUi for DrawLog {
+        fn ask(&mut self, cup: u8) -> bool {
+            self.asked.push(cup);
+            self.answer
+        }
+        fn animate_slot(&mut self, state: &GameState, cup: u8, slot: u8, team: u8) {
+            self.slots
+                .push((cup, slot, team, state.event_state[usize::from(cup)]));
+        }
+        fn close(&mut self, state: &mut GameState, cup: u8) {
+            self.closed.push((cup, state.event_state[usize::from(cup)]));
+        }
+        fn title_winner(&mut self, _: &GameState, m: u8, comp: u8) {
+            self.winners.push((m, comp));
+        }
+    }
+
+    #[test]
+    fn shown_first_round_animates_every_slot_with_the_same_draws() {
+        let rt = Runtime::default();
+        let setup = || {
+            let mut s = GameState::zeroed();
+            s.manager_count = 1;
+            s.managers[0].team = 5;
+            s.options[SHOW_DRAW_OPTION] = 1;
+            s
+        };
+        let mut plain = setup();
+        let mut rng_plain = Rng::new(7);
+        cup_draw_first_round(&mut plain, &rt, &mut rng_plain, 0, false, &mut |_: u8| {
+            false
+        });
+        let mut shown = setup();
+        let mut rng_shown = Rng::new(7);
+        let mut log = DrawLog {
+            answer: true,
+            ..Default::default()
+        };
+        cup_draw_first_round(&mut shown, &rt, &mut rng_shown, 0, false, &mut log);
+        assert_eq!(rng_shown, rng_plain, "watching draws no random number");
+        assert_eq!(shown, plain);
+        assert_eq!(log.asked, [0]);
+        // Every slot in order, the human club's too, before the amateur rule; round 0.
+        assert_eq!(log.slots.len(), 32);
+        assert!(
+            log.slots
+                .iter()
+                .enumerate()
+                .all(|(i, x)| x.1 == i as u8 && x.3 == 0)
+        );
+        assert!(log.slots.iter().any(|x| x.2 == 5));
+        let mut teams: Vec<u8> = log.slots.iter().map(|x| x.2).collect();
+        let mut row = slots(&shown, 0).to_vec();
+        teams.sort();
+        row.sort();
+        assert_eq!(teams, row);
+        assert_eq!(log.closed, [(0, 1)]);
+
+        // Declined: no animation and no close.
+        let mut log = DrawLog::default();
+        cup_draw_first_round(&mut setup(), &rt, &mut Rng::new(7), 0, false, &mut log);
+        assert_eq!(
+            (log.asked.len(), log.slots.len(), log.closed.len()),
+            (1, 0, 0)
+        );
+    }
+
+    #[test]
+    fn shown_euro_redisplay_animates_the_existing_draw() {
+        let rt = Runtime::default();
+        let mut s = GameState::zeroed();
+        s.options[SHOW_DRAW_OPTION + 1] = 1;
+        for (i, t) in slots_mut(&mut s, 2).iter_mut().enumerate() {
+            *t = 64 + i as u8;
+        }
+        let before = slots(&s, 2).to_vec();
+        let mut rng = Rng::new(3);
+        let mut log = DrawLog {
+            answer: true,
+            ..Default::default()
+        };
+        cup_draw_first_round(&mut s, &rt, &mut rng, 2, true, &mut log);
+        assert_eq!(rng, Rng::new(3));
+        assert_eq!(slots(&s, 2), before);
+        let teams: Vec<u8> = log.slots.iter().map(|x| x.2).collect();
+        assert_eq!(teams, before);
+        assert_eq!(log.closed, [(2, 1)]);
+    }
+
+    #[test]
+    fn shown_next_round_animates_with_the_old_round_counter() {
+        let rt = Runtime::default();
+        let mut s = GameState::zeroed();
+        s.options[SHOW_DRAW_OPTION] = 1;
+        s.event_state[0] = 2;
+        for i in 0..8 {
+            slots_mut(&mut s, 0)[2 * i] = i as u8;
+        }
+        let mut log = DrawLog {
+            answer: true,
+            ..Default::default()
+        };
+        cup_draw_next_round(&mut s, &rt, &mut Rng::new(5), 0, &mut log);
+        assert_eq!(log.slots.len(), 8);
+        assert!(log.slots.iter().all(|x| x.3 == 2));
+        assert_eq!(log.closed, [(0, 3)]);
+    }
+
+    #[test]
+    fn won_finals_show_the_title_screen() {
+        let rt = Runtime::default();
+        let mut s = GameState::zeroed();
+        s.manager_count = 2;
+        s.managers[1].team = 11;
+        s.event_state[0] = 5;
+        slots_mut(&mut s, 0)[..2].copy_from_slice(&[10, 11]);
+        goals_mut(&mut s, 0)[..2].copy_from_slice(&[0, 2]);
+        let mut log = DrawLog::default();
+        cup_round_complete(&mut s, &rt, &mut Rng::new(9), 0, &mut log);
+        assert_eq!(log.winners, [(1, 1)]);
+        assert!(log.asked.is_empty());
+
+        // European cup 2, return leg of the final won by manager 0's club.
+        let mut s = GameState::zeroed();
+        s.manager_count = 1;
+        s.managers[0].team = 3;
+        s.event_state[1] = 5;
+        s.euro_second_leg_pending = [1; 3];
+        slots_mut(&mut s, 2)[..2].copy_from_slice(&[3, 70]);
+        goals_mut(&mut s, 2)[..2].copy_from_slice(&[2, 0]);
+        let mut log = DrawLog::default();
+        cup_round_complete(&mut s, &rt, &mut Rng::new(9), 0x0d, &mut log);
+        assert!(log.winners.contains(&(0, 3)), "{:?}", log.winners);
     }
 
     #[test]

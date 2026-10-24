@@ -12,8 +12,8 @@ use bmp_formats::mana::ManaDat;
 
 use crate::ai::{league_strength_drift, squad_recalc_team_strength};
 use crate::cups::{
-    cup_clear_match_goals, cup_draw_first_round, euro_cup_qualifiers_build, league_shuffle_teams,
-    round_pairings,
+    CupDrawUi, cup_clear_match_goals, cup_draw_first_round, euro_cup_qualifiers_build,
+    league_shuffle_teams, round_pairings,
 };
 use crate::finance::interest_rates_update;
 use crate::rng::{Rng, ldiv, lmul};
@@ -69,11 +69,12 @@ pub trait CupInit {
     fn after_pool_assignment(&mut self, state: &mut GameState, rt: &mut Runtime, rng: &mut Rng);
 }
 
-/// The cup draws of the original. `ask` answers the "An Alle … AUSLOSUNG BEIWOHNEN ?" question
-/// of a cup row's draw (see [`crate::cups::cup_draw_screen_open`]).
-pub struct CupDraws<F: FnMut(u8) -> bool>(pub F);
+/// The cup draws of the original, shown through the draw screens `U` (a plain
+/// `FnMut(u8) -> bool` answers only the "An Alle … AUSLOSUNG BEIWOHNEN ?" question, see
+/// [`crate::cups::cup_draw_screen_open`]).
+pub struct CupDraws<U: CupDrawUi>(pub U);
 
-impl<F: FnMut(u8) -> bool> CupInit for CupDraws<F> {
+impl<U: CupDrawUi> CupInit for CupDraws<U> {
     fn before_start_menu(&mut self, state: &mut GameState, rt: &mut Runtime, rng: &mut Rng) {
         euro_cup_qualifiers_build(state, rt);
         cup_clear_match_goals(state);

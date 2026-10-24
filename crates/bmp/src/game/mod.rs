@@ -197,10 +197,14 @@ pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, 
     host.voice_init()?;
     let mana = load_mana(host)?;
     let mut session = Session::new(Rng::default());
-    // TODO(#15): the "An Alle" draw questions and the draw screens are not shown; every
-    // question is answered "no".
-    let mut cups = CupDraws(|_| false);
-    let mut world = newgame::startup(&mana, &mut session.rt, &mut session.rng, time, &mut cups);
+    // The European draws before the start menu show no screen.
+    let mut world = newgame::startup(
+        &mana,
+        &mut session.rt,
+        &mut session.rng,
+        time,
+        &mut CupDraws(|_: u8| false),
+    );
     load_main_pictures(host)?;
     let pics = start_menu::Pictures::load(host)?;
     // The 32x23 picture of icon code 0x23, cut from the icon sheet.
@@ -229,15 +233,19 @@ pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, 
                 host.g.free(icons);
             }
             let time2 = time2.unwrap_or_else(time_now);
+            // The draw screens borrow the session; the logic holds its generator and runtime.
+            let mut rt = std::mem::take(&mut session.rt);
+            let mut rng = std::mem::take(&mut session.rng);
+            let mut draws = CupDraws(cup_screens::DrawScreens::new(host, &mut session));
             newgame::new_game(
-                &mut world,
-                &mut session.rt,
-                &mut session.rng,
-                &mana,
-                &choices,
-                time2,
-                &mut cups,
+                &mut world, &mut rt, &mut rng, &mana, &choices, time2, &mut draws,
             );
+            let quit = draws.0.quit.take();
+            session.rt = rt;
+            session.rng = rng;
+            if let Some(q) = quit {
+                return Ok(Err(q));
+            }
             (world, false)
         }
         start_menu::Outcome::LoadGame(state) => (*state, true),

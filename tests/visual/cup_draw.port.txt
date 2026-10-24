@@ -1,0 +1,58 @@
+# Port side of the cup draw scenario (bmp run --script syntax, milliseconds): a new
+# game as in new_game, then the draw question of the DFB-Pokal answered "ABER KLAR",
+# the draw board with the third label rising out of the drum, a click that places the
+# remaining labels at once, "TASTE DRÜCKEN", the pairings of the first round, the
+# Champions' Cup question answered "ABER KLAR" and hurried at once, its pairings, the
+# other two European draws declined, and the office.
+# Seed 1 was recovered from the carousel (three 16-bit seeds give it), seed 2 from the
+# original's DFB-Pokal board (the human club's slot and the first ten clubs; only seed 1
+# 1669 has a seed 2 that produces them). The wait before d02 is tuned to the
+# reference's label (third label, ten steps into its flight): the animation is timed by
+# the vertical retrace and the timer ticks like the original.
+# seed: 1669
+# seed2: 1683
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 40 220
+wait 200
+type adi
+key enter
+wait 200
+click 40 120
+wait 300
+shot d00-manager
+rclick 160 120
+wait 500
+rclick 160 120
+wait 2000
+shot d01-question
+click 115 166
+wait 7570
+shot d02-drawing
+click 160 120
+wait 3000
+shot d03-drawn
+click 160 120
+wait 1500
+shot d04-pairings
+click 293 213
+wait 2000
+shot d05-euro-question
+click 115 166
+wait 2500
+click 160 120
+wait 4000
+shot d06-euro-drawn
+click 160 120
+wait 1500
+shot d07-euro-pairings
+click 293 213
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 4000
+shot d08-office

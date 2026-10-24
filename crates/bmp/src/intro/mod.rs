@@ -23,7 +23,7 @@ pub const REFRESH_HZ: f64 = 25_175_000.0 / (800.0 * 449.0);
 /// the port runs exactly one iteration per refresh.
 ///
 /// Origin: BMINTRO.EXE 0000:0bbb (VGA path 0000:0be4)
-fn wait_vretrace(host: &mut Host) -> Run<()> {
+pub(crate) fn wait_vretrace(host: &mut Host) -> Run<()> {
     let frame = |host: &Host| (host.now_secs() * REFRESH_HZ).floor() as u64;
     let start = frame(host);
     while frame(host) == start {

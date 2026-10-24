@@ -4,13 +4,13 @@
 //! `docs/re/logic/cups.md` §6.
 //!
 //! The cup data (draws, results, rounds) is [`bmp_game::cups`]; this module
-//! ports the list layout, its drawing and the input handling.
-//!
-//! TODO(#31): the draw screen (§5, `cup_draw_screen_open` 27c2:0006 and the
-//! label animation) and `screen_title_winner` (§7, 27c2:274d) are reached from
-//! the season loop (match days, season start), not from the office.
+//! ports the list layout, its drawing and the input handling, and the draw
+//! screen (§5): the question, the draw board with the labels rising out of the
+//! drum and the new pairings ([`DrawBoard`], reached through
+//! [`bmp_game::cups::CupDrawUi`] from the new game and the season loop).
+//! `screen_title_winner` (§7) is [`super::live_match::screen_title_winner`].
 
-use bmp_game::cups::CUP_ROUND_PAIRINGS;
+use bmp_game::cups::{CUP_ROUND_PAIRINGS, CupDrawUi};
 use bmp_game::rng::NumberFormat;
 use bmp_game::season::calendar_compute_date;
 use bmp_game::state::GameState;
@@ -20,10 +20,13 @@ use super::tables::{
     LEAGUE_NAMES, cat, centered, club_name, icon, league_tier_of_team, line, num, panel,
     screen_opponent_info, text_at,
 };
-use super::widgets::ui_wait_right_click_button;
-use super::{GAME_OPTION_A, GAME_OPTION_B, Session, append_ordinal_suffix, text_to_upper_de};
-use crate::gfx::Ui;
-use crate::host::{Host, Run};
+use super::widgets::{dialog_two_choice, input_wait_click, ui_wait_right_click_button};
+use super::{
+    GAME_OPTION_A, GAME_OPTION_B, Session, append_ordinal_suffix, office_show_cached_background,
+    text_to_upper_de,
+};
+use crate::gfx::{BitmapId, Gfx, RastPort, Ui, ui_draw_text_centered_shadow};
+use crate::host::{Host, LEFT_DOWN, Quit, Run};
 
 /// `DS:0654[1..6]`, `DS:065c[1..6]`: tier-pair categories `tierA + 8 * tierB` of
 /// the DFB-Pokal groups (both orientations); index 0 is unused.
@@ -377,9 +380,371 @@ pub fn screen_cup_matches(
     Ok(())
 }
 
+/// `DS:269c`, `DS:4da0`, `DS:4d7c[10]`, `DS:4d7c[26]`, `DS:4d7c[0x17]`, `DS:4ddc`, `DS:4de0`:
+/// the draw question (`"]"` is Ü, `"|"` Ö in the game font).
+const ASK_TITLE: &[u8] = b"An Alle:";
+const ASK_LINE1: &[u8] = b"M|CHTEN SIE DEM UN]BERTROFFENEM";
+const ASK_LINE2_DFB: &[u8] = b"SCHAUSPIEL EINER DFB-POKAL-";
+const ASK_LINE2_EURO: &[u8] = b"SCHAUSPIEL EINER EUROPA-POKAL-";
+const ASK_LINE3: &[u8] = b"AUSLOSUNG BEIWOHNEN ?";
+const ASK_YES: &[u8] = b"ABER KLAR";
+const ASK_NO: &[u8] = b"KEIN GEDANKE";
+/// `DS:26a0`.
+const PRESS_KEY: &[u8] = b"TASTE DR]CKEN";
+/// `DS:5356`: label colour of a DFB-Pokal club by `league_tier_of_team >> 1`.
+const TIER_COLORS: [u8; 3] = [0x00, 0x07, 0x1a];
+/// Colour of a German club's label in a European draw.
+const GERMAN_LABEL_COLOR: u8 = 0x12;
+/// `DS:5348`, `DS:534c`: board x of the labels of even and odd slots.
+const LABEL_X: [i16; 2] = [0x25, 0xa7];
+/// Where a label leaves the drum.
+const DRUM_X: i16 = 0x69;
+const DRUM_Y: i16 = 0xd1;
+/// Top left of the board backup `FAR:3058` on the screen.
+const BOARD_X: i16 = 0x16;
+const BOARD_Y: i16 = 0x1c;
+
+/// The bitmaps of an open draw board (`FAR:3058`, `FAR:6db4`, `FAR:3062`, `FAR:2ebe`).
+struct BoardBitmaps {
+    /// `FAR:3058` / `FAR:a6d0`: the board as it was before the current label.
+    backup: BitmapId,
+    /// `FAR:6db4` / `FAR:5158`: `PIC\48.VGA`, the drum lamps.
+    lamps: BitmapId,
+    /// `FAR:3062` / `FAR:a6d4`: the moving label over the board.
+    compose: BitmapId,
+    /// `FAR:2ebe` / `FAR:0174`: the label of the drawn club.
+    label: RastPort,
+}
+
+/// The draw screen of cup_draw_screen_open .. cup_draw_screen_close: `board` is
+/// `FAR:6db4 != NULL` (the player wanted to watch), `phase` the lamp phase `FAR:570e`, `fast`
+/// the click that places the remaining labels at once.
+#[derive(Default)]
+pub struct DrawBoard {
+    board: Option<BoardBitmaps>,
+    phase: i16,
+    fast: bool,
+    pointer_hidden: bool,
+}
+
+impl DrawBoard {
+    /// The question of cup row `cup`'s draw over the office background with the cup name.
+    /// On "ABER KLAR" the draw board is shown and `true` returned; otherwise the screen is
+    /// cleared (`cup_draw_screen_close` with `FAR:57c8 = 0`).
+    ///
+    /// Origin: BMMAIN.EXE 27c2:0006 (cup_draw_screen_open)
+    pub fn ask(&mut self, host: &mut Host, auto_play: bool, cup: u8) -> Run<bool> {
+        self.free(host);
+        self.fast = false;
+        office_show_cached_background(host)?;
+        host.set_font(3);
+        centered(
+            host,
+            CUP_NAMES[usize::from(cup & 3)],
+            0,
+            0x140,
+            0x14,
+            0x0b,
+            0,
+        );
+        // copy_protection_penalty: the protection is treated as passed.
+        host.screen_fade(1)?;
+        // DS:2252 == 3 would take DS:4d7c[0x1a] as the third line of a European draw.
+        let line2 = if cup != 0 {
+            ASK_LINE2_EURO
+        } else {
+            ASK_LINE2_DFB
+        };
+        let yes = !auto_play
+            && dialog_two_choice(
+                host, auto_play, ASK_TITLE, ASK_LINE1, line2, ASK_LINE3, ASK_YES, ASK_NO,
+            )? == 1;
+        if !yes {
+            host.g.rastport_clear(&host.rp, 0);
+            return Ok(false);
+        }
+        host.screen_fade(0)?;
+        let board = host.load_picture(0x2f).expect("PIC\\47.VGA");
+        let screen = host.screen();
+        host.g
+            .blit_bitmap(board, 0, 0, screen, 0x13, 0x1a, 0x11a, 0xcb);
+        host.g.free(board);
+        self.phase = 0;
+        let backup = host.blank_bitmap(0x113, 0xc6, 0);
+        let lamps = host.load_picture(0x30).expect("PIC\\48.VGA");
+        let compose = host.blank_bitmap(0x78, 0x0e, 0);
+        let mut label = RastPort::new(host.blank_bitmap(0x73, 9, 0));
+        Host::set_rastport_font(&mut label, 2);
+        Gfx::rastport_set_draw_mode(&mut label, 0);
+        self.board = Some(BoardBitmaps {
+            backup,
+            lamps,
+            compose,
+            label,
+        });
+        host.screen_fade(1)?;
+        Ok(true)
+    }
+
+    /// Club `team` drawn into slot `s`: its label rises out of the drum and moves to its
+    /// place on the board, or (after a click) appears there at once.
+    ///
+    /// Origin: BMMAIN.EXE 27c2:0378 (cup_draw_animate_slot), with the mouse poll of the
+    /// draw loops (27c2:09e0, 27c2:13a2)
+    pub fn animate_slot(
+        &mut self,
+        host: &mut Host,
+        state: &GameState,
+        cup: u8,
+        s: u8,
+        team: u8,
+    ) -> Run<()> {
+        if !self.pointer_hidden {
+            host.g.mouse_pointer_hide(0);
+            self.pointer_hidden = true;
+        }
+        if host.input_poll_mouse()? == LEFT_DOWN {
+            self.fast = true;
+        }
+        let r = CUP_ROUND_PAIRINGS
+            .get(usize::from(state.event_state[usize::from(cup & 3)]))
+            .copied()
+            .unwrap_or(0);
+        if cup == 0 && r < 4 {
+            return Ok(());
+        }
+        let Some(b) = &self.board else {
+            return Ok(());
+        };
+        let (backup, lamps, label) = (b.backup, b.lamps, b.label.bitmap);
+        let screen = host.screen();
+        host.g
+            .blit_bitmap(screen, BOARD_X, BOARD_Y, backup, 0, 0, 0x113, 0xc6);
+        let (text, color) = label_text(state, cup, team, host.number_format());
+        let lrp = &mut self.board.as_mut().expect("board").label;
+        host.g.rastport_clear(lrp, 0x0b);
+        ui_draw_text_centered_shadow(&mut host.g, lrp, &text, 2, 0x70, 5, color, 0xff);
+        let (tx, ty) = label_target(s, r);
+        let (mut x, mut y) = (DRUM_X, DRUM_Y);
+        if !self.fast {
+            for i in 0..7i16 {
+                self.phase += 2;
+                if self.phase == 8 {
+                    self.phase = 0;
+                }
+                crate::intro::wait_vretrace(host)?;
+                host.g.blit_bitmap(label, 0, 0, screen, x, y, 0x72, i + 1);
+                host.g
+                    .blit_bitmap(lamps, self.phase, 0, screen, 0x60, 0xd3, 2, 9);
+                host.g
+                    .blit_bitmap(lamps, self.phase, 0, screen, 0xe5, 0xd3, 2, 9);
+                host.delay_ticks(i32::from(12 - i))?;
+                y -= 1;
+            }
+            let mut toggle = false;
+            while !(y <= ty && x == tx) {
+                if !toggle {
+                    self.draw_label_at(host, x, y)?;
+                }
+                toggle = !toggle;
+                x += (tx - x).signum();
+                y += (ty - y).signum();
+            }
+        }
+        self.draw_label_at(host, tx, ty)
+    }
+
+    /// The label over the saved board at `(x, y)`, composed in VRAM page 1 and copied to
+    /// the visible page after the retrace.
+    ///
+    /// Origin: BMMAIN.EXE 27c2:0378 (cup_draw_animate_slot, inner part)
+    fn draw_label_at(&mut self, host: &mut Host, x: i16, y: i16) -> Run<()> {
+        let Some(b) = &self.board else {
+            return Ok(());
+        };
+        let (backup, compose, label) = (b.backup, b.compose, b.label.bitmap);
+        host.g.blit_bitmap(
+            backup,
+            x - (BOARD_X + 2),
+            y - BOARD_Y,
+            compose,
+            0,
+            0,
+            0x78,
+            0x0e,
+        );
+        host.g.blit_bitmap(label, 0, 0, compose, 2, 0, 0x71, 7);
+        host.g.vga_set_draw_page(2);
+        let screen = host.screen();
+        host.g
+            .blit_bitmap(compose, 0, 0, screen, x - 2, y, 0x78, 0x0e);
+        host.g.vga_set_draw_page(1);
+        crate::intro::wait_vretrace(host)?;
+        host.g
+            .vga_restore_rect_from_page(0x140, 0xf0, x - 2, y, 0x78, 0x0e, 2);
+        Ok(())
+    }
+
+    /// The end of a shown draw: "TASTE DRÜCKEN" and a click when the board was shown, then
+    /// the pairings of the new round (dated one week later), then a black screen.
+    ///
+    /// Origin: BMMAIN.EXE 27c2:089a (cup_draw_screen_close)
+    pub fn close(
+        &mut self,
+        host: &mut Host,
+        session: &mut Session,
+        state: &mut GameState,
+        cup: u8,
+    ) -> Run<()> {
+        if self.pointer_hidden {
+            host.g.mouse_pointer_show();
+            self.pointer_hidden = false;
+        }
+        if self.board.is_some() {
+            self.free(host);
+            host.set_font(2);
+            centered(host, PRESS_KEY, 0x5a, 0xed, 0xd9, 0x1d, 0);
+            input_wait_click(host, false)?;
+        }
+        office_show_cached_background(host)?;
+        state.season_week = state.season_week.wrapping_add(1);
+        let r = screen_cup_matches(host, session, state, cup, 0);
+        state.season_week = state.season_week.wrapping_sub(1);
+        r?;
+        host.g.rastport_clear(&host.rp, 0);
+        Ok(())
+    }
+
+    /// Frees the board bitmaps (`FAR:6db4 = NULL`).
+    fn free(&mut self, host: &mut Host) {
+        if let Some(b) = self.board.take() {
+            for bm in [b.lamps, b.backup, b.compose, b.label.bitmap] {
+                host.g.free(bm);
+            }
+        }
+    }
+}
+
+/// Text and colour of the label of club `team` in cup row `cup`'s draw: DFB-Pokal clubs
+/// carry their league `" (1)"`..`" (3)"` and its colour; in a European draw German clubs
+/// are colour 0x12 and foreign clubs 2..8 by their mean strength.
+///
+/// Origin: BMMAIN.EXE 27c2:0378 (cup_draw_animate_slot)
+pub fn label_text(state: &GameState, cup: u8, team: u8, fmt: NumberFormat) -> (Vec<u8>, u8) {
+    let mut buf = club_name(state, team);
+    let color = if cup == 0 {
+        let tier = league_tier_of_team(team) >> 1;
+        cat(&mut buf, b" (");
+        cat(&mut buf, &num(fmt, i32::from(tier) + 1));
+        cat(&mut buf, b")");
+        TIER_COLORS[usize::from(tier)]
+    } else if team < FIRST_FOREIGN {
+        GERMAN_LABEL_COLOR
+    } else {
+        let st = state.clubs[usize::from(team)].strength.map(i16::from);
+        let avg = (st[0] + st[1] + st[2]) / 3;
+        ((avg - 0x4b) * 7 / 20 + 2).clamp(2, 8) as u8
+    };
+    (buf, color)
+}
+
+/// Board position of the label of slot `s` in a draw of `r` clubs: pairs top down, the
+/// home club left, centred vertically on the board.
+///
+/// Origin: BMMAIN.EXE 27c2:0378 (cup_draw_animate_slot)
+pub fn label_target(s: u8, r: u8) -> (i16, i16) {
+    let x = LABEL_X[usize::from(s & 1)];
+    let y = i16::from(s & 0xfe) * 5 - ((i16::from(r & 0xfe) * 5) >> 1) + 0x76;
+    (x, y)
+}
+
+/// The cup draw screens outside the season loop (a new game): [`DrawBoard`] on the host;
+/// a quit is kept in `quit` (the logic cannot stop) and the screens are skipped after it.
+pub struct DrawScreens<'a> {
+    pub host: &'a mut Host,
+    pub session: &'a mut Session,
+    pub board: DrawBoard,
+    pub quit: Option<Quit>,
+}
+
+impl<'a> DrawScreens<'a> {
+    pub fn new(host: &'a mut Host, session: &'a mut Session) -> Self {
+        Self {
+            host,
+            session,
+            board: DrawBoard::default(),
+            quit: None,
+        }
+    }
+
+    fn keep<T>(&mut self, r: Run<T>, default: T) -> T {
+        r.unwrap_or_else(|q| {
+            self.quit = Some(q);
+            default
+        })
+    }
+}
+
+impl CupDrawUi for DrawScreens<'_> {
+    fn ask(&mut self, cup: u8) -> bool {
+        if self.quit.is_some() {
+            return false;
+        }
+        let auto = self.session.auto_play;
+        let r = self.board.ask(self.host, auto, cup);
+        self.keep(r, false)
+    }
+
+    fn animate_slot(&mut self, state: &GameState, cup: u8, slot: u8, team: u8) {
+        if self.quit.is_none() {
+            let r = self.board.animate_slot(self.host, state, cup, slot, team);
+            self.keep(r, ());
+        }
+    }
+
+    fn close(&mut self, state: &mut GameState, cup: u8) {
+        if self.quit.is_none() {
+            let r = self.board.close(self.host, self.session, state, cup);
+            self.keep(r, ());
+        }
+    }
+
+    fn title_winner(&mut self, state: &GameState, m: u8, comp: u8) {
+        if self.quit.is_none() {
+            let auto = self.session.auto_play;
+            let r = super::live_match::screen_title_winner(self.host, state, m, comp, auto);
+            self.keep(r, ());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn draw_label_positions() {
+        assert_eq!(label_target(0, 32), (0x25, 0x26));
+        assert_eq!(label_target(31, 32), (0xa7, 0xbc));
+        assert_eq!(label_target(3, 4), (0xa7, 0x76));
+        assert_eq!(label_target(0, 16), (0x25, 0x4e));
+    }
+
+    #[test]
+    fn draw_label_texts_and_colours() {
+        let mut s = GameState::zeroed();
+        s.clubs[3].name[..3].copy_from_slice(b"ABC");
+        s.clubs[40].name[..3].copy_from_slice(b"XYZ");
+        let (t, c) = label_text(&s, 0, 3, fmt());
+        assert_eq!((t.as_slice(), c), (&b"ABC (1)"[..], 0));
+        let (t, c) = label_text(&s, 0, 40, fmt());
+        assert_eq!((t.as_slice(), c), (&b"XYZ (3)"[..], 0x1a));
+        assert_eq!(label_text(&s, 1, 3, fmt()), (b"ABC".to_vec(), 0x12));
+        for (strength, want) in [([75u8; 3], 2), ([80; 3], 3), ([100; 3], 8), ([10; 3], 2)] {
+            s.clubs[70].strength = strength;
+            assert_eq!(label_text(&s, 2, 70, fmt()).1, want, "{strength:?}");
+        }
+    }
 
     fn fmt() -> NumberFormat {
         NumberFormat {

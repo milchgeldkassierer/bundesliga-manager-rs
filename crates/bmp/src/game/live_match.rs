@@ -14,6 +14,7 @@ use bmp_game::stats::INJURY_NAMES;
 
 use super::cup_screens::screen_cup_matches;
 use super::season::ScreenSeason;
+use super::stats_screens::CUP_NAMES;
 use super::tables::{screen_fixtures, screen_league_table};
 use super::{GAME_OPTION_A, GAME_OPTION_B, append_ordinal_suffix, office_show_cached_background};
 use crate::gfx::{
@@ -606,8 +607,8 @@ pub fn matchday_results(
             }
         }
     }
-    // The cup round (cup_round_complete) and its draw screens follow in the logic.
-    // TODO(#15): the cup draw screens of cup_round_complete.
+    // The cup round (cup_round_complete) and its draw screens follow in the logic
+    // (SeasonUi::ask_draw, draw_slot, draw_close).
     ui.host.screen_fade(0)
 }
 
@@ -965,28 +966,38 @@ pub fn injury_and_substitution(
     Ok(())
 }
 
-/// `UI` strings of the championship's title screen.
+/// `UI` strings of the title screens.
 const CHAMPIONSHIP: &[u8] = b"Deutsche Meisterschaft";
 const WINS_THE_F: &[u8] = b"gewinnt die";
+const WINS_THE_M: &[u8] = b"gewinnt den";
 
-/// The title screen of manager `m`'s club winning the German championship (`comp` 0): the
-/// club name on the flag, "gewinnt die", the trophy (`PIC\50.VGA`) and "Deutsche
-/// Meisterschaft"; it waits for a click.
-///
-/// TODO(#83): the cup winners (comp 1..4: "gewinnt den", `DS:24d8[comp]`, `PIC\51..54`) are
-/// called from the cup round, which has no screen hook yet.
+/// The title screen of manager `m`'s club winning competition `comp` (0 = the German
+/// championship, 1 = the DFB-Pokal, 2..4 = the European cups 1..3): the club name on the
+/// flag, "gewinnt die"/"gewinnt den", the trophy (`PIC\50..54.VGA`) and the competition name
+/// ("Deutsche Meisterschaft" or `DS:24d8[comp]`); it waits for a click.
 ///
 /// Origin: BMMAIN.EXE 27c2:274d (screen_title_winner)
-pub fn screen_title_winner(host: &mut Host, state: &GameState, m: u8, auto: bool) -> Run<()> {
+pub fn screen_title_winner(
+    host: &mut Host,
+    state: &GameState,
+    m: u8,
+    comp: u8,
+    auto: bool,
+) -> Run<()> {
     host.screen_fade(0)?;
     match_screen_clear_background(host);
     let team = state.managers[usize::from(m) & 3].team;
     let name = state.clubs[usize::from(team)].name().to_vec();
     centered(host, &name, 0, 0x13f, 0x21, 0x1d, 0);
-    centered(host, CHAMPIONSHIP, 0, 0x13f, 0xdd, 0x1d, 0);
+    let (title, wins) = if comp == 0 {
+        (CHAMPIONSHIP, WINS_THE_F)
+    } else {
+        (CUP_NAMES[usize::from(comp - 1) & 3], WINS_THE_M)
+    };
+    centered(host, title, 0, 0x13f, 0xdd, 0x1d, 0);
     host.set_font(1);
-    centered(host, WINS_THE_F, 0, 0x13f, 0x3c, 0x1d, 0);
-    if let Ok(pic) = host.load_picture(0x32) {
+    centered(host, wins, 0, 0x13f, 0x3c, 0x1d, 0);
+    if let Ok(pic) = host.load_picture(0x32 + u16::from(comp)) {
         let screen = host.screen();
         host.g
             .blit_bitmap(pic, 0, 0, screen, 0x74, 0x54, 0x58, 0x58);
