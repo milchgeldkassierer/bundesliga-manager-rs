@@ -2,6 +2,7 @@
 //! competition of the day and the league-position curve, the date panel and the
 //! six main icons with their 3x3 submenus. Spec: `docs/re/logic/flow.md` §6.
 
+use bmp_game::finance::season_goal_messages;
 use bmp_game::league::{
     LEAGUE_ROUND_COUNT, RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
 };
@@ -27,7 +28,7 @@ use super::stats_screens::{screen_eternal_table, screen_manager_history, screen_
 use super::tables::{screen_fixtures, screen_league_table, screen_strength_table};
 use super::training::{screen_training, screen_training_camp};
 use super::transfer_screen::screen_transfer_market;
-use super::widgets::ui_wait_right_click_button;
+use super::widgets::{dialog_okay_auto, ui_dialog_box, ui_wait_right_click_button};
 use super::{
     GAME_OPTION_A, GAME_OPTION_B, SEASON_START_DAY, Session, append_ordinal_suffix,
     office_show_cached_background,
@@ -69,7 +70,7 @@ const RESCHEDULED: &[u8] = b"Nachholspiel";
 const NO_MATCH_TODAY: &[u8] = b"Spielfrei";
 
 /// Weekday and month names (`DS:242c`, `DS:23fc`).
-const WEEKDAYS: [&[u8]; 7] = [
+pub(crate) const WEEKDAYS: [&[u8]; 7] = [
     b"Montag",
     b"Dienstag",
     b"Mittwoch",
@@ -78,7 +79,7 @@ const WEEKDAYS: [&[u8]; 7] = [
     b"Samstag",
     b"Sonntag",
 ];
-const MONTHS: [&[u8]; 12] = [
+pub(crate) const MONTHS: [&[u8]; 12] = [
     b"Januar",
     b"Februar",
     b"M{rz",
@@ -298,19 +299,103 @@ fn sub_icon_disabled(state: &GameState, cur: usize, sel: i16, si: i16) -> bool {
         || (sel == 5 && si == 5 && state.manager_count == 4)
 }
 
+/// XOR key of the scrambled texts of [`matchday_info_panel`] (`string_xor_copy` 24a4:000a).
+const INFO_PANEL_KEY: u8 = 0xc8;
+
+/// `DS:50a4` (3 x 0x11 bytes): the left column of the panel's upper block, scrambled.
+const INFO_PANEL_TOP_LABELS: [&[u8]; 3] = [
+    b"\x98\xba\xa7\xaf\xba\xa9\xa5\xa5\xa1\xac\xad\xad",
+    b"\x98\xba\xa7\xaf\xba\xa9\xa5\xa5\xa1\xad\xba\xbd\xa6\xaf",
+    b"\x8c\xa1\xaf\xa1\xe5\x9b\xa7\xbd\xa6\xac\xbb\xe8\xbd\xe6\xa9\xe6",
+];
+/// `DS:50d8` (2 x 0x0d bytes): the right column of the upper block, scrambled.
+const INFO_PANEL_TOP_NAMES: [&[u8]; 2] = [
+    b"\x9f\xad\xba\xa6\xad\xba\xe8\x83\xba\xa9\xa0\xad",
+    b"\x82\xad\xa6\xbb\xe8\x87\xa6\xa6\xad\xa6",
+];
+/// `DS:50f2` (6 x 0x0c bytes): the left column of the lower block, scrambled.
+const INFO_PANEL_LABELS: [&[u8]; 6] = [
+    b"\x8f\xba\xa9\xae\xa1\xa3",
+    b"\x9c\xa1\xbc\xad\xa4\xa5\xbd\xbb\xa1\xa3",
+    b"\x9c\xa7\xba\xbb\xb2\xad\xa6\xad\xa6",
+    b"",
+    b"\x9c\xad\xbb\xbc\xbb\xb8\xa1\xad\xa4\xad\xba",
+    b"",
+];
+/// `DS:513a` (7 x 0x20 bytes): the right column of the lower block, scrambled.
+const INFO_PANEL_NAMES: [&[u8]; 7] = [
+    b"\x9c\xa7\xaa\xa1\xa9\xbb\xe8\x9a\xa1\xab\xa0\xbc\xad\xba\xe4\xe8\x9b\xe6\xe8\x8c\xa7\xbb\xab\xa0",
+    b"\x9b\xbe\xad\xa6\xe8\x89\xb8\xb8\xad\xa4",
+    b"\x82\xb5\xba\xaf\xad\xa6\xe8\x83\xba\xa9\xa0\xad\xe4\x9f\xad\xba\xa6\xad\xba\xe8\x83\xba\xa9\xa0\xad",
+    b"\x85\xa9\xba\xa3\xbd\xbb\xe8\x8a\xad\xba\xaf\xa5\xa9\xa6\xa6",
+    b"\x85\xa9\xba\xa3\xbd\xbb\xe8\x8a\xad\xba\xaf\xa5\xa9\xa6\xa6\xe4\x82\xb5\xba\xaf\xad\xa6\xe8\x83\xba\xa9\xa0\xad",
+    b"\x87\xa4\xa9\xae\xe8\x8d\xba\xa6\xbb\xbc\xe4\x82\xe6\x84\xa9\xaf\xa9\xab\xe4\x85\xe6\x9b\xab\xa0\xa6\xad\xa1\xac\xad\xba",
+    b"\x82\xe6\x80\xa9\xaa\xad\xba\xbb\xbc\xa7\xab\xa3\xe4\x82\xe6\x8a\xad\xab\xa3",
+];
+/// `DS:521a`: the line at the bottom of the panel, scrambled.
+const INFO_PANEL_FOOTER: &[u8] = b"\x9f\x8d\x86\x86\xe8\x9b\x81\x8d\xe8\x9f\x87\x84\x84\x8d\x86\xe4\xe8\x83\xb4\x86\x86\x8d\x86\xe8\x9b\x81\x8d\xe8\x82\x8d\x9c\x92\x9c\xe8\x8c\x81\x8d\xe8\x85\x89\x9d\x9b\x9c\x89\x9b\x9c\x8d\xe8\x8c\x9a\x95\x8b\x83\x8d\x86\xe6\xe6\xe6";
+
+/// Unscrambles a text of the program: every byte XOR `key`.
+///
+/// Origin: BMMAIN.EXE 24a4:000a (string_xor_copy)
+pub fn string_xor_copy(text: &[u8], key: u8) -> Vec<u8> {
+    text.iter().map(|&c| c ^ key).collect()
+}
+
+/// The panel behind a click on the office header: the authors of the game (the texts are
+/// stored scrambled) beside `PIC\39.VGA`, under the header; it waits for a click.
+///
+/// Origin: BMMAIN.EXE 1cb5:2bf9 (matchday_info_panel)
+fn matchday_info_panel(host: &mut Host, auto: bool) -> Run<()> {
+    let (g, rp) = (&mut host.g, &mut host.rp);
+    crate::gfx::ui_fill_rect(g, rp, 0, 0x2b, 0x13f, 0xef, 0);
+    if let Ok(pic) = host.load_picture(0x27) {
+        let screen = host.screen();
+        host.g
+            .blit_bitmap(pic, 0, 0, screen, 0xf3, 0x2d, 0x4c, 0x4c);
+        host.g.free(pic);
+    }
+    host.set_font(1);
+    let columns: [(&[&[u8]], i16, i16, i16); 4] = [
+        (&INFO_PANEL_TOP_LABELS, 0, 0x51, 9),
+        (&INFO_PANEL_TOP_NAMES, 0x7a, 0x55, 0x1d),
+        (&INFO_PANEL_LABELS, 0, 0x91, 0x1a),
+        (&INFO_PANEL_NAMES, 0x7a, 0x91, 0x19),
+    ];
+    for (texts, x, y0, color) in columns {
+        for (i, t) in texts.iter().enumerate() {
+            let text = string_xor_copy(t, INFO_PANEL_KEY);
+            let (g, rp) = (&mut host.g, &mut host.rp);
+            crate::gfx::ui_draw_text_at(g, rp, &text, x, y0 + 10 * i as i16, color);
+        }
+    }
+    host.set_font(2);
+    let footer = string_xor_copy(INFO_PANEL_FOOTER, INFO_PANEL_KEY);
+    ui_draw_text_centered_shadow(&mut host.g, &mut host.rp, &footer, 0, 0x13f, 0xee, 0x1a, 0);
+    host.screen_fade(1)?;
+    super::widgets::input_wait_click(host, auto)?;
+    host.screen_fade(0)
+}
+
 /// Handles a click that hit no icon: end of turn (calendar sheet or auto play),
 /// header bar (match-day info), desk (mail). Returns 1 at the end of the turn, 2
-/// when the office has to be redrawn, else 0.
+/// when the office has to be redrawn, else 0. The pointer in the top left corner
+/// switches automatic play: on with a click at (1, 1), off at (0, 0).
 ///
 /// Origin: BMMAIN.EXE 18bc:08f2 (office_handle_free_click)
-fn office_handle_free_click(host: &mut Host, session: &mut Session, sel: i16) -> Run<u8> {
+fn office_handle_free_click(
+    host: &mut Host,
+    session: &mut Session,
+    state: &mut GameState,
+    sel: i16,
+) -> Run<u8> {
     let auto = session.auto_play;
     if host.button != LEFT_DOWN && !auto {
         return Ok(0);
     }
     let (mx, my) = host.mouse_xy();
     if my == 0 && mx == 0 && auto {
-        // TODO(#15): ui_dialog_box("Spiele nicht", "alleine !").
+        ui_dialog_box(host, b"Spiele nicht", b"alleine !")?;
         session.auto_play = false;
         return Ok(0);
     }
@@ -319,14 +404,15 @@ fn office_handle_free_click(host: &mut Host, session: &mut Session, sel: i16) ->
         host.ui.redraw_buttons(&mut host.g, &mut host.rp, 0x7f, 0);
         return Ok(1);
     }
-    if my == 1 && mx == 1 {
-        // TODO(#15): ui_dialog_box("Spiele automatisch", "weiter !"); DS:063a = 0x47.
+    if my == 1 && mx == 1 && !auto {
+        ui_dialog_box(host, b"Spiele automatisch", b"weiter !")?;
         session.auto_play = true;
+        state.match_options = 0x47;
         return Ok(0);
     }
     if my < 0x2c {
         host.screen_fade(0)?;
-        // TODO(#15): matchday_info_panel 1cb5:2bf9.
+        matchday_info_panel(host, session.auto_play)?;
         host.ui.redraw_buttons(&mut host.g, &mut host.rp, 0x7f, 0);
         return Ok(2);
     }
@@ -440,7 +526,9 @@ pub fn office_menu_dispatcher(
             host.screen_fade(1)?;
         }
         if !warned {
-            // TODO(#31): season_goal_messages 212a:314d.
+            for [l1, l2, l3, l4] in season_goal_messages(state, &mut session.rt) {
+                dialog_okay_auto(host, session.auto_play, &l1, &l2, &l3, &l4)?;
+            }
             warned = true;
         }
         'main: loop {
@@ -456,7 +544,7 @@ pub fn office_menu_dispatcher(
                             quit_game_confirm(host, session, state)?;
                         }
                     } else {
-                        ret = office_handle_free_click(host, session, sel)?;
+                        ret = office_handle_free_click(host, session, state, sel)?;
                     }
                     match ret {
                         1 => return Ok(()),
@@ -538,7 +626,7 @@ pub fn office_menu_dispatcher(
                         }
                         quit_game_confirm(host, session, state)?;
                     }
-                    ret = office_handle_free_click(host, session, sel)?;
+                    ret = office_handle_free_click(host, session, state, sel)?;
                     match ret {
                         1 => return Ok(()),
                         2 => continue 'redraw,
@@ -629,6 +717,21 @@ pub fn office_menu_dispatcher(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_info_panel_texts_unscramble_to_the_credits() {
+        let plain = |t: &[u8]| string_xor_copy(t, INFO_PANEL_KEY);
+        assert_eq!(plain(INFO_PANEL_TOP_LABELS[1]), b"Programmierung");
+        assert_eq!(plain(INFO_PANEL_TOP_NAMES[0]), b"Werner Krahe");
+        assert_eq!(plain(INFO_PANEL_LABELS[4]), b"Testspieler");
+        assert_eq!(plain(INFO_PANEL_NAMES[2]), b"J}rgen Krahe,Werner Krahe");
+        assert_eq!(
+            plain(INFO_PANEL_FOOTER),
+            b"WENN SIE WOLLEN, K|NNEN SIE JETZT DIE MAUSTASTE DR]CKEN..."
+        );
+        // The empty labels stay empty.
+        assert!(plain(INFO_PANEL_LABELS[3]).is_empty());
+    }
 
     fn fmt() -> NumberFormat {
         NumberFormat {

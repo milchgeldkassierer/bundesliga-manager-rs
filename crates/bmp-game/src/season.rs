@@ -871,8 +871,7 @@ fn forfeits(state: &GameState, m: usize) -> bool {
 /// than the second), the card limits, bookings and the newspaper record start, and a home
 /// manager's fans may turn into hooligans.
 ///
-/// Not kept: DS:0664 (players on the pitch; its first reader is the match ticker), FAR:3052
-/// (managers per live match) and FAR:5396/5397.
+/// Not kept: FAR:3052 (managers per live match).
 ///
 /// Origin: BMMAIN.EXE 2a58:20b2 (match_gate_receipts_and_aftermath)
 #[allow(clippy::too_many_arguments)]
@@ -1018,6 +1017,7 @@ pub fn match_gate_receipts_and_aftermath(
 ///
 /// Origin: BMMAIN.EXE 2a58:20b2 (match_gate_receipts_and_aftermath, 2a58:2530..29ae first part)
 fn match_aftermath(state: &mut GameState, rt: &mut Runtime, rng: &mut Rng, m: usize, cup_mask: u8) {
+    rt.players_on_pitch[m] = 11;
     let cnt = squad_count_listed(state, m);
     let league_day = cup_mask == 0;
     for i in 0..TRANSFER_LIST_SCAN {
@@ -1062,6 +1062,7 @@ fn match_aftermath(state: &mut GameState, rt: &mut Runtime, rng: &mut Rng, m: us
     };
     rt.yellow_cards_left[m] = yellow;
     rt.red_card_possible[m] = red;
+    rt.substitutions_left[m] = [1, 2];
     rt.booked_players[m] = [NO_BOOKING; 6];
     rt.live_match_shown = 1;
 }
@@ -1167,6 +1168,7 @@ pub fn match_ticker_events<U: SeasonUi + ?Sized>(
             s.suspended = rng.random_range(1, 7 - 6 * i16::from(e.arg10)) as u8;
             s.match_rating = s.match_rating.wrapping_sub(10);
             news::news_record_match_event(rt, e.manager_or_kind, EVENT_RED_CARD, pl as u8, 0, 0);
+            rt.players_on_pitch[m] = rt.players_on_pitch[m].wrapping_sub(1);
             squad_recalc_team_strength(state, rt, rng, e.manager_or_kind, true);
         }
         EVENT_YELLOW_CARD => {
@@ -1180,7 +1182,7 @@ pub fn match_ticker_events<U: SeasonUi + ?Sized>(
             if !ui.auto_play() {
                 // The stretcher comes on with chance 1/16 (UI only).
                 let stretcher = rng.random_range(0, 15) == 0;
-                ui.substitution(state, rt, e.manager_or_kind, e.arg6, stretcher);
+                ui.substitution(state, rt, rng, e.manager_or_kind, e.arg6, stretcher);
             }
         }
         _ => {}
@@ -1426,13 +1428,15 @@ pub trait SeasonUi {
 
     /// Manager `m` may change the lineup after an injury in a live match (`cup_mode` is the
     /// match's cup flag); before it the stretcher comes on when `stretcher` (the draw
-    /// `random_range(0, 15) == 0` at 2a58:1e2c), else the screen waits.
+    /// `random_range(0, 15) == 0` at 2a58:1e2c), else the screen waits. Bringing a player on
+    /// draws his exhaustion from `rng`.
     ///
     /// Origin: BMMAIN.EXE 2a58:1f75 (match_substitution_screen)
     fn substitution(
         &mut self,
         state: &mut GameState,
         rt: &mut Runtime,
+        rng: &mut Rng,
         m: u8,
         cup_mode: u8,
         stretcher: bool,
@@ -1960,6 +1964,7 @@ fn season_final<U: SeasonUi + ?Sized>(
     let mut top_scorer = [false; MANAGER_SLOTS];
     for i in 0..n {
         old_points[i] = state.team_tables[usize::from(state.managers[i].team)].prestige;
+        rt.goal_message_flags[i] = 0;
         state.current_manager = i as i8;
         top_scorer[i] = top_scorer_plays_for_current_manager(state);
     }
@@ -2900,6 +2905,7 @@ mod tests {
             &mut self,
             _: &mut GameState,
             _: &mut Runtime,
+            _: &mut Rng,
             m: u8,
             cup_mode: u8,
             _: bool,
@@ -4203,6 +4209,8 @@ mod tests {
         assert_eq!(rt.manager_plays_now[0], 1);
         assert_eq!((rt.yellow_cards_left[0], rt.red_card_possible[0]), (0, 0));
         assert_eq!(rt.booked_players[0], [NO_BOOKING; 6]);
+        assert_eq!(rt.players_on_pitch[0], 11);
+        assert_eq!(rt.substitutions_left[0], [1, 2]);
         assert_eq!(rt.live_match_shown, 1);
         assert_eq!(rt.live_matches, [LiveMatch { row: 0, slot: 4 }]);
         let rec = &rt.news_records[0];

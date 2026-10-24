@@ -5,6 +5,7 @@
 //! lives in [`bmp_game::squad`]; this module ports the drawing and input
 //! handling of segment 2ecd around it.
 
+use bmp_game::ai::squad_recalc_team_strength;
 use bmp_game::rng::{Rng, format_long_thousands};
 use bmp_game::squad::{
     LineupRules, auto_lineup, board_auto_place_player, board_find_starter_at,
@@ -1116,7 +1117,8 @@ fn renumber_pass(
 /// number of players allowed on the field (match substitution); `comp` = 0xff
 /// outside a match, else the competition (0 league, 1 DFB-Pokal, 2 Europapokal).
 ///
-/// TODO(#24): `manager_ai_weekly` 1f9d:0002 is not called on exit.
+/// On exit the team strength is recomputed (`manager_ai_weekly` 1f9d:0002, the full
+/// calculation with its random draws during a match).
 ///
 /// Origin: BMMAIN.EXE 2ecd:1560 (screen_squad_lineup)
 pub fn screen_squad_lineup(
@@ -1489,7 +1491,9 @@ pub fn screen_squad_lineup(
     host.g.free(pic6);
     host.g.free(pic37);
     host.g.free(save13);
-    // TODO(#24): manager_ai_weekly(m, p1 != 0) 1f9d:0002.
+    // manager_ai_weekly(m, p1 != 0): during a match (p1 != 0) with the random draws.
+    let m = group(state) as u8;
+    squad_recalc_team_strength(state, &session.rt, &mut session.rng, m, p1 != 0);
     Ok(())
 }
 

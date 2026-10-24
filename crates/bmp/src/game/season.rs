@@ -16,7 +16,7 @@ use super::disk::{HighscoreMode, highscore_load, highscore_save, highscore_scree
 use super::live_match::LiveView;
 use super::office::{self, OfficeBitmaps};
 use super::start_menu::Pictures;
-use super::{Exit, Session, newspaper};
+use super::{Exit, Session, newspaper, season_events};
 use crate::host::{Host, Quit, Run};
 
 /// Game font 2 (`flow`), whose widths the newspaper layout measures.
@@ -164,13 +164,15 @@ impl SeasonUi for ScreenSeason<'_> {
     }
 
     fn winter_break(&mut self) -> Result<(), Quit> {
-        // TODO(#82): the "WINTERPAUSE" screen.
-        self.check()
+        self.check()?;
+        let auto = self.session.auto_play;
+        season_events::winter_break(self.host, auto)
     }
 
-    fn special_date(&mut self, _state: &GameState, _date: SpecialDate) -> Result<(), Quit> {
-        // TODO(#82): the screens of the special dates (2a58:2a06).
-        self.check()
+    fn special_date(&mut self, state: &GameState, date: SpecialDate) -> Result<(), Quit> {
+        self.check()?;
+        let auto = self.session.auto_play;
+        season_events::special_date_screen(self.host, state, date, auto)
     }
 
     fn championship_winner(&mut self, state: &GameState, m: u8) -> Result<(), Quit> {
@@ -240,12 +242,28 @@ impl SeasonUi for ScreenSeason<'_> {
         }
     }
 
-    fn forfeit_penalty(&mut self, _state: &GameState, _m: u8) {
-        // TODO(#82): the dialog "Ihr Spiel wird mit 0:2 gewertet".
+    fn forfeit_penalty(&mut self, state: &GameState, m: u8) {
+        self.sync_format();
+        if self.quitting() {
+            return;
+        }
+        let auto = self.session.auto_play;
+        let r = season_events::forfeit_dialog(self.host, state, m, auto);
+        self.keep(r);
     }
 
-    fn finance_events(&mut self, _state: &GameState, _m: u8, _events: &[FinanceEvent]) {
-        // TODO(#82): the dialogs of the loans due and the finished constructions.
+    fn finance_events(&mut self, state: &GameState, m: u8, events: &[FinanceEvent]) {
+        if events.is_empty() || self.quitting() {
+            return;
+        }
+        self.sync_format();
+        let bitmaps = season_events::HeaderBitmaps {
+            portraits: self.pics.portraits,
+            crests: self.pics.crest_cache,
+        };
+        let auto = self.session.auto_play;
+        let r = season_events::finance_dialogs(self.host, state, m, events, bitmaps, auto);
+        self.keep(r);
     }
 
     fn number_format(&mut self) -> &mut NumberFormat {
@@ -298,6 +316,7 @@ impl SeasonUi for ScreenSeason<'_> {
         &mut self,
         state: &mut GameState,
         rt: &mut Runtime,
+        rng: &mut Rng,
         m: u8,
         cup_mode: u8,
         stretcher: bool,
@@ -306,7 +325,9 @@ impl SeasonUi for ScreenSeason<'_> {
         if self.quitting() {
             return;
         }
-        let r = super::live_match::injury_and_substitution(self, state, rt, m, cup_mode, stretcher);
+        let r = super::live_match::injury_and_substitution(
+            self, state, rt, rng, m, cup_mode, stretcher,
+        );
         self.keep(r);
     }
 

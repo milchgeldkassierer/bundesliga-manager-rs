@@ -5,7 +5,8 @@
 # Usage: tools/dosbox-capture.sh <out_dir> <script>
 #   <script> is a file of lines: "wait <seconds>" | "key <xdotool key>" | "type <text>" | "shot <name>"
 #   | "click <x> <y> [<mode height 200|240>] [<button>]" (game coordinates, scaled to the window)
-#   | "move <x> <y> [<mode height 200|240>]" (pointer motion without a click)
+#   | "move <x> <y> [<mode height 200|240>]" (pointer motion without a click; a negative
+#     coordinate -n means the window's pixel column or row n - 1, i.e. exactly game coordinate 0)
 #   | "fetch <file>" (copy a file the game wrote, e.g. a save, from the game directory to <out_dir>)
 #   | "audio start" | "audio stop <name>" (toggle DOSBox's WAV recording with ctrl+F6 and copy
 #     the recording to <out_dir>/<name>.wav; needs DOSBOX_AUDIO=1)
@@ -20,6 +21,11 @@
 # runs load a mapper file (built from one bundled with DOSBox Staging) that binds it to ctrl+F7;
 # that map has no screenshot binding, so "shot" does not work in audio runs.
 # BMP_ARGS is passed to BMP.BAT (e.g. 0 = no sound).
+# DOSBOX_SEED=<n> aims the game's first RNG seed (the low word of MSC's time(), read about
+# DOSBOX_SEED_DELAY seconds, default 12, after this script starts) at <n>: DOSBox reports the
+# host's local time, so a TZ offset is chosen from the current time. MSC's time() adds 8 hours
+# (PST8PDT) and subtracts one in US daylight saving time (first Sunday in April to last Sunday
+# in October). The real seed may still be off by a second or two; recover it afterwards.
 # The game runs from a fresh temporary copy of $BMP_DOS_DIR (default ~/Apps/bmp-dos/game), so
 # neither real saves nor the files a scenario writes (saves, high scores) persist between runs.
 # BMP_DOS_EXTRA names a directory whose files are copied into that copy first (fixture saves).
@@ -29,6 +35,30 @@ DOSBOX=${DOSBOX:-$(ls -d "$HOME"/Apps/dosbox-staging*/ | head -1)dosbox}
 GAME=${BMP_DOS_DIR:-$HOME/Apps/bmp-dos/game}
 DISP=${CAPTURE_DISPLAY:-:77}
 WORK=$(mktemp -d); mkdir -p "$OUT" "$WORK/cap"
+if [ -n "${DOSBOX_SEED:-}" ]; then
+  TZ=$(python3 -I - "$DOSBOX_SEED" "${DOSBOX_SEED_DELAY:-12}" <<'PY'
+import datetime, sys, time
+seed, delay = int(sys.argv[1]), int(sys.argv[2])
+def us_dst(t):
+    d = datetime.datetime.fromtimestamp(t, datetime.timezone.utc)
+    def sunday(month, last):
+        day = datetime.date(d.year, month, 31 if last else 1)
+        step = -1 if last else 1
+        while day.weekday() != 6:
+            day += datetime.timedelta(days=step)
+        return day
+    return sunday(4, False) <= d.date() < sunday(10, True)
+base = int(time.time()) + delay
+for dst in (1, 0):
+    off = (base + 8 * 3600 - dst * 3600 - seed) % 65536
+    if us_dst(base - off) == bool(dst):
+        break
+print("BMP+%02d:%02d:%02d" % (off // 3600, off // 60 % 60, off % 60))
+PY
+)
+  export TZ
+  echo "seed $DOSBOX_SEED: TZ=$TZ"
+fi
 cp -r "$GAME" "$WORK/game"; GAME="$WORK/game"
 if [ -n "${BMP_DOS_EXTRA:-}" ]; then cp -r "$BMP_DOS_EXTRA"/. "$GAME"; fi
 MAPPER=
@@ -86,6 +116,9 @@ while read -r cmd arg; do
       read -r cx cy ch <<<"$arg"; ch=${ch:-200}
       eval "$(DISPLAY=$DISP xdotool getwindowgeometry --shell "$WIN")"
       px=$(( (cx * WIDTH + WIDTH / 2) / 320 )); py=$(( (cy * HEIGHT + HEIGHT / 2) / ch ))
+      # A negative coordinate -n puts the pointer on the window's pixel n - 1 (n small): game
+      # coordinate 0, which the centre of game pixel 0 may round past.
+      [ "$cx" -lt 0 ] && px=$(( -cx - 1 )); [ "$cy" -lt 0 ] && py=$(( -cy - 1 ))
       DISPLAY=$DISP xdotool mousemove --window "$WIN" "$px" "$py" ;;
     key)  DISPLAY=$DISP xdotool key --window "$WIN" --delay 80 $arg ;;
     type) DISPLAY=$DISP xdotool type --window "$WIN" --delay 120 "$arg" ;;

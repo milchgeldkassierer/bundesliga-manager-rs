@@ -92,6 +92,19 @@ pub struct Runtime {
     /// FAR:1d1c + 6 * m: squad indices of manager `m`'s booked players, [`NO_BOOKING`] =
     /// free. Filled with [`NO_BOOKING`] by 2a58:20b2, used by 1310:2ee5.
     pub booked_players: [[i8; 6]; MANAGER_SLOTS],
+    /// FAR:4bec + m: the season goals already announced to manager `m` by
+    /// `season_goal_messages` 212a:314d, bit `k` "lost" and bit `k + 3` "secured" for goal `k`
+    /// (title, promotion or UEFA cup place, staying up). Not in the save; cleared at the season
+    /// end (2a58:3bcf).
+    pub goal_message_flags: [u8; MANAGER_SLOTS],
+    /// DS:0664 + m: players manager `m`'s team may have on the pitch: 11 at kick-off (set by
+    /// 2a58:20b2), one less per red card (2a58:0ca3). The substitution screen (2a58:1f75)
+    /// passes it to `screen_squad_lineup` 2ecd:1560.
+    pub players_on_pitch: [u8; MANAGER_SLOTS],
+    /// FAR:5396 + 2 * m + k: substitutions manager `m` may still make, goalkeepers (`k` 0)
+    /// and outfield players (`k` 1). Set to 1 and 2 by 2a58:20b2, counted down by
+    /// `screen_squad_lineup` 2ecd:1560.
+    pub substitutions_left: [[u8; 2]; MANAGER_SLOTS],
     /// FAR:1d14 + m: manager `m`'s team plays now. Set by 2a58:20b2, cleared by 27c2:1226
     /// (which also writes FAR:1d13 + r, i.e. index `r - 1`), read by 1310:2ee5.
     pub manager_plays_now: [u8; MANAGER_SLOTS],
@@ -146,6 +159,9 @@ impl Default for Runtime {
             yellow_cards_left: [0; MANAGER_SLOTS],
             red_card_possible: [0; MANAGER_SLOTS],
             booked_players: [[NO_BOOKING; 6]; MANAGER_SLOTS],
+            goal_message_flags: [0; MANAGER_SLOTS],
+            players_on_pitch: [0; MANAGER_SLOTS],
+            substitutions_left: [[0; 2]; MANAGER_SLOTS],
             manager_plays_now: [0; MANAGER_SLOTS],
             period_chances_used: [[0; 2]; MANAGER_SLOTS],
             relegation_mode: 0,

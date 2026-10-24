@@ -6,7 +6,7 @@
 
 use bmp_game::matchsim::TickerEvent;
 use bmp_game::news::{EVENT_CHANCE, EVENT_GOAL, EVENT_RED_CARD, EVENT_YELLOW_CARD, OPPONENT};
-use bmp_game::rng::{NumberFormat, format_long_thousands};
+use bmp_game::rng::{NumberFormat, Rng, format_long_thousands};
 use bmp_game::runtime::Runtime;
 use bmp_game::squad::squad_count_starters;
 use bmp_game::state::{GameState, Layout, NewsRecord};
@@ -14,6 +14,7 @@ use bmp_game::stats::INJURY_NAMES;
 
 use super::cup_screens::screen_cup_matches;
 use super::season::ScreenSeason;
+use super::squad_screen::{MatchSubs, screen_squad_lineup};
 use super::stats_screens::CUP_NAMES;
 use super::tables::{screen_fixtures, screen_league_table};
 use super::{GAME_OPTION_A, GAME_OPTION_B, append_ordinal_suffix, office_show_cached_background};
@@ -966,14 +967,14 @@ fn draw_injury(ui: &mut ScreenSeason<'_>, state: &GameState, e: &TickerEvent) ->
 /// The injury of a live match outside automatic play: its text, the stretcher animation
 /// (when the logic's `random_range(0, 15)` drew 0) or a wait, and the substitution screen.
 ///
-/// Origin: BMMAIN.EXE 2a58:0ca3 (match_ticker_events, 2a58:1cf9..1f3d) and 2a58:1f75
-/// (match_substitution_screen)
+/// Origin: BMMAIN.EXE 2a58:0ca3 (match_ticker_events, 2a58:1cf9..1f3d)
 pub fn injury_and_substitution(
     ui: &mut ScreenSeason<'_>,
     state: &mut GameState,
-    _rt: &mut Runtime,
-    _m: u8,
-    _cup_mode: u8,
+    rt: &mut Runtime,
+    rng: &mut Rng,
+    m: u8,
+    cup_mode: u8,
     stretcher: bool,
 ) -> Run<()> {
     // The logic has drawn the stretcher's random number already; the event is the last one.
@@ -987,8 +988,55 @@ pub fn injury_and_substitution(
     } else {
         ui.host.delay_ticks(150)?;
     }
-    // TODO(#82): match_substitution_screen 2a58:1f75 (screen_squad_lineup during the match,
-    // then the live screen is redrawn).
+    match_substitution_screen(ui, state, rt, rng, m, cup_mode)
+}
+
+/// The lineup screen of manager `m` during a live match (as many players on the pitch as
+/// [`Runtime::players_on_pitch`] allows, the substitutions left), over the office
+/// background; afterwards the live screen is drawn again.
+///
+/// Origin: BMMAIN.EXE 2a58:1f75 (match_substitution_screen)
+pub fn match_substitution_screen(
+    ui: &mut ScreenSeason<'_>,
+    state: &mut GameState,
+    rt: &mut Runtime,
+    rng: &mut Rng,
+    m: u8,
+    cup_mode: u8,
+) -> Run<()> {
+    let mi = usize::from(m) & 3;
+    let saved = state.current_manager;
+    state.current_manager = m as i8;
+    office_show_cached_background(ui.host)?;
+    ui.host.input_wait_release()?;
+    let mut subs = MatchSubs {
+        remaining: rt.substitutions_left[mi],
+        made: rt.lineup_change_count[mi],
+    };
+    let (allowed, rules) = (rt.players_on_pitch[mi], rt.lineup_rules);
+    let r = ui.lend(rng, rt, |ui| {
+        screen_squad_lineup(
+            ui.host,
+            ui.session,
+            state,
+            rules,
+            allowed,
+            cup_mode,
+            Some(&mut subs),
+        )
+    });
+    rt.substitutions_left[mi] = subs.remaining;
+    rt.lineup_change_count[mi] = subs.made;
+    r?;
+    let host = &mut *ui.host;
+    host.screen_fade(0)?;
+    host.ui.redraw_buttons(&mut host.g, &mut host.rp, 0x7f, 0);
+    fill(host, 0, 0, 0x13f, 0xef, 0);
+    match_draw_live_screen(ui, state, rt, cup_mode != 0)?;
+    ui.host.set_font(2);
+    ui.host.input_wait_release()?;
+    ui.host.screen_fade(1)?;
+    state.current_manager = saved;
     Ok(())
 }
 

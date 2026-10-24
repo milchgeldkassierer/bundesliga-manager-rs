@@ -638,8 +638,8 @@ pub fn screen_eternal_table(
     host.number_pad = 1;
     host.number_no_separators = true;
     host.g.free(pic);
-    // TODO(#31): FAR:4bec[m] (not in the save, 0 after loading) bit 0.
-    let flags_4bec: u8 = 0;
+    // FAR:4bec[m] (not in the save, 0 after loading): the title is out of reach.
+    let flags_4bec = session.rt.goal_message_flags[m & 3];
     for si in 0..5usize {
         let active = if si == 0 {
             flags_4bec & 1 == 0 && mgr.league == 0

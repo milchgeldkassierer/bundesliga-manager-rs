@@ -1,0 +1,187 @@
+# Port side of the in_season scenario (bmp run --script syntax, milliseconds):
+# load 2020-JUN.MAN (Wednesday 8 November 1967, Bayer 05 Uerdingen in the 2. Bundesliga),
+# push the tactics slider of the squad screen to full aggression and play on to the next
+# season half: the injury of the first match opens the substitution screen (where the
+# slider is pulled back), Jens Onnen's birthday on Sunday 12 November (clicked away too
+# early), three more match days, the warning before the last match day ahead of the winter
+# break, "WINTERPAUSE", the bank loan due in December, Christmas with the players' bonus
+# and the first office turn of February 1968, where the panel behind the office header is
+# opened and automatic play is switched on ("Spiele automatisch weiter !", click at (1, 1))
+# and off again ("Spiele nicht alleine !", pointer at (0, 0)).
+# seed: 13837
+# Seed 13837 was picked with the port from the few hundred of 65536 seeds whose run shows all
+# these events (an injury in the first half of the first match, the birthday, Christmas with
+# a bonus); the DOSBox capture aims at it (# aim-seed in the DOSBox script) and the reference
+# run was verified to have it. Every shot but the WINTERPAUSE title and the two auto-play
+# boxes shows a screen that waits for a click; the live matches run on their own clock, so
+# the waits only have to be long enough.
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 88
+wait 500
+click 40 88
+wait 1000
+shot n01-office
+move 30 216
+wait 100
+click 30 216
+wait 500
+move 107 132
+wait 100
+click 107 132
+wait 1000
+move 315 15
+wait 100
+click 315 15
+wait 500
+shot n02-squad-aggressive
+move 293 196
+wait 100
+click 293 196
+wait 1000
+move 280 75
+wait 100
+click 280 75
+wait 10000
+shot n03-substitution
+move 270 15
+wait 100
+click 270 15
+wait 500
+shot n04-substitution-calm
+move 293 196
+wait 100
+click 293 196
+wait 15000
+move 293 213
+wait 100
+click 293 213
+wait 3000
+wait 20000
+move 293 213
+wait 100
+click 293 213
+wait 3000
+move 293 213
+wait 100
+click 293 213
+wait 3000
+move 280 75
+wait 100
+click 280 75
+wait 2000
+shot n05-birthday
+move 160 120
+wait 100
+click 160 120
+wait 300
+shot n06-birthday-too-early
+wait 3700
+move 280 75
+wait 100
+click 280 75
+wait 3000
+move 280 75
+wait 100
+click 280 75
+wait 25000
+move 293 213
+wait 100
+click 293 213
+wait 3000
+wait 20000
+move 293 213
+wait 100
+click 293 213
+wait 3000
+move 293 213
+wait 100
+click 293 213
+wait 3000
+move 280 75
+wait 100
+click 280 75
+wait 3000
+move 280 75
+wait 100
+click 280 75
+wait 25000
+move 293 213
+wait 100
+click 293 213
+wait 3000
+wait 20000
+move 293 213
+wait 100
+click 293 213
+wait 3000
+move 293 213
+wait 100
+click 293 213
+wait 3000
+move 280 75
+wait 100
+click 280 75
+wait 3000
+shot n07-last-match-day
+move 191 165
+wait 100
+click 191 165
+wait 1000
+move 280 75
+wait 100
+click 280 75
+wait 25000
+move 293 213
+wait 100
+click 293 213
+wait 3000
+wait 20000
+move 293 213
+wait 100
+click 293 213
+wait 3000
+move 293 213
+wait 100
+click 293 213
+wait 300
+shot n08-winter-break
+wait 2700
+shot n09-loan-due
+move 191 165
+wait 100
+click 191 165
+wait 2000
+shot n10-christmas
+move 160 120
+wait 100
+click 160 120
+wait 3000
+shot n11-office-february
+move 100 10
+wait 100
+click 100 10
+wait 1000
+shot n12-info-panel
+move 250 108
+wait 100
+click 250 108
+wait 1000
+move 1 1
+wait 100
+click 1 1
+move 40 40
+move 0 0
+wait 300
+shot n13-auto-play-on
+wait 1200
+shot n14-auto-play-off
+wait 2500
+move 160 120
+wait 500
+shot n15-office

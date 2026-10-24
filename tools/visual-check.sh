@@ -10,7 +10,8 @@
 # for a new reference set when the scenario depends on random data. A "# seed2: <n>"
 # line fixes the second seed, read when a new game starts.
 # A "# cycles: <setting>" line in the DOSBox script sets DOSBox's CPU speed for its
-# capture (e.g. "fixed 1000" for the CPU-paced intro; default max).
+# capture (e.g. "fixed 1000" for the CPU-paced intro; default max). A "# aim-seed: <n>" line
+# aims the capture's RNG seed at <n> (DOSBOX_SEED of tools/dosbox-capture.sh).
 # The port runs on a temporary copy of $BMP_DATA, so scenarios may save. A
 # "# compare-file: <name>" line compares the file <name> the port wrote with the
 # one the original wrote (fetched into the reference directory) byte for byte.
@@ -45,7 +46,9 @@ for name in "${names[@]}"; do
   done < <(sed -n 's/^# fixture: *//p' "tests/visual/$name.port.txt")
   if [ ! -d "$ref" ]; then
     cycles=$(sed -n 's/^# cycles: *//p' "tests/visual/$name.dosbox.txt")
-    DOSBOX_CYCLES=${cycles:-${DOSBOX_CYCLES:-max}} BMP_DOS_EXTRA=$([ -d "$fix" ] && echo "$fix") \
+    aim=$(sed -n 's/^# aim-seed: *\([0-9]*\).*/\1/p' "tests/visual/$name.dosbox.txt")
+    env DOSBOX_CYCLES="${cycles:-${DOSBOX_CYCLES:-max}}" BMP_DOS_EXTRA="$([ -d "$fix" ] && echo "$fix")" \
+      ${aim:+DOSBOX_SEED=$aim} \
       tools/dosbox-capture.sh "$ref" "tests/visual/$name.dosbox.txt"
   fi
   out=$(mktemp -d)

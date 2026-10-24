@@ -3,7 +3,9 @@
 use bmp_game::rng::{format_long_thousands, spinner_round_bound};
 
 use super::GAME_OPTION_A;
-use crate::gfx::{Gfx, ui_draw_frame, ui_draw_line, ui_draw_text_centered_shadow, ui_fill_rect};
+use crate::gfx::{
+    BitmapId, Gfx, ui_draw_frame, ui_draw_line, ui_draw_text_centered_shadow, ui_fill_rect,
+};
 use crate::host::{Host, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, Run};
 /// Most text buttons that can be registered (`DS:07b3` stops counting at 10; the
 /// 11th registration overwrites slot 10).
@@ -273,10 +275,26 @@ fn dialog_panel(host: &mut Host, x: i16, w: i16) -> u8 {
 /// the button, then restores the background. Always returns `true`.
 ///
 /// TODO(#15): the original also leaves at once while automatic play
-/// (`DS:05d4`) is on; the callers do not pass that flag yet.
+/// (`DS:05d4`) is on; the screens outside the season loop call this variant,
+/// which does not know the flag ([`dialog_okay_auto`] does).
 ///
 /// Origin: BMMAIN.EXE 4091:0e3a (dialog_okay)
 pub fn dialog_okay(host: &mut Host, l1: &[u8], l2: &[u8], l3: &[u8], l4: &[u8]) -> Run<bool> {
+    dialog_okay_auto(host, false, l1, l2, l3, l4)
+}
+
+/// [`dialog_okay`] that also ends after one poll while automatic play
+/// (`auto_play`, `DS:05d4`) is on.
+///
+/// Origin: BMMAIN.EXE 4091:0e3a (dialog_okay)
+pub fn dialog_okay_auto(
+    host: &mut Host,
+    auto_play: bool,
+    l1: &[u8],
+    l2: &[u8],
+    l3: &[u8],
+    l4: &[u8],
+) -> Run<bool> {
     let slot = dialog_panel(host, 0x3c, 0xb9);
     host.set_font(1);
     for (k, line) in [l1, l2, l3, l4].into_iter().enumerate() {
@@ -291,13 +309,40 @@ pub fn dialog_okay(host: &mut Host, l1: &[u8], l2: &[u8], l3: &[u8], l4: &[u8]) 
     loop {
         host.input_poll_mouse()?;
         let (mx, my) = host.mouse_xy();
-        if host.button == LEFT_DOWN && buttons.hit(mx, my) != 0 {
+        if (host.button == LEFT_DOWN && buttons.hit(mx, my) != 0) || auto_play {
             break;
         }
     }
     host.g.mouse_set_position(saved.0, saved.1);
     host.ui.redraw_buttons(&mut host.g, &mut host.rp, slot, 0);
     Ok(true)
+}
+
+/// The header in the top right corner of a screen: the portrait of manager `m` (from the
+/// portraits `FAR:2f24`) with the name under it, and the crest of the club (from the crest
+/// cache `FAR:5354`) in a second frame.
+///
+/// Origin: BMMAIN.EXE 4091:185c (ui_draw_manager_header)
+pub fn ui_draw_manager_header(
+    host: &mut Host,
+    m: usize,
+    name: &[u8],
+    portraits: BitmapId,
+    crests: BitmapId,
+) {
+    let col = 0x29 * m as i16;
+    host.ui
+        .draw_button(&mut host.g, &mut host.rp, 0x109, 5, 0x2a, 0x2a, false, 8);
+    let screen = host.screen();
+    host.g
+        .blit_bitmap(portraits, col, 0, screen, 0x10a, 6, 0x28, 0x28);
+    host.set_font(1);
+    ui_draw_text_centered_shadow(&mut host.g, &mut host.rp, name, 0x113, 0x127, 0x39, 0, 1);
+    host.ui
+        .draw_button(&mut host.g, &mut host.rp, 0x109, 0x3c, 0x2a, 0x29, false, 0);
+    let screen = host.screen();
+    host.g
+        .blit_bitmap(crests, col, 0, screen, 0x10b, 0x3e, 0x28, 0x26);
 }
 
 /// Question box: `title` (the addressed manager's name, or `"An Alle:"`,

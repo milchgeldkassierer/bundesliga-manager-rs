@@ -15,8 +15,10 @@
 //!
 //! Full documentation with Ghidra addresses: `docs/re/logic/finance.md`.
 
+use crate::league::POINTS_PER_WIN;
 use crate::news::{MessageArg, NO_FREE_SLOT, message_delete, message_post, team_slot_free_index};
 use crate::rng::{NumberFormat, Rng, clamp_int, ldiv, lmul, lrem, lshr};
+use crate::runtime::Runtime;
 use crate::state::{Credit, GameState, Manager};
 
 /// Days per month, DS:07b8 (no leap years).
@@ -507,6 +509,130 @@ pub fn finance_monthly_expenses(state: &GameState) -> i32 {
     expenses.max(0)
 }
 
+/// Byte `0x109 + r` of a manager record: the league position after round `r`
+/// (`round_position`, [`Manager::position_history`] from `r` = 2 on).
+fn round_position(m: &Manager, r: u8) -> u8 {
+    match 0x109 + usize::from(r) {
+        o @ 0x106..=0x109 => m.unknown_106[o - 0x106],
+        0x10a => m.value_10a,
+        o => m.position_history.get(o - 0x10b).copied().unwrap_or(0),
+    }
+}
+
+/// The four lines of a `dialog_okay` box.
+pub type DialogLines = [Vec<u8>; 4];
+
+/// The messages about the season goals the office shows once per turn of the current
+/// manager: the relegation play-off ahead, the last match day before the winter break (2
+/// December), and per goal (title, promotion or UEFA cup place, staying up) once a season
+/// that it can no longer be reached or is secured. The goals' announcements are remembered
+/// in [`Runtime::goal_message_flags`]. The title is only announced in the Bundesliga.
+///
+/// Origin: BMMAIN.EXE 212a:314d (season_goal_messages)
+pub fn season_goal_messages(state: &GameState, rt: &mut Runtime) -> Vec<DialogLines> {
+    // DS:224e is 1 and DS:2252 == DS:224e in the shipped data: `flag4` is false, no swap.
+    let flag4 = 0;
+    let line = |t: &[u8]| t.to_vec();
+    let m = current_index(state);
+    let mgr = &state.managers[m];
+    let league = usize::from(mgr.league).min(2);
+    let n = i16::from(rt.tier_team_count[league]);
+    let own = usize::from(mgr.team);
+    let pts = |t: usize| {
+        let p = &state.team_tables[t].points;
+        i16::from(p[0]) + i16::from(p[1])
+    };
+    let left = |t: usize| {
+        let p = &state.team_tables[t].played;
+        (i16::from(rt.tier_round_count[league]) - i16::from(p[0]) - i16::from(p[1]))
+            * i16::from(POINTS_PER_WIN)
+    };
+    let rank = |r: i16| usize::from(state.league_teams[league][(r as usize).min(19)]);
+    let round = state.competition_rounds[league];
+    let mut out = Vec::new();
+    if RELEGATION_PLAYOFF[0]
+        && state.month == 5
+        && state.day_of_month == 13
+        && i16::from(round as i8) - i16::from(rt.tier_round_count[league]) == 1
+        && ((league == 0 && round_position(mgr, round) == 15)
+            || (league == 1 && round_position(mgr, round) == 2))
+    {
+        out.push([
+            line(b"Ihre Mannschaft"),
+            line(b"bestreitet das"),
+            line(b"Relegationsspiel."),
+            line(b"Viel Gl}ck."),
+        ]);
+        return out;
+    }
+    if state.month == 5 && state.day_of_month > 13 {
+        return out;
+    }
+    if state.day_of_month == 2 + flag4 && state.month == 11 {
+        out.push([
+            line(b"Achtung !"),
+            line(b"Dies ist der letzte"),
+            line(b"Spieltag vor der"),
+            line(b"Winterpause."),
+        ]);
+    }
+    let rk: [i16; 3] = match league {
+        0 => [0, 4, n - flag4 as i16 - 4],
+        1 => [0, 2 * flag4 as i16 + 1, n - 5],
+        _ => [0, 3, n - 5],
+    };
+    let mine = pts(own);
+    let own_left = left(own);
+    let name = state.clubs[own].name();
+    let mut has = name.to_vec();
+    has.extend_from_slice(b" hat");
+    for (k, &rk_k) in rk.iter().enumerate() {
+        let flags = &mut rt.goal_message_flags[m];
+        if pts(rank(rk_k)) > own_left + mine && *flags & (1 << k) == 0 {
+            *flags |= 1 << k;
+            let goal: &[u8] = match (k, league) {
+                (0, _) => b"MEISTER zu werden.",
+                (1, 0) => b"den UEFA-CUP zu erreichen.",
+                (1, _) => b"AUFZUSTEIGEN.",
+                _ => b"DIE KLASSE ZU ERHALTEN.",
+            };
+            if league == 0 || k != 0 {
+                out.push([
+                    mgr.name().to_vec(),
+                    has.clone(),
+                    line(b"die letzte Chance verspielt,"),
+                    line(goal),
+                ]);
+            }
+        }
+        let best = ((rk_k + 1)..n)
+            .map(|r| left(rank(r)) + pts(rank(r)))
+            .fold(0, i16::max);
+        let flags = &mut rt.goal_message_flags[m];
+        if best < mine && *flags & (1 << (k + 3)) == 0 {
+            *flags |= 1 << (k + 3);
+            let goal: &[u8] = match (k, league) {
+                (0, _) => b"die MEISTERSCHAFT",
+                (1, 0) => b"den UEFA-CUP-PLATZ",
+                (1, _) => b"den AUFSTIEG",
+                _ => b"den KLASSENERHALT",
+            };
+            if league == 0 || k != 0 {
+                out.push([
+                    mgr.name().to_vec(),
+                    has.clone(),
+                    line(goal),
+                    line(b"auf jeden Fall gesichert."),
+                ]);
+            }
+        }
+    }
+    out
+}
+
+/// DS:226a: which tiers have a relegation play-off (only the Bundesliga).
+const RELEGATION_PLAYOFF: [bool; 3] = [true, false, false];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,6 +640,69 @@ mod tests {
     use bmp_formats::savegame::SaveGame;
 
     /// One active manager (index 0), dated `day`.`month + 1`.`year`.
+    /// Manager 0 coaches club 20 of the 2. Bundesliga, which stands at rank `own_rank`.
+    fn goal_state(own_rank: usize) -> GameState {
+        let mut s = state_on(10, 2, 1968);
+        s.managers[0].league = 1;
+        s.managers[0].team = 20;
+        s.managers[0].name[..3].copy_from_slice(b"ADI");
+        s.clubs[20].name[..5].copy_from_slice(b"KICKS");
+        let mut ids: Vec<u8> = (18..38).filter(|&t| t != 20).collect();
+        ids.insert(own_rank, 20);
+        s.league_teams[1].copy_from_slice(&ids);
+        s
+    }
+
+    #[test]
+    fn the_last_match_day_before_the_winter_break_is_announced_on_2_december() {
+        let mut s = goal_state(0);
+        let mut rt = Runtime::default();
+        assert!(season_goal_messages(&s, &mut rt).is_empty());
+        (s.day_of_month, s.month) = (2, 11);
+        let msgs = season_goal_messages(&s, &mut rt);
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0][0], b"Achtung !");
+        assert_eq!(msgs[0][3], b"Winterpause.");
+        // It is shown on every office turn of that day.
+        assert_eq!(season_goal_messages(&s, &mut rt).len(), 1);
+    }
+
+    #[test]
+    fn a_lost_promotion_is_announced_once() {
+        let mut s = goal_state(5);
+        // The runner-up has more points than the club can still reach (38 rounds x 2 points).
+        let second = usize::from(s.league_teams[1][1]);
+        s.team_tables[second].points = [40, 37, 0, 0];
+        let mut rt = Runtime::default();
+        let msgs = season_goal_messages(&s, &mut rt);
+        assert_eq!(
+            msgs,
+            [[
+                b"ADI".to_vec(),
+                b"KICKS hat".to_vec(),
+                b"die letzte Chance verspielt,".to_vec(),
+                b"AUFZUSTEIGEN.".to_vec()
+            ]]
+        );
+        assert_eq!(rt.goal_message_flags[0], 0b10);
+        assert!(season_goal_messages(&s, &mut rt).is_empty());
+    }
+
+    #[test]
+    fn secured_goals_are_announced_but_the_title_only_in_the_bundesliga() {
+        let mut s = goal_state(0);
+        for t in 18..38 {
+            s.team_tables[t].played = [19, 19, 0, 0];
+            s.team_tables[t].points = [5, 5, 0, 0];
+        }
+        s.team_tables[20].points = [30, 30, 0, 0];
+        let mut rt = Runtime::default();
+        let msgs = season_goal_messages(&s, &mut rt);
+        let goals: Vec<&[u8]> = msgs.iter().map(|m| &m[2][..]).collect();
+        assert_eq!(goals, [&b"den AUFSTIEG"[..], b"den KLASSENERHALT"]);
+        assert_eq!(rt.goal_message_flags[0], 0b111000);
+    }
+
     fn state_on(day: i32, month: i32, year: i32) -> GameState {
         let mut s = GameState::zeroed();
         s.manager_count = 1;

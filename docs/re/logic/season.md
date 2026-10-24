@@ -518,7 +518,7 @@ for (;;) {
 if (!timed_out && idx != 0) {                                // clicked away too early
     ui_draw_text_centered_shadow(rp, "Das war keine Minute !", 0, 319, 0xe4, 0x0b, 0);
     ui_draw_text_centered_shadow(rp, "Sch{men Sie Sich !", 0, 319, 0xee, 0x0b, 0);
-    delay_ticks(150);
+    delay_ticks(150);                                        // 50 BIOS ticks, about 2.7 s
 }
 ```
 
@@ -695,14 +695,40 @@ as observed (graphics need ~90 %).
 | 2a58:0350 | `draw_text_split_two_lines` | `void (char far *s, i16 x0, i16 x1, i16 y)` | If `rastport_text_width(s) > 60` the first space is replaced by NUL and both halves are drawn centred at `y-5` and `y+1` (colour 1, no shadow); otherwise drawn once at `y` |
 | 2a58:042f | `match_draw_live_screen` | `void (u8 cup_mode, u8 only_slot)` | Draws the whole live-match screen. Full spec in §3.10 |
 | 2a58:0ca3 | `match_ticker_events` | `i16 (u8 type, u8 c, u8 p, u8 home, u8 away, u8 arg6, u8 pl_or_minute, u8 m_or_kind, u8 side, u8 arg10)` | One ticker event (chance/goal, red, yellow, injury) with statistics updates and 2 RNG calls. Full spec in §3.9 |
-| 2a58:1f75 | `match_substitution_screen` | `void (u8 m, u8 cup_mode, u8 unused)` | Saves FAR:304a, sets it to `m`, `office_show_cached_background()` (18bc:3b92), `input_wait_release()`, `screen_squad_lineup(DS:0664[m], cup_mode)` (2ecd:1560), fade out, `ui_redraw_buttons(0x7f, 0)`, `ui_fill_rect(0,0,0x13f,0xef,0)`, `match_draw_live_screen(cup_mode, 0xff)`, font 2, wait release, fade in, restore FAR:304a. The third argument pushed by 2a58:0ca3 is never read |
+| 2a58:1f75 | `match_substitution_screen` | `void (u8 m, u8 cup_mode, u8 unused)` | Saves FAR:304a, sets it to `m`, `office_show_cached_background()` (18bc:3b92), `input_wait_release()`, `screen_squad_lineup(DS:0664[m], cup_mode)` (2ecd:1560), fade out, `ui_redraw_buttons(0x7f, 0)`, `ui_fill_rect(0,0,0x13f,0xef,0)`, `match_draw_live_screen(cup_mode, 0xff)`, font 2, wait release, fade in, restore FAR:304a. The third argument pushed by 2a58:0ca3 is never read. The lineup screen's exit runs `manager_ai_weekly(m, 1)` (1f9d:0002 with its random draws), so the rest of the match day depends on it (verified against DOSBox, scenario `in_season`) |
 
 ### 3.8 `matchday_info_panel` 1cb5:2bf9 (Ghidra cannot decompile it: address overflow)
 
-UI only. Clears (0,0x2b)-(319,239), loads PIC 0x27 and blits 76x76 at (0xf3,0x2d), then draws four
-lines decoded by 24a4:000a from scrambled strings in DS (font 1, positions (0..0xc8, y 0x09/0x1d/0x1a/0x19)),
-a centred line from DS:521a in font 2 at y = 0xee, fades in, waits for a click and fades out. Called by
-the match-day options dialog.
+UI only, no RNG. Despite the name it is the credits panel behind a click on the office header
+(`office_handle_free_click` 18bc:08f2, `y < 0x2c`; the caller fades out before and redraws the
+office after it). From the disassembly:
+
+```c
+ui_fill_rect(rp, 0, 0x2b, 0x13f, 0xef, 0);                    // the header stays
+bm = vga_load_picture(0x27, 0, 0, 0, 1);                       // PIC\39.VGA, the developer logo
+blit_bitmap(bm, 0, 0, rp, 0xf3, 0x2d, 0x4c, 0x4c, 0xc0); bitmap_free(bm);
+ui_set_font(rp, 1);
+for (i = 0; i < 3; i++) ui_draw_text_at(rp, string_xor_copy(DS:50a4 + 0x11*i, 0xc8), 0,    0x51 + 10*i, 0x09);
+for (i = 0; i < 2; i++) ui_draw_text_at(rp, string_xor_copy(DS:50d8 + 0x0d*i, 0xc8), 0x7a, 0x55 + 10*i, 0x1d);
+for (i = 0; i < 6; i++) ui_draw_text_at(rp, string_xor_copy(DS:50f2 + 0x0c*i, 0xc8), 0,    0x91 + 10*i, 0x1a);
+for (i = 0; i < 7; i++) ui_draw_text_at(rp, string_xor_copy(DS:513a + 0x20*i, 0xc8), 0x7a, 0x91 + 10*i, 0x19);
+ui_set_font(rp, 2);
+ui_draw_text_centered_shadow(rp, string_xor_copy(DS:521a, 0xc8), 0, 0x13f, 0xee, 0x1a, 0);
+screen_fade(FAR:2e70, 1); input_wait_click(FAR:6dc0); screen_fade(FAR:2e70, 0);
+```
+
+`string_xor_copy` 24a4:000a XORs every byte with the key into the buffer DS:a322. The texts
+(scrambled in DS): "Programmidee", "Programmierung", "Digi-Sounds u.a." | "Werner Krahe",
+"Jens Onnen" | "Grafik", "Titelmusik", "Torszenen", "", "Testspieler", "" | "Tobias Richter, S.
+Dosch", "Sven Appel", "J}rgen Krahe,Werner Krahe", "Markus Bergmann", "Markus Bergmann,J}rgen
+Krahe", "Olaf Ernst,J.Lagac,M.Schneider", "J.Haberstock,J.Beck" | "WENN SIE WOLLEN, K|NNEN SIE
+JETZT DIE MAUSTASTE DR]CKEN...". Verified 100 % against DOSBox (scenario `in_season`).
+
+The auto-play toggles of the same function: a left click at exactly (1, 1) while automatic play
+is off shows `ui_dialog_box("Spiele automatisch", "weiter !")` (DS:0258, DS:024f), sets DS:05d4 =
+1 and DS:063a = 0x47; while it is on, the pointer at exactly (0, 0) (no click needed: the
+function runs on every poll then) shows `ui_dialog_box("Spiele nicht", "alleine !")` (DS:0242,
+DS:0238) and clears DS:05d4. Otherwise every poll ends the turn.
 
 ### 3.9 `match_ticker_events` 2a58:0ca3 (logic + UI)
 

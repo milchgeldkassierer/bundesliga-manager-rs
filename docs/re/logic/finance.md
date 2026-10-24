@@ -612,7 +612,7 @@ FAR:0ecd[0x36t]`, `LEFT(t) = ((i8)DS:2262[L] - FAR:0eea[0x36t] - FAR:0eeb[0x36t]
    (`L == 0 && M.round_position[DS:225a[0]] == 15` or `L == 1 && M.round_position[DS:225a[1]] == 2`):
    `dialog_okay("Ihre Mannschaft", "bestreitet das", "Relegationsspiel.", "Viel Gl}ck.")` and return.
 2. If `month == 5 && day > 13` return.
-3. If `day == 2 + flag4 && month == 11`: `dialog_okay("Achtung !", "Dies ist der letzte", "Spieltag vor der", "Winterpause.")`.
+3. If `day == 2 + flag4 && month == 11`: `dialog_okay("Achtung !", "Dies ist der letzte", "Spieltag vor der", "Winterpause.")`. Shown on the office turn of 2 December (verified against DOSBox, scenario `in_season`).
 4. Rank thresholds `rk[3]`: `rk[0] = 0`; `L == 0`: `rk[1] = 4`, `rk[2] = n - flag4 - 4`; `L == 1`:
    `rk[1] = 2*flag4 + 1`, `rk[2] = n - 5`; `L == 2`: `rk[1] = 3`, `rk[2] = n - 5`. `p[k] = PTS(RANK(rk[k]))`,
    `mine = PTS(own)`, `left = LEFT(own)`.
@@ -996,7 +996,7 @@ condition item `S+0x28` costs nothing. Ticket income is not computed here (see O
 | FAR:3066 + 0x22c | struct | club record (`+0x18..0x1d` strength) | 15 |
 | FAR:4b5e | u8[] | fixture pairs | 19 |
 | FAR:4b9a + 2*(6m+i) | u8 | `ad_contract_months[m][i]` | 38 |
-| FAR:4bec + m | u8 | `goal_message_flags[m]` (bits 0..5) | — (not in the save; see Open questions) |
+| FAR:4bec + m | u8 | `goal_message_flags[m]` (bits 0..5), `Runtime::goal_message_flags`; cleared per manager at the season end (2a58:3bcf) | — (not in the save; see Open questions) |
 | FAR:535a + 20L + r | u8 | `league_table_order[L][r]` | 32 |
 | FAR:5358 | i8 | `saved_manager` | 4 |
 | FAR:5664 | far ptr[3][10] | queued messages | 45 |
