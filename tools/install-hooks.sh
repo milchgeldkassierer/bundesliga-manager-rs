@@ -16,7 +16,11 @@ while read -r _local_ref local_sha _remote_ref _remote_sha; do
   git worktree add --quiet --detach "$tmp/wt" "$local_sha"
   status=0
   CARGO_TARGET_DIR="$main_root/target/pre-push" BMP_DATA="${BMP_DATA:-$main_root/BMP}" \
-    bash "$tmp/wt/tools/check.sh" || status=$?
+    # Prefer the pushed commit's own gate; branches cut before tools/check.sh existed
+    # fall back to the main checkout's copy (issue #21).
+    script="$tmp/wt/tools/check.sh"
+    [ -f "$script" ] || script="$main_root/tools/check.sh"
+    (cd "$tmp/wt" && bash "$script") || status=$?
   git worktree remove --force "$tmp/wt"; rm -rf "$tmp"
   if [ "$status" -ne 0 ]; then
     echo "pre-push: checks failed for $local_sha" >&2
