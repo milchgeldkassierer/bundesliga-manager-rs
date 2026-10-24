@@ -66,6 +66,12 @@ side/foot), `+0x22` u8 league goals (top-scorer list), `+0x24` u8 club.
 * **League results** `R(L, r, p) = FAR:6dc8 + (r + 38*L)*20 + p` (`r` = 1-based round, so `r = 1` is
   `FAR:6ddc`, save block 6). Even `p` = home goals and odd `p` = away goals, both `i8`. The value
   `0x1e` in the home byte means "postponed / not to be played now".
+  The original indexes this as one flat table without bounds: `r = 0` of tier `L > 0` is round 38 of
+  tier `L - 1`, while `r = 0` of tier 0 and rows past round 38 of tier 2 lie outside save block 6
+  (neighbouring memory). The port follows the flat rule inside the block and treats a row outside it
+  as not played, neither read nor written: `matchsim::league_result_cell` and `league::round_results`
+  (which reads through it) share this rule. Round 0 also has no pairing permutation (string 0 of
+  `DS:06fc` is empty and the original reads past it); the port builds an empty pairing list for it.
 * **Cups** `c` in 0..3 (0 = DFB-Pokal, 1..3 = European cups; the relegation match uses cup 1). Pairings
   `FAR:76ca + 32*c + p` (home) and `+p+1` (away) (block 28). Scores `FAR:4c7e + 32*c + p` and `+p+1` (`u8`,
   block 33). The match engine addresses cups as `cc = c + 10`, so cup scores are `FAR:4b3e + 32*cc + p`.

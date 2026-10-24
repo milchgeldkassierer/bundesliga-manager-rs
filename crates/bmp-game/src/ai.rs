@@ -299,7 +299,8 @@ pub fn league_strength_drift(state: &mut GameState, rt: &Runtime, rng: &mut Rng,
 /// Byte index into the flattened [`GameState::league_results`] of the current round's cell
 /// `slot` of league tier `comp`: row `comp * 38 + competition_rounds[comp] - 1` (the
 /// original's table starts one row before save block 6, so the round counter is 1-based).
-fn league_result_index(state: &GameState, comp: u8, slot: u8) -> usize {
+/// `None` outside save block 6, see [`league_result_cell`].
+fn league_result_index(state: &GameState, comp: u8, slot: u8) -> Option<usize> {
     league_result_cell(
         comp,
         i16::from(state.competition_rounds[usize::from(comp)] as i8),
@@ -345,10 +346,11 @@ pub fn match_simulate_quick_result(
     // TODO(re): for cups (comp >= 10) the original reads FAR:6dc8 + (comp * 38 +
     // DS:225a[comp]) * 20 + slot here too, far outside every modelled table (inside the squad
     // block); assumed never to hold 0x1e.
+    // A row outside save block 6 counts as not played.
     if comp < 10
-        && state.league_results.as_flattened().as_flattened()
-            [league_result_index(state, comp, slot)]
-            == NOT_PLAYED
+        && league_result_index(state, comp, slot).is_none_or(|cell| {
+            state.league_results.as_flattened().as_flattened()[cell] == NOT_PLAYED
+        })
     {
         return None;
     }
@@ -506,7 +508,14 @@ pub fn match_goal_chance(
     let cell = if comp < 10 {
         league_result_index(state, comp, slot)
     } else {
-        cup_cell(comp - 10, slot)
+        Some(cup_cell(comp - 10, slot))
+    };
+    // A league fixture outside save block 6 counts as not played: no chance, no draw.
+    let Some(cell) = cell else {
+        return GoalChance {
+            goal: false,
+            follow_up: GoalFollowUp::None,
+        };
     };
     let (mut gh, mut ga) = if comp < 10 {
         let r = state.league_results.as_flattened().as_flattened();

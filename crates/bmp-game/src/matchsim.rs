@@ -194,15 +194,17 @@ pub fn goal_minutes_generate(
 }
 
 /// Byte index into the flattened [`GameState::league_results`] of cell `slot` of 1-based
-/// `round` of league tier `tier`: row `tier * 38 + round - 1` (the original's table starts one
-/// row before save block 6).
-pub(crate) fn league_result_cell(tier: u8, round: i16, slot: u8) -> usize {
+/// `round` of league tier `tier`: row `tier * 38 + round - 1` of the flat table (the
+/// original's table starts one row before save block 6), so round 0 of a tier reaches round
+/// 38 of the previous tier. `None` for a row outside save block 6 (round 0 of tier 0, or past
+/// round 38 of tier 2), where the original reads and writes neighbouring memory; such a
+/// fixture counts as not played, as in [`crate::league::round_results`].
+pub(crate) fn league_result_cell(tier: u8, round: i16, slot: u8) -> Option<usize> {
     let row = i16::from(tier) * 38 + round - 1;
-    assert!(
-        (0..3 * 38).contains(&row),
-        "league result row {row} outside save block 6"
-    );
-    row as usize * 20 + usize::from(slot)
+    usize::try_from(row)
+        .ok()
+        .filter(|&row| row < 3 * 38)
+        .map(|row| row * 20 + usize::from(slot))
 }
 
 /// Byte index into the flattened [`GameState::cup_pairings`] and [`GameState::cup_results`]
@@ -221,7 +223,11 @@ pub fn match_write_forfeit_results(state: &mut GameState, rt: &Runtime, v: u8) {
     for f in &rt.forfeits {
         let round = i16::from(f.round_index) + 1;
         for j in 0..2u8 {
-            results[league_result_cell(f.tier, round, f.slot + j)] = if v == NOT_PLAYED {
+            // A forfeit is only recorded for a fixture with a result cell.
+            let Some(cell) = league_result_cell(f.tier, round, f.slot + j) else {
+                continue;
+            };
+            results[cell] = if v == NOT_PLAYED {
                 NOT_PLAYED
             } else if f.side + j == 2 {
                 v
@@ -1073,7 +1079,9 @@ pub fn matchday_play<H: MatchHooks + ?Sized>(
                 if h == NO_MATCH {
                     break;
                 }
-                let cell = league_result_cell(tier, i16::from(round as i8), slot);
+                let Some(cell) = league_result_cell(tier, i16::from(round as i8), slot) else {
+                    continue;
+                };
                 if state.league_results.as_flattened().as_flattened()[cell] == NOT_PLAYED {
                     continue;
                 }
@@ -1168,7 +1176,9 @@ pub fn league_postpone_matches_weather(
             if used.contains(&p) {
                 continue;
             }
-            let cell = league_result_cell(tier, round, (2 * p) as u8);
+            let Some(cell) = league_result_cell(tier, round, (2 * p) as u8) else {
+                continue;
+            };
             if state.league_results.as_flattened().as_flattened()[cell] == NOT_PLAYED {
                 continue;
             }
@@ -1238,8 +1248,9 @@ pub fn league_reschedule_match(
                 e[RESCHEDULED_ROUND] = round;
                 e[RESCHEDULED_PAIR] = pair;
                 e[RESCHEDULED_TIER] = tier;
-                let cell = league_result_cell(tier, i16::from(round as i8), 2 * pair);
-                state.league_results.as_flattened_mut().as_flattened_mut()[cell] = NOT_PLAYED;
+                if let Some(cell) = league_result_cell(tier, i16::from(round as i8), 2 * pair) {
+                    state.league_results.as_flattened_mut().as_flattened_mut()[cell] = NOT_PLAYED;
+                }
                 state.week_competitions[usize::from(d)] = RESCHEDULED_GAMES_DAY;
                 return true;
             }
@@ -1333,15 +1344,19 @@ pub fn matchday_play_rescheduled<H: MatchHooks + ?Sized>(
         let dst = league_result_cell(tier, e[RESCHEDULED_ROUND].into(), 2 * e[RESCHEDULED_PAIR]);
         let results = state.league_results.as_flattened_mut().as_flattened_mut();
         for j in 0..2 {
-            results[dst + j] = results[league_result_cell(0, round, k)];
+            // A row outside save block 6 is neither read nor written.
+            if let (Some(dst), Some(src)) = (dst, league_result_cell(0, round, k)) {
+                results[dst + j] = results[src];
+            }
             k += 1;
         }
         state.rescheduled_matches[s][RESCHEDULED_DAY] = 0;
     }
     // TODO(re): match.md §7 open question 5 — only 19 of the 20 bytes are cleared.
     let results = state.league_results.as_flattened_mut().as_flattened_mut();
-    let base = league_result_cell(0, round, 0);
-    results[base..base + 19].fill(0);
+    if let Some(base) = league_result_cell(0, round, 0) {
+        results[base..base + 19].fill(0);
+    }
     state.week_competitions[usize::from(day)] = 0;
 }
 
@@ -2290,6 +2305,93 @@ mod tests {
                 "{mins:?}"
             );
         }
+    }
+
+    /// The cells of flat row `row` (`league * 38 + r`, `r` 0-based) through
+    /// `league_result_cell`, checked against `round_results` for the same row.
+    fn cells_of_flat_row(s: &GameState, row: i16) -> Option<[u8; 20]> {
+        let league = row.div_euclid(38).clamp(0, 2);
+        let r = row - league * 38;
+        let cells = league_result_cell(league as u8, r + 1, 0).map(|c| {
+            s.league_results.as_flattened().as_flattened()[c..c + 20]
+                .try_into()
+                .unwrap()
+        });
+        assert_eq!(
+            cells,
+            crate::league::round_results(s, league as usize, r as i8),
+            "row {row}"
+        );
+        cells
+    }
+
+    #[test]
+    fn result_cell_and_round_results_share_the_flat_row_rule() {
+        let mut s = GameState::zeroed();
+        for (i, b) in s
+            .league_results
+            .as_flattened_mut()
+            .as_flattened_mut()
+            .iter_mut()
+            .enumerate()
+        {
+            *b = (i % 251) as u8;
+        }
+        // Row -1 (round 0 of tier 0) and row 114 (round 39 of tier 2) lie outside save block 6.
+        assert_eq!(cells_of_flat_row(&s, -1), None);
+        assert_eq!(cells_of_flat_row(&s, 0), Some(s.league_results[0][0]));
+        assert_eq!(cells_of_flat_row(&s, 113), Some(s.league_results[2][37]));
+        assert_eq!(cells_of_flat_row(&s, 114), None);
+        // Round 0 of tier 1 reaches round 38 of tier 0 through both helpers.
+        assert_eq!(league_result_cell(1, 0, 3), Some(37 * 20 + 3));
+        assert_eq!(
+            crate::league::round_results(&s, 1, -1),
+            Some(s.league_results[0][37])
+        );
+        assert_eq!(league_result_cell(0, 0, 0), None);
+        assert_eq!(crate::league::round_results(&s, 0, -1), None);
+    }
+
+    #[test]
+    fn match_day_with_round_counter_zero_runs_through() {
+        let mut s = GameState::zeroed();
+        s.competition_rounds = [0, 0, 0];
+        let before = s.league_results;
+        let mut rt = Runtime::default();
+        let mut hooks = Recorder::default();
+        matchday_play(&mut s, &mut rt, &mut Rng::new(1), &mut hooks, 7, 0);
+        // Round 0 has no pairings, so no fixture reaches the gate and no result changes.
+        for t in 0..3 {
+            assert_eq!(s.matchday_pairings[t][0][0], NO_MATCH, "tier {t}");
+        }
+        assert!(!hooks.calls.iter().any(|c| matches!(c, Call::Gate { .. })));
+        assert_eq!(s.league_results, before);
+        assert_eq!(s.current_manager, 0);
+    }
+
+    #[test]
+    fn round_zero_of_a_tier_applies_the_row_both_helpers_read() {
+        let mut s = GameState::zeroed();
+        s.competition_rounds = [0, 0, 0];
+        // Round 0 of tier 2 is round 38 of tier 1 in the flat table.
+        s.matchday_pairings[2][0] = [40, 41];
+        s.matchday_pairings[2][1][0] = NO_MATCH;
+        s.league_results[1][37][..2].copy_from_slice(&[3, 1]);
+        let cell = league_result_cell(2, 0, 0).unwrap();
+        assert_eq!(cell, (38 + 37) * 20);
+        assert_eq!(
+            crate::league::round_results(&s, 2, -1),
+            Some(s.league_results[1][37])
+        );
+        league_apply_round_and_sort(&mut s, &mut Rng::new(1), 2, RoundMode::Apply, 1, false);
+        assert_eq!(s.team_tables[40].goals_for[0], 3);
+        assert_eq!(s.team_tables[41].goals_for[1], 1);
+        // Round 0 of tier 0 has no row: nothing is applied.
+        s.matchday_pairings[0][0] = [0, 1];
+        let tables = s.team_tables.clone();
+        league_apply_round_and_sort(&mut s, &mut Rng::new(1), 0, RoundMode::Apply, 1, false);
+        assert_eq!(league_result_cell(0, 0, 0), None);
+        assert_eq!(s.team_tables[0].played, tables[0].played);
     }
 
     #[test]

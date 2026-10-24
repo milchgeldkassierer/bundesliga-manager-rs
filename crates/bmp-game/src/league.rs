@@ -7,6 +7,7 @@
 //!
 //! Full documentation with addresses: `docs/re/logic/stats.md` §2.
 
+use crate::matchsim::league_result_cell;
 use crate::rng::{Rng, clamp_int, long_abs_diff};
 use crate::state::{Club, GERMAN_CLUBS, GameState, MatchHistory, TeamTable};
 
@@ -96,7 +97,9 @@ const PAIRINGS: [&[u8]; 38] = [
 
 /// Builds the pairings of `round` (1-based) of `league` into
 /// [`GameState::matchday_pairings`]; the second half of the season repeats the
-/// first with home and away swapped.
+/// first with home and away swapped. Round 0 has no permutation (string 0 is
+/// empty; the original reads the bytes past it): the list is ended with
+/// [`NO_MATCH`] at once, so no fixture is played.
 ///
 /// Origin: BMMAIN.EXE 3a41:10e3 (fixtures_build_round_pairings)
 pub fn fixtures_build_round_pairings(state: &mut GameState, league: usize, round: u8) {
@@ -117,6 +120,11 @@ pub fn fixtures_build_round_pairings(state: &mut GameState, league: usize, round
     } else {
         PAIRINGS[18 + round as usize]
     };
+    // TODO(re): the pairings the original builds from the bytes past string 0.
+    if perm.is_empty() {
+        state.matchday_pairings[league][0][0] = NO_MATCH;
+        return;
+    }
     for i in 0..(count >> 1) as usize {
         let (mut a, mut b) = (perm[2 * i] - b'a', perm[2 * i + 1] - b'a');
         if second_half {
@@ -258,11 +266,12 @@ pub enum RoundMode {
 
 /// The ten result pairs of round index `r` (0-based) of `league`, read like
 /// the original's `FAR:6ddc + (league * 38 + r) * 20` from the flat table, so
-/// `r = -1` reaches round 37 of the previous league.
+/// `r = -1` reaches round 37 of the previous league. `None` outside save block 6,
+/// by the same rule as [`league_result_cell`], which it is read through.
 pub(crate) fn round_results(state: &GameState, league: usize, r: i8) -> Option<[u8; 20]> {
-    let flat = league as isize * 38 + r as isize;
-    let flat = usize::try_from(flat).ok()?;
-    state.league_results.get(flat / 38).map(|l| l[flat % 38])
+    let cell = league_result_cell(u8::try_from(league).ok()?, i16::from(r) + 1, 0)?;
+    let flat = state.league_results.as_flattened().as_flattened();
+    flat[cell..cell + 20].try_into().ok()
 }
 
 /// Processes the results of round `competition_rounds[league] - 1` (0-based)
