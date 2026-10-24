@@ -772,6 +772,14 @@ The championship call is in `season_main_loop` 2a58:38f0-394c: for each manager,
 league position byte `FAR:2260[m*0x30a] + 0xec + DS:2262[league]` is 0 and the manager's league
 `+0x11a` is 0, it increments the championship counter `+0x1b` and calls `screen_title_winner(m, 0)`.
 
+Visual check: the scenario `rare_scenes` reaches the four cup screens (comp 1..4) with a patched save
+(all four finals on one day, the manager's club in each) and matches the original 100 %. It also
+shows the draw of a round after `cup_round_complete` (DFB-Pokal semi-finals, Champions' Cup
+semi-finals): the draws are shown only with the result options of the settings
+(`GameState::options[10]`/`[11]`, "DfB-Pokal"/"Europapokale" AN), which are the same bytes as
+`SHOW_DRAW_OPTION`; with the option on the cup day first shows the results after 45 and 90 minutes,
+then the draw question.
+
 ## 8. Relegation play-off (cross-area: `matchday_relegation_match` 1310:02bf)
 
 Runs in weeks 0x5b and 0x5c. It borrows competition 1 (Champions' Cup) storage and restores it:

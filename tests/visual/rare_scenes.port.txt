@@ -1,0 +1,207 @@
+# Port side of the rare_scenes scenario (bmp run --script syntax, milliseconds): rare scenes of
+# the season loop, reached with two patched copies of 07072019.MAN (25 October 1965, OLIVER at
+# BAYER 05 UERDINGEN; tools/visual-check.sh "# fixture-edit:", crates/bmp-game/examples/
+# save_patch.rs):
+# * 00RARE.MAN: all but seven starters injured, so the club cannot field a team; the next slot
+#   (28 October) is a DFB-Pokal and European cup day instead of a league day, and the European
+#   quarter-finals play their return legs after 9:0 first legs (no extra time); the away clubs
+#   of the DFB-Pokal quarter-finals are made weak (no extra time either).
+# * 01FINAL.MAN: today's slot is a DFB-Pokal and European cup day with all four finals:
+#   UERDINGEN against a weakened FREIBURGER FC in the DFB-Pokal and against foreign clubs after
+#   9:0 first legs in the three European cups; the tactic slider is at 0 (fewer injuries).
+# Load 00RARE.MAN, switch the DFB-Pokal and European cup results (and with them the draws) on in
+# the settings and end the turn: the forfeit "Ihr Spiel wird mit 0:2 gewertet" (fewer than 8
+# starters, match_forfeit_penalty 2a58:2051), the 2. Bundesliga table; end the turn again: the
+# DFB-Pokal quarter-final results, the draw of the semi-finals after the round
+# (cup_round_complete 27c2:16dc, "AUSLOSUNG BEIWOHNEN ?" answered "ABER KLAR", hurried), its
+# pairings, the European results, the Champions' Cup semi-final draw (watched and hurried), the
+# other two declined. Then load 01FINAL.MAN from the office and end the turn: the four finals and
+# the four title screens of the cup winners (screen_title_winner 27c2:274d, comp 1..4).
+# The game refuses a save id it loaded before in the session, so the fixtures get ids of their
+# own. The draws, the forfeit (a winter postponement may move the match, about 1 seed in 20) and
+# the finals (an injury would open the substitution screen, about 1 in 16) depend on the seed;
+# seed 1000 was checked with the port and aimed at by the capture, and the original's draws
+# and results matched it.
+# Known difference: r08/r09 and r13/r14 (99.83-99.85 %): after the hurried draw the original
+# shows the pointer at the bottom right, the port where the click was (the board hides the
+# pointer while it draws; the cup_draw scenario, clicking with a different rhythm, matches).
+# fixture-edit: 00RARE.MAN 07072019.MAN id 1001 injure 7 second-legs week 1 120 weak 0 weak 11 weak 5 weak 31
+# fixture-edit: 01FINAL.MAN 07072019.MAN id 1002 slider 0 cup-final 0 36 63 weak 63 cup-final 1 36 148 cup-final 2 36 107 cup-final 3 36 84 week 0 120
+# seed: 1000
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+shot r00-office
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 161 132
+wait 100
+click 161 132
+wait 1000
+move 129 127
+wait 100
+click 129 127
+wait 300
+move 129 146
+wait 100
+click 129 146
+wait 300
+shot r01-settings
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 280 75
+wait 100
+click 280 75
+wait 3000
+shot r02-forfeit
+move 191 165
+wait 100
+click 191 165
+wait 2000
+shot r03-table
+move 293 213
+wait 100
+click 293 213
+wait 2000
+shot r04-office
+move 280 75
+wait 100
+click 280 75
+wait 3000
+shot r05-dfb-half
+move 293 213
+wait 100
+click 293 213
+wait 2500
+shot r06-dfb-full
+move 293 213
+wait 100
+click 293 213
+wait 500
+move 160 120
+wait 2000
+shot r07-question
+move 115 166
+wait 100
+click 115 166
+wait 2500
+move 160 120
+wait 100
+click 160 120
+wait 3000
+shot r08-drawn
+move 160 120
+wait 100
+click 160 120
+wait 1500
+shot r09-pairings
+move 293 213
+wait 100
+click 293 213
+wait 3000
+shot r10-euro-half
+move 293 213
+wait 100
+click 293 213
+wait 2500
+move 293 213
+wait 100
+click 293 213
+wait 2500
+move 293 213
+wait 100
+click 293 213
+wait 2500
+shot r11-euro-full
+move 293 213
+wait 100
+click 293 213
+wait 2500
+move 293 213
+wait 100
+click 293 213
+wait 2500
+move 293 213
+wait 100
+click 293 213
+wait 2500
+shot r12-euro-question
+move 115 166
+wait 100
+click 115 166
+wait 2500
+move 160 120
+wait 100
+click 160 120
+wait 4000
+shot r13-euro-drawn
+move 160 120
+wait 100
+click 160 120
+wait 1500
+shot r14-euro-pairings
+move 293 213
+wait 100
+click 293 213
+wait 2500
+move 187 166
+wait 100
+click 187 166
+wait 2500
+move 187 166
+wait 100
+click 187 166
+wait 4000
+shot r15-office
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 132
+wait 100
+click 107 132
+wait 1000
+move 40 87
+wait 100
+click 40 87
+wait 500
+click 40 87
+wait 2000
+shot r16-office
+move 280 75
+wait 100
+click 280 75
+wait 90000
+shot r17-dfb-winner
+move 160 120
+wait 100
+click 160 120
+wait 120000
+shot r18-champions-winner
+move 160 120
+wait 100
+click 160 120
+wait 3000
+shot r19-cupwinners-winner
+move 160 120
+wait 100
+click 160 120
+wait 3000
+shot r20-uefa-winner
+move 160 120
+wait 100
+click 160 120
+wait 5000
+shot r21-office

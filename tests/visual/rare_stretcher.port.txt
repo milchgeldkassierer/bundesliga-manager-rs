@@ -1,0 +1,49 @@
+# Port side of the rare_stretcher scenario (bmp run --script syntax, milliseconds): the stretcher
+# of an injury in a live match (match_ticker_events 2a58:0ca3, the draw random_range(0, 15) == 0
+# at 2a58:1e2c, stretcher animation) and the substitution screen after it.
+# The fixture 00HARD.MAN is 07072019.MAN (25 October 1965, OLIVER at BAYER 05 UERDINGEN) with the
+# tactic slider at its maximum (tools/visual-check.sh "# fixture-edit:", crates/bmp-game/
+# examples/save_patch.rs): the match aggression rises to 38, which makes injuries about five
+# times as likely (1310:2ee5), so about one seed in 200 shows the stretcher in the first match.
+# Load 00HARD.MAN and end the turn: the live match against FC HOMBURG with the injury of WALZ in
+# the 21st minute, the stretcher, the substitution screen (closed with "WEITER") and the live
+# match going on.
+# Seed 1160 was searched with the port (the stretcher in the first match day) and aimed at
+# with the DOSBox capture, which hit it. The reference frames come from a run that shot the
+# live view about every 0.55 s; s03..s06 are four different cells of the carriers, each of them
+# equal to a port frame of the same cell, and the waits are tuned to them.
+# fixture-edit: 00HARD.MAN 07072019.MAN slider 34
+# seed: 1160
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+shot s01-office
+move 280 75
+wait 100
+click 280 75
+wait 10300
+shot s02-minute
+wait 700
+shot s03-stretcher
+wait 450
+shot s04-stretcher
+wait 650
+shot s05-stretcher
+wait 450
+shot s06-stretcher
+wait 3450
+shot s07-substitution
+move 293 196
+wait 100
+click 293 196
+wait 3000
+shot s08-live
+quit

@@ -6,3 +6,7 @@ license.workspace = true
 
 [dependencies]
 bmp-formats.workspace = true
+
+[[example]]
+name = "save_patch"
+test = true

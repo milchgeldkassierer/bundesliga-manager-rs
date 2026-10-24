@@ -1,0 +1,141 @@
+# DOSBox side of the rare_scenes scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads the fixture 00RARE.MAN (see the port script), switches the cup results and draws on,
+# ends the turn twice: the forfeit dialog, the table, the cup results and the draws after the
+# rounds; then loads the fixture 01FINAL.MAN from the office and ends the turn: the four cup
+# finals and the cup winners' title screens.
+# aim-seed: 1000
+# Every click into a dialog first moves the host pointer away: dialogs put the game's pointer
+# back where it was, and a click without host motion lands there, not at the click (season_end).
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+shot r00-office
+wait 1.5
+click 291 173 240
+wait 1.5
+click 161 132 240
+wait 1.7
+click 129 127 240
+wait 1.5
+click 129 146 240
+wait 1.5
+shot r01-settings
+wait 1.5
+click 293 213 240
+wait 1.7
+click 280 75 240
+wait 4.5
+shot r02-forfeit
+wait 1.5
+move 160 120 240
+click 191 165 240
+wait 3
+shot r03-table
+wait 1.5
+click 293 213 240
+wait 3
+shot r04-office
+wait 1.5
+click 280 75 240
+wait 4.5
+shot r05-dfb-half
+wait 1.5
+click 293 213 240
+wait 3.8
+shot r06-dfb-full
+wait 1.5
+click 293 213 240
+wait 0.8
+move 160 120 240
+wait 3
+shot r07-question
+wait 1.5
+move 160 120 240
+click 115 166 240
+wait 3.9
+click 160 120 240
+wait 4.5
+shot r08-drawn
+wait 1.5
+click 160 120 240
+wait 2.2
+shot r09-pairings
+wait 1.5
+click 293 213 240
+wait 4.5
+shot r10-euro-half
+wait 1.5
+click 293 213 240
+wait 3.9
+click 293 213 240
+wait 3.9
+click 293 213 240
+wait 3.8
+shot r11-euro-full
+wait 1.5
+click 293 213 240
+wait 3.9
+click 293 213 240
+wait 3.9
+click 293 213 240
+wait 3.8
+shot r12-euro-question
+wait 1.5
+move 160 120 240
+click 115 166 240
+wait 3.9
+click 160 120 240
+wait 6
+shot r13-euro-drawn
+wait 1.5
+click 160 120 240
+wait 2.2
+shot r14-euro-pairings
+wait 1.5
+click 293 213 240
+wait 3.9
+move 160 120 240
+click 187 166 240
+wait 3.9
+move 160 120 240
+click 187 166 240
+wait 6
+shot r15-office
+wait 1.5
+click 291 173 240
+wait 1.5
+click 107 132 240
+wait 1.7
+click 40 87 240
+wait 1.5
+click 40 87 240
+wait 3
+shot r16-office
+wait 1.5
+click 280 75 240
+wait 100
+shot r17-dfb-winner
+wait 1.5
+click 160 120 240
+wait 130
+shot r18-champions-winner
+wait 1.5
+click 160 120 240
+wait 4.5
+shot r19-cupwinners-winner
+wait 1.5
+click 160 120 240
+wait 4.5
+shot r20-uefa-winner
+wait 1.5
+click 160 120 240
+wait 7.5
+shot r21-office

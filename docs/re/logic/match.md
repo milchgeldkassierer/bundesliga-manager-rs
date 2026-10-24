@@ -1048,12 +1048,20 @@ Before the per-type part it plays a voice sample: `type` 2 or 3 → voice 3, `ty
   duration/type, RNG, stats area). `FAR:5142[6hm]++`. If `DS:05d4 == 0`: if `rr(0, 15) == 0`,
   it plays a 4×4-frame stretcher animation, otherwise it waits 150 ticks. Then, if
   `DS:05d4 == 0`, it calls `FUN_2a58_1f75(m, arg6, ...)` (substitution dialog).
+  Visual check: `rare_stretcher` (07072019.MAN with the tactic slider at 34, seed 1160: injury in
+  the 21st minute, `rr(0, 15) == 0`) matches the original frame by frame, the four carrier cells
+  and the substitution screen included.
 
 Return value: the y position of the event panel (used by `match_event_redraw`).
 
 ### 4.2 2a58:20b2 (gate money, forfeit, live registry)
 
 `u8 far (u8 h, u8 a, u8 cmask, u8 c, u8 p, u8 lmask)`. It is called once per pairing before kick-off.
+The forfeit dialog ("Ihr Spiel wird mit 0:2 gewertet. Sie zahlen 200.000 DM Strafe", `dialog_okay`)
+appears over the match-day title screen ("Ligaspiel" on the flag) and no live view follows for the
+manager (scenario `rare_scenes`, 100 %). A save whose human club has fewer than 8 available
+starters reaches it; in automatic play the injured and banned starters are never replaced, so a
+club soon plays every match with 7 starters and forfeits each one (observed in the port).
 For every human manager `m` whose club plays:
 
 * **Forfeit:** if `mgr(m).+0x13d == 'd'` (fewer than 8 fit players, set by

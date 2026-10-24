@@ -24,6 +24,8 @@
 # A "# fixture-bytes: <file> <source> [<offset>=<byte>|<offset>^<mask>...]" line makes the
 # fixture <file> from the file <source> of $BMP_DATA with single bytes set or XORed (offsets
 # and values in C notation), e.g. a save with a broken signature, version or checksum.
+# A "# fixture-edit: <file> <save> <op>..." line makes the fixture <file> a copy of the save
+# <save> of $BMP_DATA with game-state edits (crates/bmp-game/examples/save_patch.rs lists them).
 # Fixtures and references belong together: delete both to regenerate them.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -69,6 +71,13 @@ open(sys.argv[2], "wb").write(data)
 PY
     echo "fixture $name/$file patched from $src"
   done < <(sed -n 's/^# fixture-bytes: *//p' "tests/visual/$name.port.txt")
+  while read -r file src ops; do
+    [ -f "$fix/$file" ] && continue
+    mkdir -p "$fix"
+    # shellcheck disable=SC2086
+    cargo run -q -p bmp-game --example save_patch -- "$DATA/$src" "$fix/$file" $ops \
+      && echo "fixture $name/$file patched"
+  done < <(sed -n 's/^# fixture-edit: *//p' "tests/visual/$name.port.txt")
   if [ ! -d "$ref" ]; then
     cycles=$(sed -n 's/^# cycles: *//p' "tests/visual/$name.dosbox.txt")
     aim=$(sed -n 's/^# aim-seed: *\([0-9]*\).*/\1/p' "tests/visual/$name.dosbox.txt")

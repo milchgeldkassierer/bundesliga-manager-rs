@@ -1,0 +1,38 @@
+# DOSBox side of the rare_stretcher scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads the fixture 00HARD.MAN (07072019.MAN with the tactic slider at its maximum, see the port
+# script) and ends the turn: the injury of WALZ in the 21st minute with the stretcher, the
+# substitution screen (closed with "WEITER") and the live match going on.
+# aim-seed: 1160
+# The references were picked from a run that shot the live view about every 0.55 s after the
+# calendar click (z09 the 21st minute, z11/z12/z15/z16 four cells of the stretcher, z18 the
+# substitution screen); the shot times below approximate those frames: a new capture has to be
+# checked, and the seed recovered, frame by frame against the port.
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+shot s01-office
+click 280 75 240
+wait 10.4
+shot s02-minute
+wait 0.6
+shot s03-stretcher
+wait 0.05
+shot s04-stretcher
+wait 0.6
+shot s05-stretcher
+wait 0.05
+shot s06-stretcher
+wait 3
+shot s07-substitution
+move 160 120 240
+click 293 196 240
+wait 3
+shot s08-live
