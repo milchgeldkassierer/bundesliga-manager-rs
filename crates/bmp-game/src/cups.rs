@@ -41,7 +41,7 @@
 //! qualifiers, the goal clearing and the draws `(c, false)` for c = 1..=3, and later
 //! `(0, false)` and `(c, true)` for c = 1..=3 (§9.4).
 
-use crate::matchsim::{MatchHooks, match_penalty_shootout, matchday_play};
+use crate::matchsim::{MatchHooks, cup_row, match_penalty_shootout, matchday_play};
 use crate::rng::Rng;
 use crate::runtime::{Runtime, TIER_FIRST};
 use crate::state::{CLUB_COUNT, GERMAN_CLUBS, GameState, MANAGER_SLOTS};
@@ -81,32 +81,27 @@ pub(crate) fn round_pairings(round: u8) -> u8 {
 
 /// The 32 draw slots of cup row `cup`.
 fn slots(state: &GameState, cup: u8) -> &[u8] {
-    let c = usize::from(cup);
-    &state.cup_pairings.as_flattened()[c * 32..c * 32 + 32]
+    &state.cup_pairings.as_flattened()[cup_row(cup)]
 }
 
 fn slots_mut(state: &mut GameState, cup: u8) -> &mut [u8] {
-    let c = usize::from(cup);
-    &mut state.cup_pairings.as_flattened_mut()[c * 32..c * 32 + 32]
+    &mut state.cup_pairings.as_flattened_mut()[cup_row(cup)]
 }
 
 /// The 32 match goals of cup row `cup`.
 fn goals(state: &GameState, cup: u8) -> &[u8] {
-    let c = usize::from(cup);
-    &state.cup_results.as_flattened()[c * 32..c * 32 + 32]
+    &state.cup_results.as_flattened()[cup_row(cup)]
 }
 
 fn goals_mut(state: &mut GameState, cup: u8) -> &mut [u8] {
-    let c = usize::from(cup);
-    &mut state.cup_results.as_flattened_mut()[c * 32..c * 32 + 32]
+    &mut state.cup_results.as_flattened_mut()[cup_row(cup)]
 }
 
 /// Range of European cup `cup` in [`GameState::cup_first_leg_goals`]; row 0 (FAR:21c2) is not
 /// saved and never used.
 fn first_leg_range(cup: u8) -> std::ops::Range<usize> {
     assert!(cup >= 1, "the DFB-Pokal has no first legs");
-    let c = usize::from(cup) - 1;
-    c * 32..c * 32 + 32
+    cup_row(cup - 1)
 }
 
 /// Whether `team` is among the first [`Runtime::euro_qualified_count`] entries of

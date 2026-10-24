@@ -207,10 +207,21 @@ pub(crate) fn league_result_cell(tier: u8, round: i16, slot: u8) -> Option<usize
         .map(|row| row * 20 + usize::from(slot))
 }
 
+/// Cells in one cup row of the flattened [`GameState::cup_pairings`],
+/// [`GameState::cup_results`] and [`GameState::cup_first_leg_goals`].
+const CUP_ROW_CELLS: usize = 32;
+
+/// Byte range of cup row `cup` in the flattened [`GameState::cup_pairings`] and
+/// [`GameState::cup_results`].
+pub(crate) fn cup_row(cup: u8) -> std::ops::Range<usize> {
+    let start = usize::from(cup) * CUP_ROW_CELLS;
+    start..start + CUP_ROW_CELLS
+}
+
 /// Byte index into the flattened [`GameState::cup_pairings`] and [`GameState::cup_results`]
 /// of cell `slot` of cup row `cup`.
 pub(crate) fn cup_cell(cup: u8, slot: u8) -> usize {
-    usize::from(cup) * 32 + usize::from(slot)
+    cup_row(cup).start + usize::from(slot)
 }
 
 /// Writes the results of the match day's forfeits: with `v == 0x1e` both cells of each
