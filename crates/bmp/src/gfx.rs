@@ -21,6 +21,7 @@
 use bmp_formats::font::{EURO, Font, FontSet, Glyph, map_char};
 use bmp_formats::vga::VgaImage;
 
+use crate::display::{Block, Display, DisplayFrame};
 use crate::video::{Mode, Vga, WIDTH};
 
 /// Screen width in pixels.
@@ -216,8 +217,11 @@ pub struct Pointer {
 
 /// The library state plus the emulated VGA.
 pub struct Gfx {
-    /// Four VGA planes of 64 KiB.
-    pub planes: [Vec<u8>; 4],
+    /// Four VGA planes of 64 KiB. Private so that every write goes through the
+    /// [`Gfx::vram_write`] family, which keeps [`Gfx::display`] in step.
+    planes: [Vec<u8>; 4],
+    /// MOD2026: the 2x display buffer, `None` when the layer is off.
+    display: Option<Display>,
     /// CRTC start address (page shown).
     pub crtc_start: u16,
     /// `CS:0033`: non-zero = draw to page 1 (`+0x4B00`).
@@ -370,6 +374,12 @@ fn clip_fill(bw: i16, bh: i16, mut x: i16, mut y: i16, mut w: i16, mut h: i16) -
     Some((x, y, 0, 0, w, h))
 }
 
+/// VRAM byte offset of pixel `(x, y)` of the page at `base` (no wrap of y).
+fn page_offset(base: u16, x: i16, y: i16) -> u16 {
+    base.wrapping_add((y as u16).wrapping_mul(ROW_BYTES))
+        .wrapping_add(x as u16 >> 2)
+}
+
 /// VRAM byte offset of row `r` of a rect starting at `y0` and column `x` (as the
 /// planar loops compute it: `(y0 & 0xFF) * 80` by an 8-bit `MUL`, then `+80` per row).
 fn vram_off(base: u16, y0: i16, r: i16, x: i16, row_mask: u16) -> u16 {
@@ -389,6 +399,7 @@ impl Gfx {
                 vec![0; 0x10000],
                 vec![0; 0x10000],
             ],
+            display: None,
             crtc_start: 0,
             draw_page: 0,
             busy: false,
@@ -518,16 +529,44 @@ impl Gfx {
         self.planes[plane & 3][off as usize]
     }
 
-    fn vram_write(&mut self, plane: usize, off: u16, v: u8) {
+    /// Writes plane `p` at `off`; the display gets the value doubled.
+    pub fn vram_write(&mut self, plane: usize, off: u16, v: u8) {
+        self.vram_put(plane, off, v, [v; 4]);
+    }
+
+    fn vram_put(&mut self, plane: usize, off: u16, v: u8, block: Block) {
         self.planes[plane & 3][off as usize] = v;
+        // MOD2026: the display layer mirrors every VRAM write.
+        if let Some(display) = &mut self.display {
+            display.put(plane, off, block);
+        }
+    }
+
+    /// Read-modify-write of plane `p` at `off`; the display applies `op` to each of its
+    /// pixels, so an XOR applied twice restores it exactly.
+    fn vram_update(&mut self, plane: usize, off: u16, op: impl Fn(u8) -> u8) {
+        let p = &mut self.planes[plane & 3][off as usize];
+        *p = op(*p);
+        if let Some(display) = &mut self.display {
+            display.update(plane, off, op);
+        }
+    }
+
+    /// The display block of plane `p` at `off`, `None` when the layer is off.
+    fn display_block(&self, plane: usize, off: u16) -> Option<Block> {
+        self.display.as_ref().map(|d| d.block(plane, off))
+    }
+
+    /// Copies one VRAM byte together with its display block.
+    fn vram_copy(&mut self, src_plane: usize, src_off: u16, dst_plane: usize, dst_off: u16) {
+        let v = self.vram_read(src_plane, src_off);
+        let block = self.display_block(src_plane, src_off).unwrap_or([v; 4]);
+        self.vram_put(dst_plane, dst_off, v, block);
     }
 
     /// Pixel `(x, y)` of the page at `base` (row-linear Mode X addressing, no wrap of y).
     pub fn page_pixel(&self, base: u16, x: i16, y: i16) -> u8 {
-        let off = base
-            .wrapping_add((y as u16).wrapping_mul(ROW_BYTES))
-            .wrapping_add(x as u16 >> 2);
-        self.vram_read((x & 3) as usize, off)
+        self.vram_read((x & 3) as usize, page_offset(base, x, y))
     }
 
     // ----- mode, pages, display -----------------------------------------------------
@@ -543,7 +582,7 @@ impl Gfx {
         *self.bitmap_mut(screen) = Bitmap::vram(SCREEN_W, SCREEN_H, 0);
         for p in 0..4 {
             for i in 0..2 * PAGE_SIZE {
-                self.planes[p][i as usize] = 0;
+                self.vram_write(p, i, 0);
             }
         }
         self.crtc_start = 0;
@@ -656,10 +695,8 @@ impl Gfx {
     /// Origin: BMMAIN.EXE 45ac:332b (vga_copy_page)
     pub fn vga_copy_page(&mut self, src: u16, dst: u16) {
         for i in 0..PAGE_SIZE {
-            let s = src.wrapping_add(i) as usize;
-            let d = dst.wrapping_add(i) as usize;
             for p in 0..4 {
-                self.planes[p][d] = self.planes[p][s];
+                self.vram_copy(p, src.wrapping_add(i), p, dst.wrapping_add(i));
             }
         }
     }
@@ -695,11 +732,52 @@ impl Gfx {
                 vga.pixels[y as usize * WIDTH + x as usize] = v;
             }
         }
-        vga.dac = if self.blanked {
+        vga.dac = self.shown_dac();
+    }
+
+    /// The DAC as the monitor sees it: black while the refresh is off.
+    fn shown_dac(&self) -> [[u8; 3]; 256] {
+        if self.blanked {
             [[0; 3]; 256]
         } else {
             self.dac
+        }
+    }
+
+    /// MOD2026: switches the 2x display layer on, starting from the current planes.
+    pub fn display_on(&mut self) {
+        self.display = Some(Display::from_planes(&self.planes));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn display(&self) -> Option<&Display> {
+        self.display.as_ref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn display_mut(&mut self) -> Option<&mut Display> {
+        self.display.as_mut()
+    }
+
+    /// MOD2026: [`Gfx::to_vga`] for the display layer; `false` (and `frame` untouched)
+    /// when the layer is off.
+    pub fn to_display(&self, frame: &mut DisplayFrame) -> bool {
+        let Some(display) = &self.display else {
+            return false;
         };
+        frame.height = 2 * self.visible_lines as usize;
+        for y in 0..self.visible_lines {
+            for x in 0..SCREEN_W {
+                let block = if self.blanked {
+                    [0; 4]
+                } else {
+                    display.block((x & 3) as usize, page_offset(self.crtc_start, x, y))
+                };
+                frame.set_block(x as usize, y as usize, block);
+            }
+        }
+        frame.dac = self.shown_dac();
+        true
     }
 
     // ----- mouse pointer --------------------------------------------------------------
@@ -1012,27 +1090,28 @@ impl Gfx {
                 }
             }
         } else {
-            let mut buf = Vec::with_capacity(w as usize * h as usize);
+            // Each pixel with the display block of a VRAM source.
+            let mut buf: Vec<(u8, Option<Block>)> = Vec::with_capacity(w as usize * h as usize);
             for r in 0..h {
                 for c in 0..w {
-                    let v = match sv {
+                    let px = match sv {
                         Some(base) => {
                             let x = sx + c;
-                            self.vram_read(
-                                x as usize & 3,
-                                vram_off(base.wrapping_add(page), sy, r, x, self.row_mask),
-                            )
+                            let plane = x as usize & 3;
+                            let off = vram_off(base.wrapping_add(page), sy, r, x, self.row_mask);
+                            (self.vram_read(plane, off), self.display_block(plane, off))
                         }
-                        None => {
-                            self.mem_get(src, (sy + r) as usize * sw as usize + (sx + c) as usize)
-                        }
+                        None => (
+                            self.mem_get(src, (sy + r) as usize * sw as usize + (sx + c) as usize),
+                            None,
+                        ),
                     };
-                    buf.push(v);
+                    buf.push(px);
                 }
             }
             for r in 0..h {
                 for c in 0..w {
-                    let v = buf[r as usize * w as usize + c as usize];
+                    let (v, block) = buf[r as usize * w as usize + c as usize];
                     if transparent && v == 0 {
                         continue;
                     }
@@ -1040,7 +1119,7 @@ impl Gfx {
                         Some(base) => {
                             let x = dx + c;
                             let off = vram_off(base.wrapping_add(page), dy, r, x, self.row_mask);
-                            self.vram_write(x as usize & 3, off, v);
+                            self.vram_put(x as usize & 3, off, v, block.unwrap_or([v; 4]));
                         }
                         None => {
                             let d = (dy + r) as usize * dw as usize + (dx + c) as usize;
@@ -1206,8 +1285,8 @@ impl Gfx {
             for c in 0..w {
                 let px = x + c;
                 let off = vram_off(0, y, r, px, self.row_mask);
-                let v = self.vram_read(px as usize & 3, off.wrapping_add(src_base));
-                self.vram_write(px as usize & 3, off, v);
+                let plane = px as usize & 3;
+                self.vram_copy(plane, off.wrapping_add(src_base), plane, off);
             }
         }
         if redraw {
@@ -1257,8 +1336,7 @@ impl Gfx {
                 let off = ((y as u16 & self.row_mask).wrapping_mul(ROW_BYTES))
                     .wrapping_add(x as u16 >> 2)
                     .wrapping_add(self.page_add());
-                let old = self.vram_read(x as usize & 3, off);
-                self.vram_write(x as usize & 3, off, op(old));
+                self.vram_update(x as usize & 3, off, op);
             }
         }
     }
@@ -1405,8 +1483,7 @@ impl Gfx {
                     for c in 0..w {
                         let px = x + c;
                         let off = vram_off(base, y, r, px, self.row_mask);
-                        let o = self.vram_read(px as usize & 3, off);
-                        self.vram_write(px as usize & 3, off, op(o));
+                        self.vram_update(px as usize & 3, off, &op);
                     }
                 }
                 if redraw {
@@ -1461,7 +1538,7 @@ impl Gfx {
                     .wrapping_add(self.page_add());
                 for p in 0..4 {
                     for i in 0..PAGE_SIZE {
-                        self.planes[p][base.wrapping_add(i) as usize] = color;
+                        self.vram_write(p, base.wrapping_add(i), color);
                     }
                 }
                 if redraw {

@@ -48,6 +48,36 @@ fn help_lists_the_build_command() {
 }
 
 #[test]
+fn help_lists_lowres() {
+    let help = bmp(["--help".as_ref()]);
+    assert!(help.status.success());
+    assert!(String::from_utf8_lossy(&help.stdout).contains("--lowres"));
+}
+
+/// `run` and `teamed` take `--lowres`: they reach the missing script instead of refusing the
+/// option. Passing the flag on to the window needs a display and is not tested here.
+#[test]
+fn run_and_teamed_accept_lowres() {
+    let script = std::env::temp_dir().join(format!("bmp-lowres-missing-{}", std::process::id()));
+    for cmd in ["run", "teamed"] {
+        let [cmd, data, script_flag, lowres] =
+            [cmd, "--data", "--script", "--lowres"].map(OsStr::new);
+        let output = bmp([
+            data,
+            script.as_os_str(),
+            cmd,
+            script_flag,
+            script.as_os_str(),
+            lowres,
+        ]);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success());
+        assert!(!stderr.contains("unexpected argument"), "{stderr}");
+        assert!(stderr.contains(&*script.to_string_lossy()), "{stderr}");
+    }
+}
+
+#[test]
 fn build_writes_the_copy_and_the_marker() {
     let from = source("build");
     let out = from.with_extension("out");

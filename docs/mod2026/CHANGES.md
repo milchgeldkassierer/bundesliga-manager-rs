@@ -14,7 +14,27 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   non-zero exit code before anything is written. A new command, so the original game is not
   affected.
 - **Mod switch** (`bmp_game::mod2026::is_active`): the game and the team editor read it once at
-  start-up into `Host::mod2026`, the flag later mod behaviour switches on. Nothing reads it yet.
+  start-up into `Host::mod2026`, the flag mod behaviour switches on.
+
+## 2x display layer
+
+- **Display buffer** (`crates/bmp/src/display.rs`, `crates/bmp/src/gfx.rs`, PRD R5b): with
+  Mod 2026 data the SDL host keeps a second indexed buffer at twice the resolution (640x480,
+  640x484 in the team editor) and presents it instead of the logical frame (`host.rs`,
+  `video.rs`). It mirrors VRAM with one 2x2 block per VRAM byte, so every VRAM write of the
+  library also draws into it: blits, fills, lines, pixels, text, page copies, clears, the mouse
+  pointer and the palette slots; scrolling and blanking show it like the logical page. XOR
+  draws apply to each display pixel; page copies and `blit_rect` carry the blocks. Memory
+  bitmaps have no display side: `blit_bitmap` from the screen and the pointer background go
+  through them and flatten a block to its doubled logical pixel, which the high-resolution
+  crests and fonts must address. It uses the same DAC, so fades and palette changes are
+  unchanged. For now every block is the doubled logical pixel, so the picture looks exactly as
+  before.
+  Hit tests, `get_pixel`, the cheat check, the spinners, screenshots and the visual tests read
+  the logical frame as before.
+- **Off switch** (`crates/bmp/src/main.rs`, `host::display_layer_on`): the layer is off with
+  the original data, in the headless (`--script`) host and with the new option `--lowres` of
+  `run` and `teamed`.
 
 ## Euro sign
 

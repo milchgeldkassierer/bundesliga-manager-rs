@@ -6,6 +6,8 @@
 
 use std::path::Path;
 
+use crate::display::{DISPLAY_W, DisplayFrame};
+
 pub const WIDTH: usize = 320;
 pub const MAX_HEIGHT: usize = 242;
 
@@ -71,23 +73,21 @@ impl Vga {
 
     /// Renders the visible area to packed RGB24.
     pub fn to_rgb24(&self) -> Vec<u8> {
-        let h = self.height();
-        let mut out = Vec::with_capacity(WIDTH * h * 3);
-        for &idx in &self.pixels[..WIDTH * h] {
-            let [r, g, b] = self.dac[idx as usize];
-            out.extend_from_slice(&[
-                Self::dac_to_rgb8(r),
-                Self::dac_to_rgb8(g),
-                Self::dac_to_rgb8(b),
-            ]);
-        }
-        out
+        rgb24(&self.pixels[..WIDTH * self.height()], &self.dac)
     }
 
     /// Writes the visible area as an RGB PNG at native resolution.
     pub fn save_png(&self, path: &Path) -> std::io::Result<()> {
         write_rgb_png(path, WIDTH as u32, self.height() as u32, &self.to_rgb24())
     }
+}
+
+/// Expands palette indices to packed RGB24 through `dac`.
+pub fn rgb24(pixels: &[u8], dac: &[[u8; 3]; 256]) -> Vec<u8> {
+    pixels
+        .iter()
+        .flat_map(|&idx| dac[idx as usize].map(Vga::dac_to_rgb8))
+        .collect()
 }
 
 /// Writes packed 8-bit RGB24 pixels, rows top to bottom, as a PNG.
@@ -103,7 +103,8 @@ pub fn write_rgb_png(path: &Path, width: u32, height: u32, rgb24: &[u8]) -> std:
     writer.finish().map_err(std::io::Error::other)
 }
 
-/// Window presenting a [`Vga`] with integer scaling and 4:3 aspect correction.
+/// Window presenting a [`Vga`] (or the Mod 2026 [`DisplayFrame`]) with integer scaling
+/// and 4:3 aspect correction.
 pub struct Window {
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
     creator: sdl2::render::TextureCreator<sdl2::video::WindowContext>,
@@ -149,14 +150,27 @@ impl Window {
     }
 
     pub fn present(&mut self, vga: &Vga) -> Result<(), String> {
-        let h = vga.height() as u32;
+        self.present_rgb(WIDTH, vga.height(), &vga.to_rgb24())
+    }
+
+    /// MOD2026: presents the 2x display frame in place of the logical frame.
+    pub fn present_display(&mut self, frame: &DisplayFrame) -> Result<(), String> {
+        self.present_rgb(DISPLAY_W, frame.height, &frame.to_rgb24())
+    }
+
+    fn present_rgb(&mut self, width: usize, height: usize, rgb: &[u8]) -> Result<(), String> {
         let mut tex = self
             .creator
-            .create_texture_streaming(sdl2::pixels::PixelFormatEnum::RGB24, WIDTH as u32, h)
+            .create_texture_streaming(
+                sdl2::pixels::PixelFormatEnum::RGB24,
+                width as u32,
+                height as u32,
+            )
             .map_err(|e| e.to_string())?;
-        tex.update(None, &vga.to_rgb24(), WIDTH * 3)
+        tex.update(None, rgb, width * 3)
             .map_err(|e| e.to_string())?;
-        // Both modes are displayed on a 4:3 monitor, so stretch to the full window.
+        // Every mode is displayed on a 4:3 monitor, so stretch to the full window. The
+        // logical size stays 320x240 for any texture: mouse events arrive in it.
         self.canvas
             .set_logical_size(320, 240)
             .map_err(|e| e.to_string())?;

@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use bmp_formats::{cp, font::FontSet, pal, vga};
 
 use crate::audio::SoundCard;
+use crate::display::DisplayFrame;
 use crate::gfx::{Bitmap, BitmapId, Gfx, PALETTE_SLOT_OFFSET, RastPort, Ui};
 use crate::video::{Vga, Window};
 
@@ -131,6 +132,8 @@ enum Backend {
         win: Box<Window>,
         start: Instant,
         last_present: Instant,
+        /// MOD2026: the presented 2x display frame (unused while the layer is off).
+        display_frame: Box<DisplayFrame>,
     },
     Script {
         now_ms: u64,
@@ -185,13 +188,28 @@ pub struct Host {
     /// The code of a pending `fatal_error_exit` (the first failure wins): set where the
     /// original calls it, handled by `game::run`, where the game state is reachable.
     pub fatal: Option<u8>,
-    /// MOD2026: the data directory holds Mod 2026 data, read once at start-up.
-    #[expect(dead_code, reason = "read by the Mod 2026 behaviour of later changes")]
+    /// MOD2026: the data directory holds Mod 2026 data, read once at start-up; switches
+    /// the 2x display layer on in a window.
     pub mod2026: bool,
+    /// Test support: per screenshot of the script, whether the 2x display showed the
+    /// logical frame doubled (only recorded while the layer is on).
+    #[cfg(test)]
+    pub(crate) display_checks: Vec<(String, bool)>,
+}
+
+/// MOD2026: whether the 2x display layer is used: only with Mod 2026 data, in a window
+/// and without `--lowres`.
+pub fn display_layer_on(mod2026: bool, window: bool, lowres: bool) -> bool {
+    mod2026 && window && !lowres
 }
 
 impl Host {
-    fn new(data: &Path, backend: Backend, card: Option<SoundCard>) -> Result<Self, String> {
+    fn new(
+        data: &Path,
+        backend: Backend,
+        card: Option<SoundCard>,
+        lowres: bool,
+    ) -> Result<Self, String> {
         let mut g = Gfx::new();
         // `font_load_all() == 0` is `fatal_error_exit(3)`; without fonts there is nothing to draw
         // the message with, so the port only reports it.
@@ -210,7 +228,8 @@ impl Host {
         let mut ui = Ui::new(rp.bitmap);
         // `main` turns a blank 1x1 picture into the 320x240 page-2 token `FAR:56fa`.
         ui.work = Some(g.alloc(Bitmap::new_mem(320, 240)));
-        Ok(Self {
+        let window = matches!(backend, Backend::Window { .. });
+        let mut host = Self {
             g,
             rp,
             ui,
@@ -230,12 +249,18 @@ impl Host {
             card,
             fatal: None,
             mod2026,
-        })
+            #[cfg(test)]
+            display_checks: Vec::new(),
+        };
+        if display_layer_on(host.mod2026, window, lowres) {
+            host.g.display_on();
+        }
+        Ok(host)
     }
 
     /// A window; `sound` = the sound flag `DS:018c`. Without an audio device
-    /// the card runs silently.
-    pub fn with_window(data: &Path, scale: u32, sound: bool) -> Result<Self, String> {
+    /// the card runs silently. `lowres` keeps the Mod 2026 2x display off.
+    pub fn with_window(data: &Path, scale: u32, sound: bool, lowres: bool) -> Result<Self, String> {
         // A failed `screen_open` is `fatal_error_exit(0)`; without a screen the port only
         // reports it.
         let win = Window::open(scale).map_err(|e| {
@@ -258,8 +283,10 @@ impl Host {
                 win: Box::new(win),
                 start: now,
                 last_present: now,
+                display_frame: Box::default(),
             },
             card,
+            lowres,
         )
     }
 
@@ -279,6 +306,7 @@ impl Host {
                 shots: shots.to_path_buf(),
             },
             sound.then(SoundCard::silent),
+            false,
         )
     }
 
@@ -303,6 +331,7 @@ impl Host {
                 win,
                 start,
                 last_present,
+                display_frame,
             } => {
                 use sdl2::event::Event;
                 use sdl2::keyboard::Keycode;
@@ -366,10 +395,14 @@ impl Host {
                 }
                 if last_present.elapsed() >= Duration::from_millis(14) {
                     *last_present = Instant::now();
-                    if !self.raw_video {
-                        self.g.to_vga(&mut self.vga);
+                    if !self.raw_video && self.g.to_display(display_frame) {
+                        win.present_display(display_frame).map_err(|_| Quit)?;
+                    } else {
+                        if !self.raw_video {
+                            self.g.to_vga(&mut self.vga);
+                        }
+                        win.present(&self.vga).map_err(|_| Quit)?;
                     }
-                    win.present(&self.vga).map_err(|_| Quit)?;
                 } else {
                     std::thread::sleep(Duration::from_micros(500));
                 }
@@ -442,6 +475,26 @@ impl Host {
                 ScriptStep::Shot(name) => {
                     if !self.raw_video {
                         self.g.to_vga(&mut self.vga);
+                        #[cfg(test)]
+                        {
+                            let mut frame = DisplayFrame::new();
+                            if self.g.to_display(&mut frame) {
+                                let doubled = crate::display::is_doubled(&self.vga, &frame);
+                                self.display_checks.push((name.clone(), doubled));
+                                // Evidence aid: the 2x frame as a PNG to
+                                // `$BMP_DISPLAY_SHOTS_OUT` when that is set.
+                                if let Some(dir) = std::env::var_os("BMP_DISPLAY_SHOTS_OUT") {
+                                    let path = Path::new(&dir).join(format!("{name}.png"));
+                                    crate::video::write_rgb_png(
+                                        &path,
+                                        crate::display::DISPLAY_W as u32,
+                                        frame.height as u32,
+                                        &frame.to_rgb24(),
+                                    )
+                                    .map_err(|_| Quit)?;
+                                }
+                            }
+                        }
                     }
                     let path = shots.join(format!("{name}.png"));
                     self.vga.save_png(&path).map_err(|_| Quit)?;
@@ -726,8 +779,9 @@ impl Host {
         let pals = pal::PalFile::load(&self.data).map_err(|e| e.to_string())?;
         for i in 0..3 {
             let bytes = pals.vram_palette(i).to_dac_bytes();
-            let at = PALETTE_SLOT_OFFSET as usize;
-            self.g.planes[i][at..at + bytes.len()].copy_from_slice(&bytes);
+            for (k, &b) in bytes.iter().enumerate() {
+                self.g.vram_write(i, PALETTE_SLOT_OFFSET + k as u16, b);
+            }
         }
         Ok(())
     }
@@ -810,7 +864,7 @@ impl Host {
         };
         for (i, &px) in img.pixels.iter().enumerate() {
             let (x, y) = (i % 320, i / 320);
-            self.g.planes[x & 3][base + y * 80 + x / 4] = px;
+            self.g.vram_write(x & 3, (base + y * 80 + x / 4) as u16, px);
         }
         Ok(())
     }
@@ -900,6 +954,47 @@ mod tests {
         assert!(!host.g.blanked);
         assert!((0.42..0.45).contains(&(host.now_secs() - t1)));
         assert_eq!(host.g.dac, colours);
+    }
+
+    #[test]
+    fn display_layer_switch() {
+        // (mod2026, window, lowres)
+        assert!(
+            display_layer_on(true, true, false),
+            "mod data in the SDL host"
+        );
+        assert!(
+            !display_layer_on(false, true, false),
+            "original data in the SDL host"
+        );
+        assert!(
+            !display_layer_on(false, false, false),
+            "original data headless"
+        );
+        assert!(!display_layer_on(true, false, false), "mod data headless");
+        assert!(
+            !display_layer_on(true, true, true),
+            "mod data with --lowres"
+        );
+    }
+
+    /// Needs `BMP_DATA`.
+    #[test]
+    fn headless_host_keeps_the_display_off() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let host = Host::with_script(&data, Vec::new(), &data, false).unwrap();
+        assert!(!host.mod2026);
+        assert!(host.g.display().is_none());
+        let mod_data =
+            std::env::temp_dir().join(format!("bmp-headless-mod-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&mod_data);
+        bmp_game::mod2026::build(&data, &mod_data).unwrap();
+        let host = Host::with_script(&mod_data, Vec::new(), &mod_data, false).unwrap();
+        let _ = std::fs::remove_dir_all(&mod_data);
+        assert!(host.mod2026);
+        assert!(host.g.display().is_none());
     }
 
     #[test]

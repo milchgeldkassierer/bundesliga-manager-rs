@@ -92,6 +92,7 @@ cargo build --release -p bmp
 |---|---|
 | `run 0` or `run --nosound` | No sound, like `BMP.BAT 0` in the original |
 | `run --skip-intro` | Start directly at the title screen |
+| `run --lowres`, `teamed --lowres` | With Mod 2026 data: show the original 320x240 frame instead of the 2x display |
 | `show-pic <name>` | Show a single picture, e.g. `47.CP` |
 | `render-music <out.wav>` | Render the title music to a WAV file |
 
