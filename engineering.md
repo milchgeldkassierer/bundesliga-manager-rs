@@ -15,4 +15,4 @@ See [factory workflow policy](factory/WORKFLOW_POLICY.md) for factory-specific s
 - Never commit original game files or byte dumps of them. Tests needing data read `BMP_DATA` and skip if unset.
 
 ## Checks
-- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
+- `tools/check.sh` runs `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` (with `BMP_DATA`). A pre-push hook (`tools/install-hooks.sh`) runs it before every push; GitHub Actions is not used.
