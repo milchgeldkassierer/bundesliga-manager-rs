@@ -105,19 +105,46 @@ Everything else plays like version 1.0.0.
   PNG under `docs/mod2026/crests/`. It is written as `PIC/<n>.VGA` by the generator.
 - A contact sheet of all 56 crests rendered by the port goes to `progress/`.
 
-### R5b High-resolution crests (owner's wish, where possible)
+### R5b 2x display layer with high-resolution crests and fonts (owner's decision)
 
-- **Problem:** the port renders the original 320x200/320x240 frame and scales it to the window, so
-  a crest cannot carry more detail than its original picture size.
-- **Wish:** with mod data, crests may be shown in higher resolution:
-  - the generator also stores a high-resolution version of each crest (PNG, e.g. 4x the original
-    size, from the club's logo);
-  - the SDL window draws it as an overlay at the crest's on-screen position, scaled with the
-    window, instead of the low-resolution crest.
-- **Fallbacks:** the headless/script host and screenshots keep the low-resolution picture. The
-  original data is unaffected.
-- **Scope:** ticket 1 lists every place a crest is drawn (start menu carousel, office, tables,
-  match day, cup draws, team editor). The overlay covers at least the static ones.
+The port keeps the original 320x200 (320x240) indexed frame as the logical screen. All game logic
+uses it:
+- hit tests;
+- pixel-colour reads (`get_pixel`, the cheat check, the spinners);
+- the headless/script host, screenshots and every visual test.
+
+Beside it, when the mod data is active, the SDL host keeps a second indexed **display buffer at
+2x (640x400 / 640x480)**:
+
+- **Drawing:**
+  - Every drawing primitive of `crate::gfx` also draws into the display buffer: blit (opaque and
+    transparent), fill, line, pixel, XOR draws, text, page copy, clear, scrolling and the mouse
+    pointer.
+  - Content without a high-resolution version is drawn doubled (nearest neighbour), so it looks
+    exactly as before.
+- **Palette:** the display buffer uses the same 256-colour palette, so fades, palette changes and
+  colour cycling keep working unchanged.
+- **High-resolution crests:**
+  - The generator stores a 2x (or larger, downsampled to 2x for display) version of each crest in
+    the crest palette, under `docs/mod2026/crests/hires/`.
+  - Wherever a crest picture is blitted, the display buffer gets the high-resolution version.
+  - Every place a crest is drawn is covered: start menu carousel, office, tables, match day, cup
+    draws, newspaper and team editor. Ticket 1 lists them.
+- **High-resolution fonts:**
+  - Each game font (`docs/re/font.md`) gets a 2x version with real 2x detail, not doubled pixels.
+    It is drawn as a bitmap font with the same metrics: every glyph is exactly twice the original
+    advance and height, so layout, centring and text widths in the logical screen do not change.
+  - The 2x fonts are committed as data under `docs/mod2026/fonts/`, together with the tool or
+    process that made them.
+  - Text drawn through the font routines uses them in the display buffer.
+- **Fallback:** the display buffer is presented instead of the logical frame. If it is off, the
+  game is unchanged.
+  - The layer is off with the original data, and in the headless host.
+  - A command-line switch `--lowres` turns it off.
+- **Tests:**
+  - Unit tests check that a doubled-only frame equals the nearest-neighbour scale of the logical
+    frame for a sample of existing scenarios.
+  - Port-vs-port golden frames cover the 2x display of crests and text.
 
 ### R6 Generator
 
