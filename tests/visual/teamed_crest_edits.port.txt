@@ -1,0 +1,61 @@
+# Port side of the crest edits scenario (bmp teamed --script syntax, milliseconds): crest
+# edits the teamed_crest scenario leaves out.
+# command: teamed
+# compare-file: PIC/88.VGA
+# compare-file: PIC/83.VGA
+# compare-file: PIC/80.VGA
+# compare-file: MANA.DAT
+wait 2000
+# Club 0: a colour picked from the crest itself with the right button.
+move 20 100
+wait 500
+click 20 100
+wait 2000
+shot e01-editor
+rclick 100 100
+wait 1000
+shot e02-pick
+# Column 8 of the colour fields (x 318/319, row 3): colour 32, framed at the right edge.
+click 318 143
+wait 1000
+shot e03-column8
+click 60 140
+wait 1000
+click 111 90
+wait 1000
+shot e04-painted
+# The next colour field erases the frame of colour 32 one row lower (on "Iff-Bild laden").
+click 171 100
+wait 1000
+shot e05-next-colour
+click 77 65
+wait 2000
+shot e06-saved
+# Club 1: paint and Undo; the crest still counts as changed and is written unchanged.
+move 59 100
+wait 500
+click 59 100
+wait 2000
+click 309 128
+wait 1000
+click 40 120
+wait 1000
+click 201 176
+wait 2000
+shot e07-undo
+click 77 65
+wait 2000
+shot e08-saved
+# Club 2: paint and Ur-Wappen; the crest counts as unchanged and PIC\80.VGA is not written.
+move 98 100
+wait 500
+click 98 100
+wait 2000
+click 40 120
+wait 1000
+click 201 192
+wait 2000
+shot e09-original
+click 77 65
+wait 2000
+shot e10-saved

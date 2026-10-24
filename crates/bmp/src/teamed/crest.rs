@@ -131,14 +131,23 @@ fn frame_field(g: &mut Gfx, ed: &mut Editor, c: i16, color: u8) {
     gfx::ui_draw_frame(g, &mut ed.grid, x0, y0, x1, y1, color);
 }
 
-/// Chooses colour `c`: erases the frame of the previous colour (if any) and frames
-/// field `c`.
-fn choose_color(g: &mut Gfx, ed: &mut Editor, c: i16) {
+/// Chooses the colour field in `row` (0..3) and column `col`: erases the frame of the
+/// previous colour (if any), frames the field at `(row, col)` and takes colour
+/// `row * 8 + col`.
+///
+/// The new frame is placed by row and column, not by the colour: column 8 (`x` 318 or
+/// 319) frames `(0x13F, row * 0x10 + 0xE)` at the right edge (one visible column) while
+/// the colour is `row * 8 + 8`, whose own field frame (erased by the next choice) lies
+/// one row lower.
+///
+/// Origin: TEAMED.EXE 12a5:1a49 (teamed_main_loop, crest editor: colour field)
+fn choose_color(g: &mut Gfx, ed: &mut Editor, row: i16, col: i16) {
     if ed.crest_color != -1 {
         frame_field(g, ed, ed.crest_color, 0);
     }
-    frame_field(g, ed, c, FIELD_FRAME);
-    ed.crest_color = c;
+    let (x0, y0) = (col * 0x14 + 0x9f, row * 0x10 + 0xe);
+    gfx::ui_draw_frame(g, &mut ed.grid, x0, y0, x0 + 0x11, y0 + 0xd, FIELD_FRAME);
+    ed.crest_color = row * 8 + col;
 }
 
 /// The crest-editor part of the main loop for event `ev` at `(x, y)` (view
@@ -209,7 +218,7 @@ pub fn click(host: &mut Host, ed: &mut Editor, ev: u16, mut x: i16, mut y: i16) 
         0..=3 => {
             // 12a5:1a49: a colour field.
             let col = (x - FIELD_X0) / 0x14;
-            choose_color(&mut host.g, ed, row * 8 + col);
+            choose_color(&mut host.g, ed, row, col);
         }
         ROW_IMPORT => crest_import::import(host, ed)?,
         ROW_UNDO => {

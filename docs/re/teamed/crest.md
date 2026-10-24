@@ -3,7 +3,9 @@
 Port: `crates/bmp/src/teamed/crest.rs` (editor, crest file), `crates/bmp/src/teamed/crest_import.rs`
 (import, browser), `crates/bmp-formats/src/iff.rs` (IFF reader and decoder). Scenario:
 `tests/visual/teamed_crest.*` (18 frames against DOSBox, all 100 %; the two written
-`PIC\*.VGA` files are byte-identical to the original's). Addresses are Ghidra addresses in
+`PIC\*.VGA` files are byte-identical to the original's). `tests/visual/teamed_crest_edits.*`
+(colour pick from the crest, colour-field column 8, Undo and Ur-Wappen before saving: 10
+frames, three `PIC\*.VGA` files and `MANA.DAT` identical). Addresses are Ghidra addresses in
 `/unpacked/TEAMED_unpacked.EXE`; "view" coordinates are relative to the crest view
 `DS:1DF6` (screen y - 75), see `overview.md`.
 
@@ -67,8 +69,11 @@ B (17bf) ev == 1 and 1 < x < 0x99 and 0xC < y < 0xA5:
       until the event is 2 (left up)
     [BP-DA] = 1, fall through to C with the release position
 C (19d7) ev == 1 and x > 0x9E and 0xC < y < 0x9C: row = (y-0xD)/0x10; jump table 12a5:201a
-    0..3 (1a49): col = (x-0x9E)/0x14; erase frame of [BP-4] (if != -1); frame field(row*8+col)
-                 in 0x1D; [BP-4] = row*8+col   (x up to 319 gives col 8 = next row's colour)
+    0..3 (1a49): col = (x-0x9E)/0x14; erase frame of [BP-4] (if != -1); frame
+                 (col*0x14+0x9F, row*0x10+0xE)-(col*0x14+0xB0, row*0x10+0x1B) in 0x1D (by row
+                 and column, not field(row*8+col)); [BP-4] = row*8+col
+                 (x 318/319 gives col 8: the frame sits at x 0x13F, one visible column, while
+                 the colour is the next row's first one, whose field the next choice erases)
     4 (1b16): import, see below
     5 (1f7d): blit [BP-C8] -> [BP-58]; crest_editor_draw([BP-58], 1)
     6 (1fb8): blit crest[sel] -> [BP-58]; crest_editor_draw([BP-58], 1); [BP-DA] = 0

@@ -1,0 +1,56 @@
+# DOSBox side of the crest edits scenario (tools/dosbox-capture.sh syntax, seconds).
+# exe: TEAMED.EXE
+# DOSBox's pointer lands up to two pixels off the requested x in the 242-line mode; the port
+# script uses the x positions DOSBox reaches (a click at 319 or 318 does not reach the game).
+wait 5
+# Club 0: a colour picked from the crest itself with the right button.
+click 21 100 242
+wait 2
+shot e01-editor
+click 101 100 242 3
+wait 1
+shot e02-pick
+# Column 8 of the colour fields (x 318/319, row 3): colour 32, framed at the right edge.
+click 317 143 242
+wait 1
+shot e03-column8
+click 61 140 242
+wait 1
+click 111 90 242
+wait 1
+shot e04-painted
+# The next colour field erases the frame of colour 32 one row lower (on "Iff-Bild laden").
+click 171 100 242
+wait 1
+shot e05-next-colour
+click 78 65 242
+wait 2
+shot e06-saved
+# Club 1: paint and Undo; the crest still counts as changed and is written unchanged.
+click 60 100 242
+wait 2
+click 309 128 242
+wait 1
+click 41 120 242
+wait 1
+click 201 176 242
+wait 2
+shot e07-undo
+click 78 65 242
+wait 2
+shot e08-saved
+# Club 2: paint and Ur-Wappen; the crest counts as unchanged and PIC\80.VGA is not written.
+click 99 100 242
+wait 2
+click 41 120 242
+wait 1
+click 201 192 242
+wait 2
+shot e09-original
+click 78 65 242
+wait 2
+shot e10-saved
+fetch PIC/88.VGA
+fetch PIC/83.VGA
+fetch PIC/80.VGA
+fetch MANA.DAT
