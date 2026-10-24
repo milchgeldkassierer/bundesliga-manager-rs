@@ -43,7 +43,7 @@ BMP Remake is not an "inspired by" remake and not a new football manager.
 
 **Content changes**
 - Updated squads, real player names, new seasons or leagues
-- New game mechanics, "balancing fixes" or fixes of original bugs in the default mode
+- New game mechanics or "balancing fixes" (fixes of obvious original bugs are allowed, see invariant 1)
 - HD graphics, redrawn sprites, filters/shaders that change the 320×200 pixel look
 
 **Platform and distribution**
@@ -53,11 +53,20 @@ BMP Remake is not an "inspired by" remake and not a new football manager.
 
 **Technology**
 - Embedding an x86/DOS emulator at runtime instead of reconstructed logic
-- Translating the in-game text into other languages
+- Translating the in-game text into other languages before the German port is complete (the English edition is milestone M6, #118)
 
 ## Hard invariants -- not tunable by any issue
 
 1. **Fidelity over elegance.** Where the original and "clean" code would differ, the original wins (rounding, overflow, RNG call order).
+   **Exception (owner decision 2026-10-24): obvious bugs may be fixed.** An obvious bug is behaviour no player
+   could want and the designers clearly did not intend: crashes, hangs, reads or writes outside a table, corrupted
+   or lost game state, or results that contradict the game's own rules and messages. Quirks that are part of the
+   look and feel (layout oddities, rounding the player sees as normal, balancing) stay. Every fix must
+   (a) be marked in the code with `// DEVIATION:` and the original behaviour, (b) be listed in the
+   "Deviations" section of the matching spec in `docs/re/logic/`, (c) keep the RNG call order unless the bug is
+   in that order itself (then say so), (d) come with a test, and (e) keep shipped and game-written saves
+   loading byte-exactly. If a fixed bug was visible on screen, the affected reference frames are documented as
+   expected differences, never silently re-captured.
 2. **Graphics 1:1, minimal tolerance.** Every screen is compared against a DOSBox reference; thresholds are defined in `docs/re/TOLERANCES.md` (phase 1: >= 90 % matching pixels, exact match is the long-term target).
 3. **No original data in the repo.** Tests that need original data run only when `BMP_DATA` is set and are skipped otherwise.
 4. **English only in the repository.** Source code, identifiers, comments and documentation are English; only verbatim original in-game text is German.
@@ -94,7 +103,7 @@ them**, build against it, and record what it assumed -- the merge is then held f
 human, so nothing ships on a guess and nothing stops for one.
 
 - **Q1** Which windowing/audio crates (SDL2 vs. minifb + cpal)?
-- **Q2** Should an optional "bugfix mode" ever exist (off by default)?
+- ~~**Q2** Should an optional "bugfix mode" ever exist?~~ Decided 2026-10-24: no separate mode; obvious bugs are fixed directly (invariant 1).
 
 **Except these, which do stop the factory:**
 
