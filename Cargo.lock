@@ -34,6 +34,7 @@ name = "bmp-game"
 version = "1.0.0"
 dependencies = [
  "bmp-formats",
+ "png",
  "serde_json",
 ]
 

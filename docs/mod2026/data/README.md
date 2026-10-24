@@ -11,7 +11,7 @@ The 64 German club slots for the 2026/27 season (PRD R1, R3), checked by
 - **Slot order:** inside each 2026/27 league, the clubs are ordered by the tier of their 2025/26
   league, then by their 2025/26 rank, as the original orders its slots by the previous season.
   Regionalliga clubs with the same rank follow the alphabetical order of their league.
-- **Crests:** `crest` = 80 + `slot`.
+- **Crests:** `crest` = 80 + `slot`. The converted crest pictures are `docs/mod2026/crests/<crest>.png`.
 - **Regionalliga pool (56..63):** the three clubs relegated from the 3. Liga with the most 2025/26
   points (Aue, Ulm, 1860 München; Schweinfurt is left out), and the five Regionalliga leaders as
   of 18–20 October 2026.
