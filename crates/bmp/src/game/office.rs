@@ -273,7 +273,7 @@ fn draw_main_icon(host: &mut Host, i: i16, flags: u16) -> [i16; 4] {
 
 /// True when sub icon `si` (1-based) of main icon `sel` is disabled.
 fn sub_icon_disabled(state: &GameState, cur: usize, sel: i16, si: i16) -> bool {
-    (sel == 3 && si == 5 && state.managers[cur].values_139[0] == 0)
+    (sel == 3 && si == 5 && state.managers[cur].camp_cooldown == 0)
         || (sel == 1 && si == 6 && !(state.scenario == 0x7ac || state.scenario == 0x7c9))
         || (sel == 5 && si == 5 && state.manager_count == 4)
 }
