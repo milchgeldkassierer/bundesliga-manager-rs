@@ -105,6 +105,26 @@ Everything else plays like version 1.0.0.
   and finance logic that reads points.
 - **Saves:** mod saves keep the save format. The points fields hold the 3-point values.
 
+### R1d Euro instead of D-Mark (mod data only, owner decision 2026-10-24)
+
+- **The unit changes, the amounts do not.** Wherever the currency DM appears, the mod shows "€"
+  instead. The game keeps computing and storing the same values, so the balance is unchanged.
+- **Texts:** every currency mention changes: "DM", "Mio. DM", "TDM", "D-Mark" and the like.
+  - The text to replace is in strings in `crates/bmp` and `crates/bmp-game` (about 40 places)
+    and in the newspaper and message templates.
+  - The same goes for anything else that prints money: finances, loans, stadium, contracts,
+    negotiation, transfers, gate receipts, sponsors, bonuses, statistics and season end.
+- **Glyph:** none of the original fonts has a € glyph, and CP437 has none either.
+  - Each game font gets one, drawn in that font's style and size, in a free code point. Choosing
+    the code point is part of the ticket.
+  - The 2x fonts (R5b) get it too.
+- **Pictures:** if a picture has "DM" painted into it (check every `PIC/*` the money screens
+  use), the generator writes a corrected copy into the mod data directory.
+- **Layout:** amounts and their columns stay aligned where "€" (1 glyph) replaces "DM"
+  (2 glyphs). The usual German form "1.000.000 €" is used where it fits, otherwise the position
+  of the original unit.
+- **Original data:** without `MOD2026.DAT` every "DM" stays.
+
 ### R1c Real names of the European cups (mod data only)
 
 - **Renames:** in every text that names a European cup (statistics, history, newspaper, draws,
