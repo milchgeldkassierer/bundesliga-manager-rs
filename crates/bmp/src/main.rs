@@ -1,4 +1,5 @@
 mod compare;
+mod gfx;
 mod video;
 
 use std::path::{Path, PathBuf};

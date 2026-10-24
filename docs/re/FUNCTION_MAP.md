@@ -161,7 +161,7 @@ This is the day loop. Its key state:
 | Variable | Meaning |
 |---|---|
 | `DS:07dc` (long) | running day counter |
-| `DS:016e` | apparently the season week index into `DS:2280` (match-type bitmask per week) |
+| `FAR:016e` | season week index into `DS:2280` (match-type bitmask per week); savegame block 49 |
 | `DS:07ab` | number of human managers |
 | `5238:304a` | current manager index |
 
@@ -560,7 +560,7 @@ Texts in quotes are the German in-game strings the function references, reproduc
 | 422b:013f | *savegame_read_decrypted* | format-loader | read block and decrypt (inverse of 422b:0047) (MAN agent owns) | high | 145 | 64 |
 | 422b:01d0 | *savegame_helper_01d0* | format-loader | save/load helper | low | 94 | 2 |
 | 422b:022e | *savegame_helper_022e* | format-loader | save/load helper | low | 302 | 2 |
-| 422b:035c | *savegame_write_all* | format-loader | write complete game state | low | 1186 | 1 |
+| 422b:035c | *player_table_generate* | game-state | generate the player table and deal players to managers by position band (see logic/state.md) | medium | 1186 | 1 |
 | 422b:07fe | *screen_save_game* | format-loader | Spielstand Speichern (overwrite confirmation) (MAN agent owns) | medium | 2574 | 3 |
 | 422b:120c | *screen_load_game* | format-loader | Spielstand Laden (version check, V1.x level prompt) (MAN agent owns) | medium | 4024 | 2 |
 | 422b:21c4 | *highscore_load_save* | format-loader | HIGH.00 hall of fame file (DS:949c) | medium | 418 | 4 |

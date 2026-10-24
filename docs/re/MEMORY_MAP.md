@@ -135,7 +135,7 @@ The screen bitmap descriptor has width 0x140, height 0xF0 and data A000:0000 (`s
 | 224e/2250 | long | difficulty level. The value 4 is special-cased in 176b:0681 and 4091:0ba5 (medium) |
 | 2252/2254 | long | second game-option long (low) |
 | 225a[3] | byte | per-competition round counters (medium) |
-| 225e/225f, 2262[] | byte | team counts / offsets per league tier (3a41:10e3) (medium) |
+| 225e/225f, 2262[] | byte | team counts / league rounds per tier (3a41:10e3, gates 3a41:2d33) (medium) |
 | 226e[], 226f, 2270 | byte | league tier boundaries (`league_of_rank` 27c2:1bb5 returns 1, 2 or 4) (high) |
 | 2280[] | byte | per-week bitmask of competitions (bits 0-2 increment `225a[]`). The value 9 marks a special week (medium) |
 | 4f64-4f7a | words | UI coordinates/state of current screen (low) |
