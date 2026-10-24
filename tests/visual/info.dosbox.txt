@@ -1,0 +1,85 @@
+# DOSBox side of the info scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN and walks through the screens of the office "Info" submenu.
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+click 30 130 240
+wait 2
+shot i00-submenu
+click 107 132 240
+wait 4
+shot i01-statistics
+click 293 213 240
+wait 4
+click 107 174 240
+wait 4
+shot i02-eternal
+click 293 213 240
+wait 4
+click 107 216 240
+wait 4
+shot i03-history
+click 293 213 240
+wait 4
+click 161 132 240
+wait 4
+shot i04-stadium
+click 60 180 240
+wait 3
+shot i05-ticket-spinner
+click 219 35 240
+wait 2
+click 219 35 240
+wait 2
+shot i06-ticket-raised
+click 219 35 240 3
+wait 2
+shot i07-ticket-set
+click 293 213 240
+wait 4
+click 161 174 240
+wait 4
+shot i08-credits
+click 200 37 240
+wait 2
+shot i09-loan-prompt
+type 100000
+wait 1
+shot i10-loan-typed
+key Return
+wait 2
+shot i11-loan-taken
+click 138 145 240
+wait 2
+shot i12-debts-here
+click 293 213 240
+wait 4
+click 161 216 240
+wait 4
+shot i13-contract
+click 76 35 240
+wait 2
+shot i14-board
+click 140 85 240
+wait 2
+shot i15-offers
+click 195 70 240
+wait 2
+shot i16-next-offer
+click 250 190 240
+wait 2
+shot i17-expenses
+click 50 150 240
+wait 2
+shot i18-shirt
+click 293 213 240 3
+wait 4
+shot i19-office

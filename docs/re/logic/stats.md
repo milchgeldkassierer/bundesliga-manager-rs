@@ -1030,31 +1030,69 @@ with the injury name `UI[53+type]` (via `text_to_upper_de`) or the status texts 
 
 ### 4.2 `screen_statistics` 362f:0af7 and helpers
 
-`void screen_statistics(int16 far *unused, uint8 unused2)` (office menu 1 case 1).
-Ghidra's function body for 362f:0af7 is corrupt (it swallows the following functions); the real
-code is 362f:0af7..18e6.
+`void screen_statistics(int16 far *unused, uint8 unused2)` (office menu 1 case 1; port:
+`crates/bmp/src/game/stats_screens.rs`). Ghidra's function body for 362f:0af7 is corrupt (it
+swallows the following functions); the real code is 362f:0af7..18e6. The switch for items
+20..27 is a jump table at 362f:11b7 (targets 0f0b, 0f52, 0f90, 0f99, 1018, 11c7, 1094, 111c)
+whose cases the annotated disassembly does not list.
 
-* Panels: (5,8,0xc3,0xb4), (0xcd,8,0x6c,0xb4), (5,0xc0,0xc3,0x27), exit button.
-* `debt = -finance_sum_entries(0, 0x63)` (int32), then sets 13 palette entries from `DS:5498`.
-* 31 text items `UI[90+i]` (i = 0..30). Items starting with `'!'` are section headers drawn in
-  colour 0xb with an underline (`"!SERIEN"`, `"!REKORDE"`, `"!ZUSCHAUER"`, `"!FINANZEN"`,
-  `"!EINNAHMEN+AUSGABEN / MONAT"`). Item 19 starts the right column (x 0xd1, y 0x10), item 28
-  the bottom panel (x 8, y 0xc5). Column header `LBL[0] "G       H       A"` at (0x5c,0x14).
-  * Items 1..7 (streaks, team `t` = own team): for each column `c` 0..2 the current streak
-    `S(t, i-1, c)` and the manager best `FAR:a276[3*(7*m + i-1) + c]`, each formatted by
-    **`format_long_or_blank` 362f:0a9f** `char far *(int32 v)` (returns `DS:a390` holding
-    `fmt(v)` or the 2-byte string `DS:5485` = `"^@"` when `v == 0`).
-  * Items 8, 9: **`format_goals_per_game` 362f:21e1** for the columns, with
-    `side = DS:54b2[c]` (2, 0, 1).
-  * Items 11..18: `format_team_record(t, i - 11)`.
-  * Items 20..: attendance (from the stadium/season counters), balance `M(m)[0x1f0]`, total
-    debts, monthly income `finance_weekly_income()` and expenses `finance_weekly_expenses()`
-    scaled by `DS:2252/DS:224e`.
-* Bottom: a bar graph of the history list `M(m)[0x14a..]` (count `M(m)[0x13a]`): min/max of
-  the bytes, bar height `(v - min)*11/(max - min) + 2` (int division, `max - min` forced to
-  ≥ 1), and a balance gauge from (0xd1,0xab) to (0x130,0xb8) in steps of 50,000 DM (red below
-  -2,440,000, green above 2,325,000; constants `0xffdbc2a8` and `0x237a08`).
-* Waits for button 1 (exit).
+`m = FAR:304a`, `t = M(m)[0x1e]` (own team).
+
+* Panels (5,8,0xc3,0xb4), (0xcd,8,0x6c,0xb4), (5,0xc0,0xc3,0x27) and the exit icon
+  (0x10c,0xc1, code 0x22). All four write their rect to the same buffer, so the hit test
+  (`n = 1`) only knows the exit icon.
+* `debt = -finance_sum_entries(0, 0x63)` (int32, minus the principal still owed, all lenders).
+* Palette: for `i` 0..12, entry `0x1f - i` = `DS:5498[i]` (`0x0RGB`, each nibble * 4):
+  green (0x1f) .. red (0x13).
+* 31 items `UI[90+i]`, `x = 8`, `y = 0x10`; at `i == 19` `x = 0xd1, y = 0x10`, at `i == 28`
+  `x = 8, y = 0xc5`.
+  * Header (text starts with `'!'`): font 1, `y += 6`, text+1 at `(x, y-2)` colour 0xb, line
+    `(x, y)-(x + width(text+1), y)` colour 0xb (width measured in font 1), font 2,
+    `y += 0xb`; next item.
+  * Otherwise the label at `(x, y)` colour 1; if `i > 0x1c` `x += 0x8c`.
+  * `i` 1..7 (`DS:079c = 2`): for column `c` 0..2 (x `0x22*c + 0x54`, colour 2):
+    `format_long_or_blank(S(t, i-1, c)) + "(" + format_long_or_blank(best(m, i-1, c)) + ")"`
+    (`best` = `FAR:a276[3*(7m + i-1) + c]`).
+  * `i` 8, 9: `"  " + format_goals_per_game(t, DS:54b2[c], i - 8)` at the same places.
+  * `i` 11..18: `format_team_record(t, i - 11)` at x `(7 + (DS:2252 == 3)) * 12` = 0x54,
+    colour 2.
+  * `i` 20..27 (`DS:07b2 = 0`, separators on; `n = M(m)[0x13a]` home games):
+    | i | text (at `(x, y+6)`, colour 2) |
+    |---|---|
+    | 20 BESUCHERZAHL | `n == 0 ? "(NOCH KEINE...)" : fmt(M[0x1e4])` (total attendance) |
+    | 21 SCHNITT/SPIEL | `n == 0 ? "(NOCH KEINER...)" : fmt(M[0x1e4] / n)` |
+    | 22 BEN\|TIGTER SCHNITT | `fmt(finance_weekly_balance_per_round())` (24a4:2b15, §3.5) |
+    | 23 ZUSCHAUERREKORD | `v = M[0x1e8]`; `v == 0 ? "(NOCH KEINER...)" : "(" + C(M.w[0x1f4]).name + ")"` |
+    | 24 MINUSKULISSE | `v = M[0x1ec]`; `v == 99999 ? "(NOCH KEINE...)" : "(" + C(M.w[0x1f8]).name + ")"` |
+    | 26 KONTOSTAND | `[LBL[324] if DS:224d] + fmt(M[0x1f0] * DS:2252 / DS:224e) + " DM"` |
+    | 27 SCHULDEN GESAMT | `fmt(-(debt * DS:2252 / DS:224e)) + " DM"` (a `strcpy` that drops the prefix) |
+    For 23 and 24, when `v != 0 && v != 99999`, `fmt(v)` is drawn right after the label at
+    `(x + width(label), y)`. Strings: `DS:4a46 "(NOCH KEINE...)"`, `DS:4a56 "(NOCH KEINER...)"`.
+  * `i` 29, 30 (`DS:079c = 7`, `DS:07b2 = 0`): `fmt(finance_weekly_income() * DS:2252 /
+    DS:224e) + " DM"` and `fmt(finance_weekly_expenses() * DS:2252 / DS:2252) + " DM"` (the
+    expenses are divided by the wrong constant, a leftover divisor on the stack) at `(x, y)`
+    colour 2; then `DS:079c = 1`, `x -= 0x8c`.
+  * Step: `i > 0x1b ? y += 8 : y += (i > 0x12 ? 15 : 8)`, plus 0x12 after item 24 (room for
+    the attendance graph).
+* Font 1, `LBL[0] "G       H       A"` at (0x5c,0x14) colour 0xb, font 2.
+* Graph frames: fill (0xd1,0x69)-(0x130,0x76) colour 0, frame (0xd0,0x68)-(0x131,0x77) colour
+  6; fill (0xd1,0xab)-(0x130,0xb8) colour 0, frame (0xd0,0xaa)-(0x131,0xb9) colour 6.
+* `debt += M(m)[0x1f0]` (now the net balance).
+* Attendance graph of the `n` bytes `M(m)[0x14a..]`: `max = (int8)-127`, `min = 127`; for each
+  byte `v` (unsigned) `if (v > max) max = v; if (min > v) min = v;` with `max`/`min` signed
+  bytes (so a byte above 127 stored as maximum turns negative). `range = (int8)(max - min)`,
+  0 becomes 1. Bar `i`: `h = (v - min) * 11 / range + 2` (16-bit), frame `(5i+0xd1, 0x76-h)
+  -(5i+0xd6, 0x76)` colour 0x15, fill `(5i+0xd2, 0x77-h)-(5i+0xd6, 0x76)` colour 0x11.
+* Balance gauge: `thr = -2,375,000` (`0xffdbc2a8`), colour index `k = 0`; for `x` 0xd1..0x130:
+  a line at `x` colour `k + 0x13`, tall `(x,0xab)-(x,0xb8)` when `debt < thr && debt + 50000 >=
+  thr`, else short `(x,0xae)-(x,0xb5)`; `x++`; `k++` when `(x - 0xd1) % 7 == 0 && k < 12`;
+  `thr += 50000`. Then a tall line at 0xd1 colour 0x13 if `debt <= -2,375,000` and at 0x130
+  colour 0x1f if `debt > 2,325,000` (`0x237a08`).
+* `screen_fade(1)`, wait for button 1 (exit), `ui_wait_with_highlight(0x10c, 0xc1)`,
+  `DS:079c = 1`. `DS:07b2` is left at 0.
+
+**`format_long_or_blank` 362f:0a9f** `char far *(int32 v)`: copies `fmt(v)` to `DS:a390`, or,
+for `v == 0`, `DS:5485 "^@"` (`DS:5482 "^\xfc"` when `DS:224d != 0`); returns `DS:a390`.
 
 **`format_goals_per_game` 362f:21e1** `void (char far *out, uint8 t, uint8 side, int16 what)`;
 `side` 0 = home, 1 = away, 2 = both; `what` 0 = scored, 1 = conceded, 2 = both
@@ -1079,62 +1117,175 @@ for (w = (what == 2 ? 0 : what); w < (what == 2 ? 2 : what + 1); w++) {
 
 ### 4.3 `screen_eternal_table` 362f:18e7
 
-`void (void)` (office menu 1 case 2). Loads `PIC 0x24` (trophy pictures).
+`void (void)` (office menu 1 case 2). Order: sort, `vga_load_picture(0x24)` (trophy strip),
+`copy_protection_penalty(LBL[118])`.
 
 * Sort: `ord[i] = i` for the 64 domestic teams; for `i` 0..62, `j` from `i` to 63: swap if
-  `(uint32)T(ord[i])[0x32] < (uint32)T(ord[j])[0x32]` (compares the high words first,
-  unsigned).
-* Left panel `LBL[11] "Ewige Tabelle"` (frame 5,8,0x87,0xde): rows from y 0x1b, step 7, show
-  the first 23 teams plus every human team below them (a gap is drawn before the first one not
-  in the top 23); human teams in colour 0xb. Points are printed as `T[0x32] % 100000`
-  (`_aFulrem`).
-* Right panel `LBL[12] "Ewige Bilanz"` (0x91,8,0xa8,0xb4): two trophy blits (PIC 0x24) at
-  (0x9b,0x16) and (0x119,0x16); five achievement lines `LBL[1..5]` ("MEISTERSCHAFTEN",
-  "DFB-POKALE", "LANDESMEISTER-POKALE", "POKALSIEGER-POKALE", "UEFA-POKALE") with the counts
-  `M(m)[0x39..0x3d]` (colour 0xb if non-zero, else 1); then `LBL[14] "GESAMT HEIM AUSW[RTS"`
-  and rows `LBL[6..10]` ("PUN.", "TORE", "SIEGE", "NIED.", "UNEN.") from the manager's career
-  counters `M(m)+0x1b0` (`FAR:23f2`, skipped if `DS:224d != 0`) and `M(m)+0x1ac` (`FAR:23ee`).
-* Five circles (`draw_circle`) mark the competitions the team takes part in this season
-  (colour 0xd if active: league if bit 0 of `FAR:4bec[m]` is clear and tier 0; cups if
-  `M(m)[0x131+k] == DS:0007+k`).
-* Waits for button 1.
+  `(uint32)T(ord[i])[0x32] < (uint32)T(ord[j])[0x32]` (high words first, unsigned).
+* Panels (5,8,0x87,0xde) and (0x91,8,0xa8,0xb4), exit icon (0x10c,0xc1, 0x22); like the
+  statistics only the exit icon's rect is tested.
+* Font 1: `LBL[11] "Ewige Tabelle"` centred (5..0x8c, y 0x11, colour 0xb, no shadow), line
+  (6,0x13)-(0x8b,0x13) colour 0xb; `LBL[12] "Ewige Bilanz"` centred (0x91..0x139, 0x11), line
+  (0x92,0x13)-(0x138,0x13).
+* Trophy strips: `blit_bitmap(pic, 0, 0, screen, 0x9b, 0x16, 0x15, 0x71)` and the same to x
+  0x119.
+* Font 2. For `k` 0..4: `LBL[1+k]` centred (0xb0..0x11e, y `0x17k + 0x1e`, colour 1, shadow
+  0); `M(m)[0x39+k]` (titles won) as `fmt(n)` colour 0xb or `LBL[13] " KOMMT VIELLEICHT
+  NOCH..."` colour 1, centred (0xb0..0x119, `0x17k + 0x26`, shadow 0); `LBL[6+k]` at (0x94,
+  `7k + 0x9c`) colour 1.
+* `LBL[14] "GESAMT HEIM AUSW[RTS"` at (0xb7,0x93) colour 1; `DS:079c = 4`.
+* Career counters: word pairs `[home, away]` at `M(m)+0x1a4` (points), `+0x1a8` (goals for),
+  `+0x1ac` (goals against), `+0x1b0` (points against), `+0x1b8` (wins), `+0x1bc` (losses),
+  `+0x1c0` (draws). Row `r` 0..4 (`PUN.`, `TORE`, `SIEGE`, `NIED.`, `UNEN.`), column `c`
+  (0 = home + away as a 16-bit sum, 1 = home, 2 = away): row 0 shows `points:points against`
+  (only `points` when `DS:224d != 0`), row 1 `goals for:goals against`, rows 2..4 one number.
+  Pairs are drawn at `(0x30c + 0xa9, 7r + 0x9c)`, single numbers at x `0x30c + 0xb3`, colour 1.
+* Table (`DS:07b2 = 0`), `y = 0x1b`, `shown = 0` (signed byte): for `si` 0..63, `t = ord[si]`:
+  human = some manager `k < DS:07ab` has `M(k)[0x1e] == t` (then `shown++` if `si < 23`,
+  colour 0xb, else colour 1). Drawn when `shown + 23 > si` or human: `DS:079c = 2`,
+  `fmt(si+1) + ". " + name` at (9, y), `DS:079c = 4`, `fmt((uint32)T(t)[0x32] % 100000)` at
+  (0x6f, y), `y += 7`. If then `shown - si == -22` and `DS:07ab != shown` (human teams still
+  below): colour 1, `y += 0xe`, dots `put_pixel(0xd, p)` for byte `p` from `y - 0x13` while
+  `p < y - 7`, step 2. So every human team inside the top 23 extends the top block by a row.
+* `DS:079c = 1`, `DS:07b2 = 1` (left at 1), free the picture.
+* Circles `draw_circle(0xa5, 0x17k + 0x20, 0xb)` for `k` 0..4, colour 0xd when the team plays
+  in that competition this season, else 0x12: `k == 0`: bit 0 of `FAR:4bec[m]` clear and
+  `M(m)[0x138] == 0`; `k > 0`: `M(m)[0x131+k] == FAR:0007+k` (state `event_state[k-1]`).
+* `screen_fade(1)`, wait for button 1, `ui_wait_with_highlight(0x10c, 0xc1)`.
 
 ### 4.4 `screen_manager_history` 362f:390e
 
-`void (void)` (office menu 1 case 3). Title `LBL[119] "Damals... Ihre Erfolge"`, header
-`LBL[19] "Sais. Pl.   Liga       DfB-Pokal       Europapokal"`, graph title `LBL[20]
-"Gesamtentwicklung"`. One line per finished season from the manager's history (position,
-league, cup result `LBL[23] "SIEGER"` / round names `UI[122..126]` / `LBL[25] "nicht im
-wettbewerb"`), and a development graph. Empty history: `LBL[21] "NOCH HABEN SIE KEINE
-HISTORISCH SONDERLICH WICHTIGEN ERFOLGE ERZIELT..."`; before the first season: `LBL[22]
-"EXISTIERTEN SIE NOCH GAR NICHT ALS MANAGER..."`. Read-only screen; draw sequence in
-Appendix A.
+`void (void)` (office menu 1 case 3). `M = M(FAR:304a)`, `L = M[0x3e + 4k]` the season log
+(`L[0]` overall rank: table position + first team id of the league, 1-based; `L[1]` league;
+`L[2]` DFB-Pokal byte; `L[3]` European cup byte; `0xff` = no season yet).
+
+* `copy_protection_penalty(LBL[119])`. Panels: graph (5,0x9d,0x102,0x49) in colour **0**, list
+  (5,8,0x134,0x8f) colour 8, exit icon (0x10c,0xc1, 0x22). The graph panel writes its rect to
+  the buffer the list panel then overwrites, so hit-test button 1 is the **list**, button 2 the
+  exit icon.
+* Font 1: `LBL[19]` at (`10 - 3*(DS:2252 == 3)`, 0x11) colour 0xb, line (5,0x13)-(0x138,0x13)
+  colour 0xb; `LBL[20] "Gesamtentwicklung"` centred (6..0x106, 0xa5, colour 0xb, no shadow),
+  line (6,0xa7)-(0x106,0xa7) colour 0xb.
+* Graph: `n = min(DS:07e2, 50)` (signed); for season `k < n`, `v = L[0]`, colour 0x1b, for `h`
+  from 0x3a down to 1: colour 0x1a once `h < DS:2270 + 1` (39), 0x19 once `h < DS:226f + 1`
+  (19); if `v <= h` a line `(5k+7, h-0x56)-(5k+0xb, h-0x56)` (byte y: 0xe4 for `h = 58` up to
+  0xab) in that colour. So each bar reaches from the bottom up to the rank.
+* Font 2, `y = 0x1d`, `later = (FAR:a7a0 - DS:07e2) > 1970` (int32).
+* `DS:07e2 == 0`: `LBL[21] "NOCH HABEN SIE KEINE ..."` centred (0..0x140, 0x1d, colour 1,
+  shadow 7); wait for button 2.
+* Else for `k` = 0, 1, ...:
+  * `fmt(0x1c*later + M[0x13b] + k + 1963)` at (0xc, y) colour 1; `DS:079c = 2`.
+  * `L[0] == 0xff`: `LBL[22] "EXISTIERTEN SIE NOCH GAR NICHT ALS MANAGER..."` at (0x2a, y).
+  * Else `fmt(L[0] - (int8)DS:226e[L[1]]) + "."` at (0x2a, y), colour 0xb for the champion
+    (`L[0] == 1 && L[1] == 0`) else 1; `upper(UI[42 + L[1]])` centred (0x55..0x55, colour 1, no
+    shadow).
+  * DFB-Pokal: bit 7 = `LBL[23] "SIEGER"` colour 0xb, else `upper(UI[120 + (L[2] & 7)])`
+    colour 1 (stage 2 = "1.Runde ", 3 "Achtelfinale ", ..., stage 0 would read `UI[120]`),
+    centred (0x90..0x90).
+  * European cup (a scratch buffer keeps the last string copied into it: the league name, or
+    the raw DFB-Pokal stage): bit 7 = `LBL[24] "SIEGER "` colour 0xb; else if `L[3] & 7` the
+    stage `UI[121 + (L[3] & 7)]` (one entry later than the DFB-Pokal stages). Then if
+    `(L[3] & 0xf8) == 0` the text is `LBL[25] "nicht im wettbewerb"`, else it is followed by
+    the competition `UI[127 + ((L[3] >> 3) & 3)]` ("Pokal der Landesmeister", "Pokal der
+    Pokalsieger", "UEFA-Pokal"), cut to `"Pokal der Landesm."` / `"Pokal der Pokals."` when
+    `DS:224e == DS:2252`. Upper case, centred (0xb4..0x139) in that colour.
+  * `k++`; unless `k % 16 == 0` a line (6, y+2)-(0x138, y+2) colour 6; `y += 8`.
+  * After every 16th season and after the last: `screen_fade(1)`, wait for a click on button
+    1 or 2 (on the last page only button 2 counts). Button 2 leaves; button 1 shows the next
+    page: `y = 0x1d`, `screen_fade(0)`, fill (6,0x18)-(0x138,0x96) colour 8.
+* `ui_wait_with_highlight(0x10c, 0xc1)`, `DS:079c = 1`. Read-only screen; draw sequence in
+  Appendix A.
 
 ### 4.5 `screen_manager_contract` 362f:2be8 (advertising contracts) and helpers
 
-`void (void)` (office menu 1 case 6). Loads `PIC 0x1f`, `0x20` and `0x2e` (with the palette
-`DS:0798`), shows the sponsor board via **`contract_draw_board` 362f:29a8**
-`void (bitmap, int16 sel)` which uses **`contract_blit_sponsor_large` 362f:248a**
-`void (bitmap, uint16 n, int16 x, int16 y)` (38x30 logo `n`, source `(n%5)*0x27, n<5 ? 1 :
-0x22`) and **`contract_blit_sponsor_small` 362f:24ed** `void (bitmap, uint16 n)` (26x16 logo,
-source `(n%5)*0x1c, n<5 ? 0x43 : 0x55`, to (0x33,0x6e)). **`contract_draw_tab` 362f:23e4**
-`void (int16 tab, uint8 colour)` draws the tab outline (tab 10 = the big frame
-(5,0x3b,0x6e,0xe5)).
+`void (void)` (office menu 1 case 6). Data of the current manager `m = FAR:304a`:
 
-* Existing contracts (`DS:066c[9*m + i]` amounts with lengths) are listed with
-  **`contract_info_line` 362f:2551** `void (uint8 years, int32 amount, int16 x, int16 y,
-  int8 left_aligned)`: `"VERTRAG: <n> MONAT"` / `"<n> JAHR" + "E"` (plural when `years > 1`,
-  `UI[221]`/`UI[222]`) or `LBL[17] "K}NDBAR"` when `years == 0`, then the amount
-  `amount * DS:2252 / DS:224e` + `LBL[319] " DM"`; a negative amount prints `"-"` first.
-* **`advertising_offer_panel` 362f:281f** `void (uint8 kind, uint8 i)`: clears
-  (0xd9,0x3c)-(0x139,0x5a), blits the two accept/decline buttons (greyed when the offer is 0),
-  and shows `contract_info_line(Y(kind,i), O(kind,i), 0xd9, 0x3e, 0, 1)` or `LBL[18] "KEIN
-  INTERESSE..."`.
-* Clicking a sponsor selects offer `i` of kind `k`; accepting moves the offer into the
-  contract list. If the manager is still bound (`M(m)` contract), the dialog
-  `LBL[137..138] "Sie stehen noch" / "unter Vertrag"` is shown. The cancellation note
-  `LBL[311..314]` explains that contracts can be cancelled at any time. Exact click areas:
-  Appendix A (362f_2be8 block).
+| Where | Meaning |
+|---|---|
+| `FAR:0000 + 2m` / `+1` | shirt contract: months left (0 = free) / logo `0..9` |
+| `FAR:4b9a + 2(6m + i)` / `+1` | board `i` (0..5): months left / logo |
+| `DS:066c + 0x24m + 4j` (int32) | `j = 0` shirt, `1..6` boards, `7` TV, `8` advertising expenses |
+| `O(k,i)`, `Y(k,i)` | offers of `advertising_offers_generate` (§3.6), kind `k` 0 = shirt, 1 = boards; offer `i` shows logo `i` |
+
+**Entry.** `pic31 = vga_load_picture(0x1f)` (buttons, bitmap `FAR:2e76`), `pic32 =
+vga_load_picture(0x20)` (logos, `FAR:4b5a`), `screen_fade(0)`, pointer hidden while `PIC\46.CP`
+(0x2e) is decoded to the screen, font 2, `contract_draw_board`, `palette_load_rgb4(DS:0798 = 1)`
+(palette slot 1), `screen_fade(1)`. Locals: `offer_mode` (`BP-0x22`, long) = 0, `kind` (`BP-4`)
+= 100 (nothing selected), `tab` (`BP-2`) = 0, `prev_tab` (`BP-0x26`) = -1, `offer` (`BP-6`,
+uninitialised, set before it is read).
+
+**Loop.** `input_poll_mouse`; event 3 (**right button down, anywhere**) frees both bitmaps and
+returns (the office redraws itself). Only event 1 (left down) is handled; `x = mouse[1]`,
+`y = mouse[0]` are read once. All comparisons are strict. The blocks run in this order:
+
+1. *Accept / decline* (`offer_mode`, `0xd9<x<0x139`, `0x5a<y<0x6d`, `O(kind, offer) != 0`):
+   blit pressed `pic31 (0x30, x<0x108 ? 0x3f : 0x2f)` 48x16 to `(x>0x108 ? 0x10a : 0xd9, 0x5b)`,
+   wait for event 2, blit `pic31 (0, 0x2f)` to the same place. If `x < 0x109` (accept):
+   * kind 0: if `FAR:0000[2m] != 0` -> `ui_dialog_box("Sie stehen noch", "unter Vertrag")`;
+     else `[2m+1] = offer`, `[2m] = (u8)(Y(0,offer) * 12)`, `DS:066c[m][0] = O(0,offer)`,
+     `offer_mode = 0` (the shirt offer stays).
+   * kind 1: if `FAR:4b9a[2(6m+tab)] != 0` -> the same dialog; else logo = `offer`, months =
+     `Y(1,offer) * 12`, `DS:066c[m][1+tab] = O(1,offer)`, **`O(1,offer) = 0`**, `offer_mode = 0`.
+   * `contract_draw_board` (also after the dialog).
+
+   Then, if `!offer_mode || x > 0x108` (signed, or decline): `offer_mode = 0`, grey arrows
+   `pic31 (0x3c,0)`/`(0x3c,0x17)` 30x23 to `(0xb5,0x3c)`/`(0xb5,0x54)`, grey buttons
+   `pic31 (0x60,0x2f)`/`(0x60,0x3f)` 48x16 to `(0xd9,0x5b)`/`(0x109,0x5b)`.
+2. *Expenses* (`0xd8<x<0x135`, `0xb9<y<0xc5`): `e = DS:066c[m][8] + (x < 0x107 ? -2500 :
+   +2500)`; `e > 50000` -> 2500, else `e < 2500` -> 50000; `contract_draw_board`.
+3. *Select* (`3<x<100 && 0x50<y<0xd2 && prev_tab != 10` (player picture) or
+   `3<x<0x13c && 0x12<y<0x33` (boards)): `tab = (x-4)/0x34`, `kind = y < 0x50`; kind 0 ->
+   `tab = 10`. If `prev_tab == tab` the rest of the iteration is skipped. Else: clear
+   (0xd9,0x3c)-(0x139,0x5a) colour 0, `offer_mode = 0`, grey buttons (as above; the arrows are
+   **not** reset), fill (0x7f,0x43)-(0xa4,0x60) colour 9, `contract_draw_tab(tab, 0x1d)`, if
+   `prev_tab != -1` `contract_draw_tab(prev_tab, 0x1c)`, `prev_tab = tab`,
+   `contract_info_line(months, amount, 0xd9, 0x3e, 0, 0)` with the months and amount of the
+   selected contract.
+4. *Open the offers* (`kind != 100`, `0x7e<x<0xa0`, `0x43<y<0x6c`, `!offer_mode`):
+   `offer_mode = 1`, `offer` = logo byte of the selected contract (also when it is free),
+   arrows `pic31 (0,0)`/`(0,0x17)` to `(0xb5,0x3c)`/`(0xb5,0x54)`,
+   `contract_blit_sponsor_large(offer, 0x7f, 0x43)`, `advertising_offer_panel(kind, offer)`.
+5. *Arrows* (`offer_mode`, `0xb4<x<0xd3`, `0x3b<y<0x6c`): `d = y > 0x52`; pressed
+   `pic31 (0x1e, 0x17d)` to `(0xb5, 0x3c + 0x18d)`, wait for event 2, normal `pic31 (0, 0x17d)`;
+   upper (`y < 0x53`): `offer++` up to 9; lower (`y > 0x52`): `offer--` down to 0; big logo and
+   `advertising_offer_panel` again.
+
+**`contract_draw_board` 362f:29a8** `void (bitmap logos, int16 unused)`: if the shirt runs
+(`FAR:0000[2m] != 0`) `contract_blit_sponsor_small(logo)`; boards `i` = 0..5 at
+`x = 0x34 i + 8`: free -> `ui_fill_rect(x, 0x13, x+0x26, 0x31, 9)`, else
+`contract_blit_sponsor_large(logo, x, 0x13)`. Then `contract_info_line(.., 0xf0, y, 1, 0)` for
+shirt (`y` 0x80), the sum of the boards (0x8e), TV (0x9c), expenses (0xb9) and
+`shirt + (TV + boards) - expenses` (0xd2), all int32 wrapping.
+
+**`contract_blit_sponsor_large` 362f:248a** `void (bitmap, uint16 n, int16 x, int16 y)`: 38x30
+from `((n>4 ? n-5 : n) * 0x27, (n>4 ? 0x21 : 0) + 1)`. **`contract_blit_sponsor_small` 362f:24ed**
+`void (bitmap, uint16 n)`: 26x16 from `((n>4 ? n-5 : n) * 0x1c, n>4 ? 0x55 : 0x43)` to
+(0x33,0x6e), the shirt of the player. **`contract_draw_tab` 362f:23e4** `void (int16 tab,
+uint8 colour)`: tab 10 = `ui_draw_frame(5,0x3b,0x6e,0xe5)`; else, with `r = 0x34 tab + 0x36`,
+`ui_draw_line(0x34 tab + 5, 0x32, r, 0x32)` and `ui_draw_line(r, 0x13, r, 0x32)`.
+
+**`advertising_offer_panel` 362f:281f** `void (uint8 kind, uint8 i)`: clears
+(0xd9,0x3c)-(0x139,0x5a) colour 0; `g = O(kind,i) == 0 ? 0x60 : 0`; blits `pic31 (g,0x2f)` to
+(0xd9,0x5b) ("OK") and `(g,0x3f)` to (0x109,0x5b) ("NEIN"), 48x16; then either
+`ui_draw_text_centered_shadow(LBL[18] "KEIN INTERESSE...", 0xd9, 0x139, 0x4e, 1, 0xff)` or
+`contract_info_line(Y(kind,i), O(kind,i), 0xd9, 0x3e, 0, 1)`.
+
+**`contract_info_line` 362f:2551** `void (uint8 n, int32 amount, int16 x, int16 y, uint8 left,
+uint8 years)`:
+
+* `left != 0`: `ui_fill_rect(x, y, 0x134, y+10, 0)`, no head line.
+* `left == 0`: head line centred in 0xd9..0x139 at `y+7`, colour 1, no shadow:
+  `n == 0` -> `LBL[17] "K}NDBAR"`; else `LBL[15] "VERTRAG: "` + `format_long_thousands(n)`
+  (current `DS:079c`, normally 1) + unit + `UI[222] "E"` when `n > 1`. Unit: `years == 0` ->
+  `LBL[16] " MONAT"`; else `UI[221] " JAHR"` **+ 1 - DS:224d** (`DS:2252 != 3`), i.e. `"JAHR"`
+  without the space in the shipped data ("VERTRAG: 1JAHR", confirmed in DOSBox), or the full
+  `" JAHR"` when `DS:2252 == 3`. Then `y += 12`.
+* Amount: `DS:079c = 10`, `DS:07b2 = 0`; a negative amount is negated and `"-"` (`DS:54be`) drawn
+  at `(x, y+7)` colour 1; text = (`DS:224d` ? `LBL[324]` "" : "") +
+  `format_long_thousands(amount * DS:2252 / DS:224e)` + `LBL[319] " DM"` (so padded to 10 with
+  `^`, with separators); afterwards `DS:07b2 = 1`, `DS:079c = 1`. Leading `'%'` characters are
+  skipped (none occur). `left`: `ui_draw_text_at(x, y+7, 1)`; else centred in 0xd9..0x139 at
+  `y+7`, colour 1, no shadow.
 
 ### 4.6 `mana_load_club_table` 362f:36ec
 
@@ -2178,6 +2329,13 @@ contain stray prologue pushes at the start of a function.
 36ca bitmap_free ( FAR:[0x6dd8], FAR:[0x6dda] )
 36df bitmap_free ( FAR:[0x2f14], FAR:[0x2f16] )
 ```
+
+Notes (port): the two `ui_fill_rect` lines at 3331/33ce fill (0x7f,0x43)-(0xa4,0x60) (`SI`
+= 0x60), colour 9; the line at 33ce is a mis-split of the fill and the following
+`contract_info_line` arguments. `[BP-2]` = selected tab, `[BP-4]` = kind (100 none, 0 shirt,
+1 board), `[BP-6]` = offer shown, `[BP-0x26]` = highlighted tab, `[BP-0x22]` = offer mode. The
+`blit_bitmap` at 35c9/3642 draws to `(0xb5, BX*0x18 + 0x3c)`, not `(0xb5, 0)`. Exit at 36b1:
+`FAR:2ea2 == 3` (right button).
 
 ### 362f:29a8 contract_draw_board
 

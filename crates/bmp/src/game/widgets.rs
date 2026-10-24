@@ -1,7 +1,10 @@
 //! Small UI helpers of segment 4091 used by several screens.
 
+use bmp_game::rng::{format_long_thousands, spinner_round_bound};
+
+use super::GAME_OPTION_A;
 use crate::gfx::{Gfx, ui_draw_line, ui_draw_text_centered_shadow, ui_fill_rect};
-use crate::host::{Host, LEFT_UP, Run};
+use crate::host::{Host, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, Run};
 
 /// Most text buttons that can be registered (`DS:07b3` stops counting at 10; the
 /// 11th registration overwrites slot 10).
@@ -105,4 +108,180 @@ pub fn ui_wait_right_click_button(host: &mut Host, x: i16, y: i16, auto_play: bo
     host.ui
         .draw_button(&mut host.g, &mut host.rp, x, y, 0, 0x6022, false, 8);
     Ok(())
+}
+
+/// Two-line message box.
+///
+/// TODO(#15): the box itself (176b:0e57) is not ported; like the original it
+/// reports 1 (a message was shown).
+pub fn ui_dialog_box(_host: &mut Host, _line1: &[u8], _line2: &[u8]) -> Run<bool> {
+    Ok(true)
+}
+
+/// Draws the spinner value centred in the frame (`"1.20"` style decimals with
+/// the English option).
+///
+/// Origin: BMMAIN.EXE 4091:0b1b (ui_spinner_draw_value)
+fn ui_spinner_draw_value(host: &mut Host, v: i32, v0: i32, x: i16, y: i16) {
+    let mut buf = format_long_thousands(v, host.number_format());
+    if GAME_OPTION_A > 1 && v0 != 0 {
+        buf.resize(buf.len().max(5), 0);
+        buf[2] = buf[1];
+        buf[1] = b'.';
+        buf[3] = b'0';
+        buf[4] = 0;
+        let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        buf.truncate(n);
+    }
+    ui_draw_text_centered_shadow(&mut host.g, &mut host.rp, &buf, x, x + 0x46, y + 0x18, 9, 0);
+}
+
+/// A value spinner (`PIC\21.VGA`) at `(x, y)`: a click into the upper half
+/// raises the value by `step`, into the lower half lowers it, within
+/// `lo..=hi`; a right click ends. Returns the new value, or -1 when it was not
+/// changed.
+///
+/// Origin: BMMAIN.EXE 4091:0ba5 (ui_value_spinner)
+pub fn ui_value_spinner(
+    host: &mut Host,
+    v: i32,
+    x: i16,
+    y: i16,
+    lo: i32,
+    hi: i32,
+    step: i32,
+) -> Run<i32> {
+    let v0 = v;
+    let mut v = v;
+    let lo = spinner_round_bound(lo, GAME_OPTION_A, v0);
+    let hi = spinner_round_bound(hi, GAME_OPTION_A, v0);
+    let pic = host
+        .load_picture(0x15)
+        .expect("PIC\\21.VGA (fatal_error_exit in the original)");
+    let screen = host.screen();
+    host.g.blit_bitmap(pic, 0, 0, screen, x, y, 0x46, 0x27);
+    host.set_font(1);
+    host.number_no_separators = false;
+    ui_spinner_draw_value(host, v, v0, x, y - 2);
+    loop {
+        host.input_poll_mouse()?;
+        let (mx, my) = host.mouse_xy();
+        let pix = host.g.rastport_get_pixel(&host.rp, mx, my) as u8;
+        if host.button == LEFT_DOWN
+            && x < mx
+            && mx < x + 0x46
+            && y < my
+            && my < y + 0x27
+            && pix == 4
+        {
+            if my > y + 0x12 {
+                v = v.wrapping_sub(step);
+            } else {
+                v = v.wrapping_add(step);
+            }
+            if v < lo {
+                v = lo;
+            } else if v > hi {
+                v = hi;
+            } else {
+                ui_fill_rect(
+                    &mut host.g,
+                    &mut host.rp,
+                    x + 2,
+                    y + 0x0f,
+                    x + 0x43,
+                    y + 0x17,
+                    0,
+                );
+                ui_spinner_draw_value(host, v, v0, x, y - 2);
+            }
+        }
+        if host.button == RIGHT_DOWN {
+            break;
+        }
+    }
+    host.g.free(pic);
+    Ok(if v == v0 { -1 } else { v })
+}
+
+/// Four-line message box with an "OKAY" button.
+///
+/// TODO(#15): the box itself (4091:0e3a) is not ported; like the original it
+/// returns 1.
+pub fn dialog_okay(_host: &mut Host, _l1: &[u8], _l2: &[u8], _l3: &[u8], _l4: &[u8]) -> Run<bool> {
+    Ok(true)
+}
+
+/// Erases the 3x5 cursor block or a typed character: filled with `bg`, or for
+/// `bg == 0xff` restored from the office background in VRAM page 2.
+fn input_erase(host: &mut Host, x: i16, y: i16, w: i16, h: i16, bg: u8) {
+    if bg == 0xff {
+        let screen = host.screen();
+        if let Some(work) = host.ui.work {
+            host.g
+                .blit_bitmap_or_restore_page2(work, x, y, screen, x, y, w, h);
+        }
+    } else {
+        ui_fill_rect(&mut host.g, &mut host.rp, x, y, x + w - 1, y + h - 1, bg);
+    }
+}
+
+/// Typed number entry at `(x, y)` (baseline) with at most `max_chars` digits:
+/// a block cursor, digits only, Backspace deletes, Esc cancels (0), Enter
+/// accepts. `bg == 0xff` restores the background from VRAM page 2 instead of
+/// filling it.
+///
+/// TODO(re): the erase rectangles follow a damaged decompile of 176b:07d7 and
+/// may be off by a pixel.
+///
+/// Origin: BMMAIN.EXE 176b:07d7 (ui_scroll_text_box, numeric mode)
+pub fn ui_input_number(
+    host: &mut Host,
+    mut x: i16,
+    y: i16,
+    max_chars: usize,
+    color: u8,
+    bg: u8,
+) -> Run<i32> {
+    let mut text: Vec<u8> = Vec::new();
+    let height = host.rp.font.map_or(8, |f| {
+        host.g.fonts[f as usize]
+            .as_ref()
+            .map_or(8, |f| f.height as i16)
+    });
+    loop {
+        ui_fill_rect(&mut host.g, &mut host.rp, x + 2, y - 4, x + 4, y, color);
+        let key = host.getch()?;
+        if key == b'\r' {
+            ui_fill_rect(&mut host.g, &mut host.rp, x + 2, y - 4, x + 4, y, bg);
+            return Ok(number_value(&text));
+        }
+        input_erase(host, x + 2, y - 4, 3, 5, bg);
+        match key {
+            0x1b => return Ok(0),
+            8 => {
+                if let Some(c) = text.pop() {
+                    let w = host.g.rastport_text_width(&host.rp, &[c]);
+                    x -= w;
+                    input_erase(host, x, y - height + 1, w + 1, height + 1, bg);
+                }
+            }
+            b'0'..=b'9' if text.len() < max_chars => {
+                Gfx::rastport_move_to(&mut host.rp, x, y);
+                Gfx::rastport_set_color(&mut host.rp, color);
+                host.g.rastport_draw_text(&host.rp, &[key]);
+                text.push(key);
+                x += host.g.rastport_text_width(&host.rp, &[key]);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The value of the typed digits (`v = v * 10 + d`, 32-bit wrap).
+pub fn number_value(digits: &[u8]) -> i32 {
+    digits.iter().fold(0i32, |v, &d| {
+        v.wrapping_mul(10)
+            .wrapping_add(i32::from(d) - i32::from(b'0'))
+    })
 }

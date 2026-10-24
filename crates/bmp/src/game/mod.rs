@@ -1,12 +1,16 @@
 //! Screen flow of BMMAIN.EXE, ported as blocking code on top of [`Host`].
 //! Spec: `docs/re/logic/flow.md`.
 
+pub mod contract;
+pub mod credits;
 pub mod league;
 pub mod load_game;
 pub mod office;
 pub mod season;
 pub mod squad_screen;
+pub mod stadium;
 pub mod start_menu;
+pub mod stats_screens;
 pub mod tables;
 pub mod widgets;
 
@@ -37,6 +41,8 @@ pub struct Session {
     /// `DS:05d4`: automatic play ("Spiele automatisch") ends every turn at once.
     pub auto_play: bool,
     pub saves: load_game::SaveSession,
+    /// `DS:0044/0046`: position and width of the status-line text.
+    pub status_line: stadium::StatusLine,
 }
 
 impl Session {
@@ -47,6 +53,7 @@ impl Session {
             copy_protection_ok: true,
             auto_play: false,
             saves: load_game::SaveSession::default(),
+            status_line: stadium::StatusLine::default(),
         }
     }
 }

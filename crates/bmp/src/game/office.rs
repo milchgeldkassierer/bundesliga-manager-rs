@@ -9,10 +9,14 @@ use bmp_game::rng::{NumberFormat, format_long_thousands};
 use bmp_game::squad::{LineupRules, auto_lineup};
 use bmp_game::state::{GameState, Manager, RESCHEDULED_GAMES_DAY};
 
+use super::contract::screen_manager_contract;
+use super::credits::screen_credits;
 use super::league::has_rescheduled_match_today;
 use super::season::calendar_compute_date;
 use super::squad_screen::screen_squad_lineup;
+use super::stadium::screen_stadium;
 use super::start_menu::Pictures;
+use super::stats_screens::{screen_eternal_table, screen_manager_history, screen_statistics};
 use super::tables::{screen_fixtures, screen_league_table, screen_strength_table};
 use super::widgets::ui_wait_right_click_button;
 use super::{
@@ -560,6 +564,14 @@ pub fn office_menu_dispatcher(
                 office_show_cached_background(host)?;
                 host.ui.redraw_buttons(&mut host.g, &mut host.rp, 0x7f, 0);
                 match (sel, si) {
+                    (1, 1) => screen_statistics(host, session, state)?,
+                    (1, 2) => screen_eternal_table(host, session, state)?,
+                    (1, 3) => screen_manager_history(host, session, state)?,
+                    (1, 4) => screen_stadium(host, session, state)?,
+                    (1, 5) => screen_credits(host, session, pics, state)?,
+                    // office_free_bitmaps(3) / office_load_bitmaps(3) around the
+                    // call only free memory; the port keeps the bitmaps.
+                    (1, 6) => screen_manager_contract(host, session, state)?,
                     (2, 1..=3) => {
                         screen_league_table(host, session, state, (si - 1) as usize, 1)?;
                     }

@@ -1,0 +1,135 @@
+# Port side of the info scenario (bmp run --script syntax, milliseconds):
+# load 07072019.MAN and open every screen of the office "Info" submenu:
+# statistics, eternal table, history, stadium (ticket price changed with the
+# spinner), loans (a bank loan taken, debts toggle), advertising contracts
+# (board and shirt selected, offers paged, expenses lowered), back to the office.
+# seed: 35372
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+move 30 130
+wait 100
+click 30 130
+wait 500
+shot i00-submenu
+move 107 132
+wait 100
+click 107 132
+wait 1000
+shot i01-statistics
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 107 174
+wait 100
+click 107 174
+wait 1000
+shot i02-eternal
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 107 216
+wait 100
+click 107 216
+wait 1000
+shot i03-history
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 161 132
+wait 100
+click 161 132
+wait 1000
+shot i04-stadium
+move 60 180
+wait 100
+click 60 180
+wait 500
+shot i05-ticket-spinner
+move 219 35
+wait 100
+click 219 35
+wait 250
+move 219 35
+wait 100
+click 219 35
+wait 250
+shot i06-ticket-raised
+move 219 35
+wait 100
+rclick 219 35
+wait 500
+shot i07-ticket-set
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 161 174
+wait 100
+click 161 174
+wait 1000
+shot i08-credits
+move 200 37
+wait 100
+click 200 37
+wait 500
+shot i09-loan-prompt
+type 100000
+wait 250
+shot i10-loan-typed
+key enter
+wait 500
+shot i11-loan-taken
+move 138 145
+wait 100
+click 138 145
+wait 500
+shot i12-debts-here
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 161 216
+wait 100
+click 161 216
+wait 1000
+shot i13-contract
+move 76 35
+wait 100
+click 76 35
+wait 500
+shot i14-board
+move 140 85
+wait 100
+click 140 85
+wait 500
+shot i15-offers
+move 195 70
+wait 100
+click 195 70
+wait 500
+shot i16-next-offer
+move 250 190
+wait 100
+click 250 190
+wait 500
+shot i17-expenses
+move 50 150
+wait 100
+click 50 150
+wait 500
+shot i18-shirt
+move 293 213
+wait 100
+rclick 293 213
+wait 1000
+shot i19-office

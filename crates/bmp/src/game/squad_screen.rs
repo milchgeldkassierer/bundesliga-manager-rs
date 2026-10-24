@@ -12,7 +12,7 @@ use bmp_game::squad::{
 };
 use bmp_game::state::{BOARD_UNPLACED, GameState, SquadPlayer};
 
-use super::widgets::ui_wait_right_click_button;
+use super::widgets::{ui_dialog_box, ui_wait_right_click_button};
 use super::{GAME_OPTION_A, GAME_OPTION_B, Session, text_to_upper_de};
 use crate::gfx::{
     BitmapId, Gfx, RastPort, Ui, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow,
@@ -230,14 +230,6 @@ fn xor_fill(host: &mut Host, x0: i16, y0: i16, x1: i16, y1: i16) {
     Gfx::rastport_set_draw_mode(&mut host.rp, 2);
     fill(host, x0, y0, x1, y1, 0x1e);
     Gfx::rastport_set_draw_mode(&mut host.rp, 0);
-}
-
-/// Two-line message box.
-///
-/// TODO(#15): the box itself (176b:0e57) is not ported; like the original it
-/// reports 1 (a message was shown).
-fn ui_dialog_box(_host: &mut Host, _line1: &[u8], _line2: &[u8]) -> Run<bool> {
-    Ok(true)
 }
 
 /// Appends `" (L)"`, `" (R)"` or `" (L+R)"` for the preferred foot of record `i`.

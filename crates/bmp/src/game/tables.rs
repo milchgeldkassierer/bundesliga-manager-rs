@@ -22,7 +22,7 @@ use crate::gfx::{
 use crate::host::{Host, LEFT_DOWN, Run};
 
 /// `UI[42..44]` (`DS:2388`): league names.
-const LEAGUE_NAMES: [&[u8]; 3] = [b"Bundesliga", b"Zweite Liga", b"Am.-Oberliga"];
+pub(crate) const LEAGUE_NAMES: [&[u8]; 3] = [b"Bundesliga", b"Zweite Liga", b"Am.-Oberliga"];
 /// `LBL[75..77]` (`DS:4b94`): league table modes.
 const TABLE_MODES: [&[u8]; 3] = [b"HEIM", b"GESAMT", b"AUSW[RTS"];
 /// `LBL[78]`: league table column header.
@@ -127,37 +127,45 @@ const RECORD_LABELS_BOTH: [&[u8]; 4] = [
 /// `LBL[69]`.
 const NO_RECORD: &[u8] = b"NOCH KEINE EINTRAGUNG.";
 
-fn num(fmt: NumberFormat, v: i32) -> Vec<u8> {
+pub(crate) fn num(fmt: NumberFormat, v: i32) -> Vec<u8> {
     format_long_thousands(v, fmt)
 }
 
-fn cat(buf: &mut Vec<u8>, s: &[u8]) {
+pub(crate) fn cat(buf: &mut Vec<u8>, s: &[u8]) {
     buf.extend_from_slice(s);
 }
 
-fn text_at(host: &mut Host, text: &[u8], x: i16, y: i16, color: u8) {
+pub(crate) fn text_at(host: &mut Host, text: &[u8], x: i16, y: i16, color: u8) {
     ui_draw_text_at(&mut host.g, &mut host.rp, text, x, y, i16::from(color));
 }
 
-fn centered(host: &mut Host, text: &[u8], x0: i16, x1: i16, y: i16, color: u8, shadow: u8) {
+pub(crate) fn centered(
+    host: &mut Host,
+    text: &[u8],
+    x0: i16,
+    x1: i16,
+    y: i16,
+    color: u8,
+    shadow: u8,
+) {
     ui_draw_text_centered_shadow(&mut host.g, &mut host.rp, text, x0, x1, y, color, shadow);
 }
 
-fn fill(host: &mut Host, x0: i16, y0: i16, x1: i16, y1: i16, color: u8) {
+pub(crate) fn fill(host: &mut Host, x0: i16, y0: i16, x1: i16, y1: i16, color: u8) {
     ui_fill_rect(&mut host.g, &mut host.rp, x0, y0, x1, y1, color);
 }
 
-fn line(host: &mut Host, x0: i16, y0: u8, x1: i16, y1: u8, color: u8) {
+pub(crate) fn line(host: &mut Host, x0: i16, y0: u8, x1: i16, y1: u8, color: u8) {
     ui_draw_line(&mut host.g, &mut host.rp, x0, y0, x1, y1, color);
 }
 
-fn icon(host: &mut Host, x: i16, y: i16, code: i16) -> [i16; 4] {
+pub(crate) fn icon(host: &mut Host, x: i16, y: i16, code: i16) -> [i16; 4] {
     host.ui
         .draw_button(&mut host.g, &mut host.rp, x, y, 0, code, false, 8)
         .1
 }
 
-fn panel(host: &mut Host, x: i16, y: i16, w: i16, h: i16, save: bool) -> (u8, [i16; 4]) {
+pub(crate) fn panel(host: &mut Host, x: i16, y: i16, w: i16, h: i16, save: bool) -> (u8, [i16; 4]) {
     if save {
         // The saved background is a bitmap from vga_load_picture, which also
         // resets the field width DS:079c to 1.
@@ -178,7 +186,7 @@ fn team_color(state: &GameState, t: u8) -> u8 {
     if is_human_team(state, t) { 0xb } else { 1 }
 }
 
-fn club_name(state: &GameState, t: u8) -> Vec<u8> {
+pub(crate) fn club_name(state: &GameState, t: u8) -> Vec<u8> {
     state.clubs[usize::from(t)].name().to_vec()
 }
 

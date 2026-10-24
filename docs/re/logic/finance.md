@@ -412,7 +412,8 @@ int credit_take(i32 amount, i8 rate, i8 lender, i8 months) {
 
 `void credit_list_draw(i8 lender)`. Callers: 212a:167f (5×). Font 2, `DS:07b2 = 0`, lines
 `(7,0x84)-(0x82,0x84)` and `(7,0x9f)-(0x82,0x9f)` colour 6. If `lender == -1` skip the list.
-Otherwise `n = 0`; for `j = 0..2` with a nonzero principal: `ui_fill_rect(rp, 9, 0x6a+0x1c*n, 0x81,
+With `lender == -1` the list is skipped and all three slots are cleared (the clear loop below runs with
+`n = 0`; confirmed against the original). Otherwise `n = 0`; for `j = 0..2` with a nonzero principal: `ui_fill_rect(rp, 9, 0x6a+0x1c*n, 0x81,
 0x81+0x1c*n, 7)`; `y = (n+4)*0x1c`, then `n++` and if `n == 2` then `y--`; draw at `x = 9`, colour 1:
 * `y`: `"<day>.<month+1>.<year>: " + [DS:4f78] + display(principal) + " DM (" + rate + "%)"` (year printed
   with `DS:07b2 = 1`);
@@ -639,9 +640,11 @@ if (6 < mx && mx < 0x121 && 0x72 < my && my < 0xb9) {
     aa = (my - 0x72) >> 3 (sign-symmetric);            /* 0..8 */
     if (aa != hover) { status_line_show(aa, 0); hover = aa; }   /* DS:2818: "", "SITZPL[TZE AUSBAUEN", ... "EINTRITTSPREIS [NDERN" */
     if (FAR_2ea2 == 1 && aa != 0) handle_row(aa);       /* below */
-} else if (hover != mx && hover != -1) {                /* compares with the x coordinate (bug, keep) */
-    status_line_show(0xff, 0); hover = -1; font 2;
 }
+/* 1000:1688, reached on every pass except after the "keine Baufirma" dialog: [bp-0xae] holds the row
+   when the pointer is in the table, else the x coordinate (also after the level selection loop of
+   rows 4..7, which reloads it with the pointer x); a quirk of the original, keep. */
+if (hover != bp_ae && hover != -1) { status_line_show(0xff, 0); hover = -1; font 2; }
 ```
 `handle_row(aa)`:
 1. If `FAR:577f[aa] != 0`: `ui_dialog_box("Im Moment keine", "Baufirma aufzutreiben.")`, done.
@@ -651,7 +654,7 @@ if (6 < mx && mx < 0x121 && 0x72 < my && my < 0xb9) {
    `cap_left = S.standing - S.covered_pend - S.covered + S.seats`.
 3. `ui_fill_rect(0x97,0x10,0x120,0x5f, 8)`, font 2, `DS:2818[aa]` centered 0x97..0x120 at y 0x16 colour 0xb,
    line y 0x18 colour 0xb. `"KOSTET " + [4f78] + display(price[aa])` + (`aa<4` `" DM PRO 1000"`, `aa<8`
-   `" DM PRO PUNKT"`, `aa==8` empty string) at (0x9a, 0x49) colour 1.
+   `" DM PRO PUNKT"`) at (0x9a, 0x49) colour 1; for `aa == 8` the whole line is the empty string.
 4. Rows 1..3 (`aa < 4`): `afford = (M.balance / price) * 1000`, `< 0 → 0`; if 0:
    `ui_dialog_box("Kein Geld f}r", "neue Pl{tze da...")`, result -1, goto 7. `max = min(cap_left, afford)`;
    `"MAX. GR|~E: " + max` at (0x9a,0x50) colour 1; `" KOSTEN: " + [4f78] + display(price * (max/1000)) + " DM."`
