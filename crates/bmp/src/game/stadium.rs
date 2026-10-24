@@ -316,6 +316,15 @@ impl Default for StatusLine {
     }
 }
 
+/// `DS:28d0[10..=14]`: the training-camp legend texts.
+const CAMP_LEGEND: [&[u8]; 5] = [
+    b"Erholungswert",
+    b"Fitnessausr]stung",
+    b"Platz-Qualit[t",
+    b"Raumausstattung",
+    b"Verpflegung",
+];
+
 /// What the status line shows (`id` of the original).
 pub enum StatusText<'a> {
     /// `0..=9`: the stadium row help.
@@ -326,14 +335,15 @@ pub enum StatusText<'a> {
     ManagerCredit(&'a [u8]),
     /// `24..=26`: the loan prompts.
     Prompt(&'static [u8]),
+    /// `10..=14`: the training-camp legend letter `i` (E, F, P, R, V).
+    CampLegend(usize),
+    /// `15..=22`: a training camp's name and, unless 0, its weekly price.
+    CampPrice(&'a [u8], i32),
     /// `-1`: only restore the strip.
     None,
 }
 
 /// Shows a help text centred on the status line (prompts left-aligned at x 2).
-///
-/// TODO(#15): ids 10..22 (training camp texts) are not used by the ported
-/// screens.
 ///
 /// Origin: BMMAIN.EXE 1000:243f (status_line_show)
 pub fn status_line_show(host: &mut Host, session: &mut Session, text: StatusText) {
@@ -362,6 +372,16 @@ pub fn status_line_show(host: &mut Host, session: &mut Session, text: StatusText
             (t, false)
         }
         StatusText::Prompt(p) => (p.to_vec(), true),
+        StatusText::CampLegend(i) => (CAMP_LEGEND[i.min(4)].to_vec(), false),
+        StatusText::CampPrice(name, price) => {
+            let mut t = name.to_vec();
+            if price != 0 {
+                t.extend_from_slice(b", ");
+                t.extend_from_slice(&num(host, price));
+                t.extend_from_slice(b" DM/Woche.");
+            }
+            (t, false)
+        }
     };
     let w = host.g.rastport_text_width(&host.rp, &t);
     session.status_line.w = w;

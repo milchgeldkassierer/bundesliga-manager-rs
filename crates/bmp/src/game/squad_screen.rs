@@ -5,13 +5,15 @@
 //! lives in [`bmp_game::squad`]; this module ports the drawing and input
 //! handling of segment 2ecd around it.
 
-use bmp_game::rng::format_long_thousands;
+use bmp_game::rng::{Rng, format_long_thousands};
 use bmp_game::squad::{
     LineupRules, auto_lineup, board_auto_place_player, board_find_starter_at,
     lineup_renumber_starters, squad_count_listed,
 };
 use bmp_game::state::{BOARD_UNPLACED, GameState, SquadPlayer};
+use bmp_game::transfer::player_value_of;
 
+use super::negotiation::{Browse, contract_negotiation_browse};
 use super::widgets::{ui_dialog_box, ui_wait_right_click_button};
 use super::{GAME_OPTION_A, GAME_OPTION_B, Session, text_to_upper_de};
 use crate::gfx::{
@@ -62,7 +64,7 @@ const AUTO_LINEUP: &[u8] = b"Auto-Aufstellung";
 
 /// Entry `k` of the main UI string table (`DS:22e0 + 4*k`), for the entries the
 /// squad screen uses; others are empty.
-fn ui_string(k: i16) -> &'static [u8] {
+pub(super) fn ui_string(k: i16) -> &'static [u8] {
     match k {
         4 => b"TOR",
         5 => b"ABW",
@@ -155,20 +157,37 @@ pub struct MatchSubs {
     pub made: u8,
 }
 
+/// Hover state of the squad list helpers (`player_card`).
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ListHover {
+    /// `DS:53e6` / `DS:53e8`: last hovered column and row of the list.
+    pub(super) col: i16,
+    pub(super) row: i16,
+    /// `FAR:513e`: suspended players count as available.
+    pub(super) suspended_allowed: bool,
+}
+
+impl ListHover {
+    pub(super) fn new(suspended_allowed: bool) -> Self {
+        Self {
+            col: 0,
+            row: -1,
+            suspended_allowed,
+        }
+    }
+}
+
 /// Pictures of the screen and the state of the list and board helpers that the
 /// original keeps in globals.
-struct Screen {
+pub(super) struct Screen {
     /// `PIC\6.VGA`: tactics board, badges and cursor sprites.
-    pic6: BitmapId,
+    pub(super) pic6: BitmapId,
     /// The rastport of `pic6` (badge numbers are drawn into the picture).
     pic6_rp: RastPort,
     /// Empty 13x13 bitmap: background under the board cursor.
-    save13: BitmapId,
-    /// `DS:53e6` / `DS:53e8`: last hovered column and row of the list.
-    hover_col: i16,
-    hover_row: i16,
-    /// `FAR:513e`: suspended players count as available.
-    suspended_allowed: bool,
+    pub(super) save13: BitmapId,
+    /// Hover state of the squad list.
+    pub(super) list: ListHover,
     /// `FAR:54a0`: no player is held on the board.
     nothing_held: bool,
     /// `DS:a38e`: list row highlighted from the board (-1 = none).
@@ -182,8 +201,9 @@ struct Screen {
     held_from: (u8, u8),
 }
 
-fn group(state: &GameState) -> usize {
-    (state.current_manager as usize).min(3)
+/// The squad of `FAR:304a` (4 = the transfer market).
+pub(super) fn group(state: &GameState) -> usize {
+    (state.current_manager as usize).min(4)
 }
 
 fn rec(state: &GameState, i: usize) -> &SquadPlayer {
@@ -236,7 +256,14 @@ fn xor_fill(host: &mut Host, x0: i16, y0: i16, x1: i16, y1: i16) {
 ///
 /// Origin: BMMAIN.EXE 1310:1c22 (player_append_foot_text)
 fn player_append_foot_text(buf: &mut Vec<u8>, state: &GameState, i: usize) {
-    let foot = state.players[rec(state, i).player_id as usize].attr_20;
+    player_append_foot_text_of(buf, state, group(state), i);
+}
+
+/// [`player_append_foot_text`] for record `i` of squad `g`.
+///
+/// Origin: BMMAIN.EXE 1310:1c22 (player_append_foot_text)
+pub(super) fn player_append_foot_text_of(buf: &mut Vec<u8>, state: &GameState, g: usize, i: usize) {
+    let foot = state.players[state.squads[g][i].player_id as usize].attr_20;
     buf.extend_from_slice(b" (");
     let left = foot < 5;
     if left {
@@ -255,15 +282,16 @@ fn player_append_foot_text(buf: &mut Vec<u8>, state: &GameState, i: usize) {
 /// columns in `mask`. Mode 0 = own squad, 1/2 = transfer market, 3 = offers,
 /// 4 = own squad with the transfer-flag highlight.
 ///
-/// TODO(#29): the transfer modes recompute the value with
-/// `transfer_value_calc` 3277:25de for players outside the market; the port
-/// shows the stored value.
+/// In the transfer modes the value of a player listed by a human manager
+/// (owner != 4) is recomputed with `player_value_calc(si, 0)` on the market
+/// squad, which may draw a random number.
 ///
 /// Origin: BMMAIN.EXE 2ecd:06af (squad_list_draw)
 #[allow(clippy::too_many_arguments)]
-fn squad_list_draw(
+pub(super) fn squad_list_draw(
     host: &mut Host,
     state: &GameState,
+    rng: &mut Rng,
     x0: i16,
     mut y: i16,
     first: i8,
@@ -430,6 +458,9 @@ fn squad_list_draw(
                     // DS:224d (currency mode) is 0 in the shipped data.
                     host.number_pad = 7;
                     let mut v = r.market_value;
+                    if transfer && pl.owner_manager != 4 {
+                        v = player_value_of(rng, r, pl.age, 0);
+                    }
                     if mode == 2 {
                         v /= 3;
                     }
@@ -581,10 +612,10 @@ fn free_bench_number(state: &GameState, cnt: i16, max_lineup_slot: i8) -> u8 {
 ///
 /// Origin: BMMAIN.EXE 2ecd:000e (squad_list_hover_info)
 #[allow(clippy::too_many_arguments)]
-fn squad_list_hover_info(
+pub(super) fn squad_list_hover_info(
     host: &mut Host,
     state: &GameState,
-    sc: &mut Screen,
+    lh: &mut ListHover,
     x0: i16,
     y0: i16,
     min_row: i8,
@@ -595,8 +626,8 @@ fn squad_list_hover_info(
     btns: &[[i16; 4]],
 ) -> Run<i16> {
     if x0 == -1 {
-        sc.hover_col = 0;
-        sc.hover_row = -1;
+        lh.col = 0;
+        lh.row = -1;
         return Ok(0);
     }
     host.set_font(2);
@@ -619,24 +650,24 @@ fn squad_list_hover_info(
         col = 0x7f;
     }
     if (host.button == LEFT_DOWN || host.button == RIGHT_DOWN) && col != 0x7f {
-        let t = 6 * sc.hover_row + y0;
+        let t = 6 * lh.row + y0;
         if t > 0x1b {
             xor_fill(host, x0, t, x1, t + 4);
         }
-        sc.hover_row = -1;
+        lh.row = -1;
         return Ok(row);
     }
-    if col != sc.hover_col || row != sc.hover_row {
+    if col != lh.col || row != lh.row {
         fill(host, x0, y1 - 7, x1, y1 + 1, 8);
         if col != 0x7f && row != 0x7f {
-            let s = hover_text(host, state, col, row as usize, x1, sc.suspended_allowed);
+            let s = hover_text(host, state, col, row as usize, x1, lh.suspended_allowed);
             ui_draw_text_centered_shadow(&mut host.g, &mut host.rp, &s, x0, x1, y1, 1, 0xff);
         }
-        sc.hover_col = col;
+        lh.col = col;
     }
-    if row != sc.hover_row {
-        if sc.hover_row != -1 {
-            let t = 6 * sc.hover_row + y0;
+    if row != lh.row {
+        if lh.row != -1 {
+            let t = 6 * lh.row + y0;
             if t > 0x1b {
                 xor_fill(host, x0, t, x1, t + 4);
             }
@@ -647,7 +678,7 @@ fn squad_list_hover_info(
                 xor_fill(host, x0, t, x1, t + 4);
             }
         }
-        sc.hover_row = row;
+        lh.row = row;
     }
     Ok(0x7f)
 }
@@ -656,7 +687,7 @@ fn squad_list_hover_info(
 ///
 /// Origin: BMMAIN.EXE 2ecd:3170 (squad_draw_status_cell)
 fn squad_draw_status_cell(host: &mut Host, state: &GameState, sc: &Screen, i: i16) {
-    let suspended_allowed = sc.suspended_allowed;
+    let suspended_allowed = sc.list.suspended_allowed;
     fill(host, 0xb1, (i + 5) * 6, 0xd8, i * 6 + 0x23, 8);
     let r = rec(state, i as usize).clone();
     let mut k: i16 = 2 + i16::from(r.lineup_position != 0);
@@ -781,7 +812,7 @@ fn board_draw_player_badge(host: &mut Host, state: &GameState, sc: &mut Screen, 
 /// Redraws the empty board and the badges of all starters.
 ///
 /// Origin: BMMAIN.EXE 2ecd:2658 (board_draw)
-fn board_draw(host: &mut Host, state: &GameState, sc: &mut Screen) {
+pub(super) fn board_draw(host: &mut Host, state: &GameState, sc: &mut Screen) {
     let screen = host.screen();
     host.g
         .blit_bitmap(sc.pic6, 0, 0, screen, 0xbc, 0x5d, 0x78, 0x78);
@@ -797,7 +828,7 @@ fn board_draw(host: &mut Host, state: &GameState, sc: &mut Screen) {
 /// formation button rects.
 ///
 /// Origin: BMMAIN.EXE 2ecd:26e6 (board_open)
-fn board_open(
+pub(super) fn board_open(
     host: &mut Host,
     state: &GameState,
     sc: &mut Screen,
@@ -852,7 +883,7 @@ fn board_open(
 }
 
 /// Resets the board input state (`board_handle_input` with `pic6 == NULL`).
-fn board_reset(sc: &mut Screen) {
+pub(super) fn board_reset(sc: &mut Screen) {
     sc.nothing_held = true;
     sc.board_hl_row = -1;
     sc.cursor_x = -1;
@@ -894,7 +925,7 @@ fn board_restore_under_cursor(host: &mut Host, sc: &Screen) {
 ///
 /// Origin: BMMAIN.EXE 2ecd:29c6 (board_handle_input)
 #[allow(clippy::too_many_arguments)]
-fn board_handle_input(
+pub(super) fn board_handle_input(
     host: &mut Host,
     state: &mut GameState,
     rules: LineupRules,
@@ -1101,8 +1132,6 @@ fn renumber_pass(
 /// number of players allowed on the field (match substitution); `comp` = 0xff
 /// outside a match, else the competition (0 league, 1 DFB-Pokal, 2 Europapokal).
 ///
-/// TODO(#29): the contracts button (`contract_negotiation` 3277:2a8f) only
-/// redraws the list.
 /// TODO(#24): `manager_ai_weekly` 1f9d:0002 is not called on exit.
 ///
 /// Origin: BMMAIN.EXE 2ecd:1560 (screen_squad_lineup)
@@ -1137,9 +1166,7 @@ pub fn screen_squad_lineup(
         pic6,
         pic6_rp: RastPort::new(pic6),
         save13,
-        hover_col: 0,
-        hover_row: -1,
-        suspended_allowed: rules.suspended_allowed,
+        list: ListHover::new(rules.suspended_allowed),
         nothing_held: true,
         board_hl_row: -1,
         cursor_x: -1,
@@ -1157,6 +1184,7 @@ pub fn screen_squad_lineup(
         squad_list_draw(
             host,
             state,
+            &mut session.rng,
             6,
             0x12,
             0,
@@ -1202,7 +1230,7 @@ pub fn screen_squad_lineup(
     let cur = group(state);
     squad_draw_tactic_slider(host, pic37, i16::from(state.managers[cur].value_131));
     let nmax = (squad_count_listed(state, cur) as i8).wrapping_sub(1);
-    squad_list_hover_info(host, state, &mut sc, -1, 0, 0, 0, 0, 0, 0, &btn)?;
+    squad_list_hover_info(host, state, &mut sc.list, -1, 0, 0, 0, 0, 0, 0, &btn)?;
     board_reset(&mut sc);
     host.input_wait_release()?;
     host.button = 0;
@@ -1235,7 +1263,7 @@ pub fn screen_squad_lineup(
                 si = squad_list_hover_info(
                     host,
                     state,
-                    &mut sc,
+                    &mut sc.list,
                     6,
                     0x1e,
                     0,
@@ -1419,21 +1447,35 @@ pub fn screen_squad_lineup(
                 );
                 host.ui
                     .draw_button(&mut host.g, &mut host.rp, 0x10c, 0x29, 0, 0x2000, false, 8);
-                // TODO(#29): contract_negotiation 3277:2a8f; a result of 0 leaves the screen.
-                fill(host, 3, 8, 0xef, 0xb8, 8);
-                squad_list_draw(
+                let back = contract_negotiation_browse(
                     host,
+                    session,
                     state,
-                    6,
-                    0x12,
-                    0,
-                    24,
-                    0xec,
-                    0xb0,
-                    SQUAD_COLUMNS,
-                    0,
-                    rules.suspended_allowed,
-                );
+                    Browse {
+                        sc: &mut sc,
+                        btn: &btn,
+                        rules,
+                    },
+                )?;
+                if !back {
+                    si = 0x68;
+                } else {
+                    fill(host, 3, 8, 0xef, 0xb8, 8);
+                    squad_list_draw(
+                        host,
+                        state,
+                        &mut session.rng,
+                        6,
+                        0x12,
+                        0,
+                        24,
+                        0xec,
+                        0xb0,
+                        SQUAD_COLUMNS,
+                        0,
+                        rules.suspended_allowed,
+                    );
+                }
                 tab = 0;
             }
             if si == 0x65 && board_is_open {

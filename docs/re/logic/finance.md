@@ -89,7 +89,7 @@ left click, 3 = both/abort; set by `input_poll_mouse` 176b:0319).
 | 3277:000a | `player_reroll_traits(p)` | **RNG**: `p[0x0e]=random(35,65)`, `p[0x14]=random(1,13)`, `p[0x14]|=random(1,3)<<4`, `p[0x14]|=random(0,1)<<7` |
 | 3277:0081 / 3277:01a9 / 3277:0225 | training bar helpers | see §2.10 |
 | 1f9d:0002 | `manager_ai_weekly(m, 0)` | called when the camp screen closes (uses RNG; spec in ai.md) |
-| 1f9d:1122 | training effect estimate (4 int out-params) | |
+| 1f9d:1122 | `training_effects`: sums of skill 0, skill 1 and exhaustion of the starting eleven (lineup position 1..11) and the average exhaustion (4 int out-params; reads no training settings) | |
 | 1310:1190 | `matchday_refresh(week)` | used by the fixture list to compute a match date |
 
 ## 1. Data layout
@@ -315,7 +315,7 @@ do {
         }
         if (FAR_2ea2 != 1 || price == 0) continue;
         if (DS_0620[mx - 5] > 0) { ui_dialog_box(DS_2394[mx-5], "hat nicht ge|ffnet..."); continue; }
-        if (booked) { ui_dialog_box("Einmal pro Woche", "reicht doch..."); continue; }
+        if (booked) { ui_dialog_box("Einmal pro Woche", "reicht doch..."); continue; }   /* unreachable: the loop ends once booked */
         if (M.balance < price) {                                    /* signed i32 */
             ui_dialog_box("Keine finanzielle", "M|glichkeit gegeben..."); ui_set_font(rp, 1); continue;
         }
@@ -329,6 +329,11 @@ do {
 if (!booked) ui_wait_with_highlight(0x10c, 0xc1);
 manager_ai_weekly(m, 0);                                            /* 1f9d:0002, RNG */
 ```
+
+The screen never reads `M.camp_cooldown`; only the office submenu disables the icon while it is
+non-zero (flow.md §6.4). The E F P R V bars beside each picture are part of the `PIC\5.VGA` tiles; the
+code only draws the letters (shadow letter in colour 0 = 0xff one pixel right, then the coloured one).
+`DS:5258` scaled by the first visit is not saved; the port keeps it in `Session::camp_prices`.
 
 ### 2.4 212a:072d `training_camp_apply` (was FUN_212a_072d)
 
@@ -544,7 +549,8 @@ centered 0xd0..0x122 colour 0xb. Row 4: blits at y 0xbc, `"Intensit{t"` centered
 Bars: `0225(bmp, 2+k, 1, training_a[k], 1)`; `freeA = 01a9(0)`, `0225(bmp, 0, 1, freeA, 1)`;
 `0225(bmp, 6+k, 1, training_b[k], 1)`; `freeB = 01a9(1)`, `0225(bmp, 1, 1, freeB, 1)`;
 `0225(bmp, 10, 1, training_a4, 1)`. Effect box: `ui_fill_rect(3,0xb7,0x16,0xe8, 7)`, frame colour 1;
-`1f9d:1122(&e0, &e1, &e2, &e3)`; `sum = e1 + e0`, if 0 then 1; font 2; for `s = 0..2`: label `DS:2580[s]`
+`1f9d:1122(&e0, &e1, &e2, &e3)` (`training_effects`: for the starting eleven of `m`, `e0 += skills[0]`,
+`e1 += skills[1]`, `e2 += exhaustion` (+0x13); `e3 = e2 / max(count, 1)`); the box is not redrawn in the loop; `sum = e1 + e0`, if 0 then 1; font 2; for `s = 0..2`: label `DS:2580[s]`
 (`K`, `T`, `E`) at `(6s+5, 0xe6)` colour `s+0xd`; `v = s<2 ? (100*e_s)/sum : e3 - 50` (i32);
 `h = 38 - v*38/100`, `if (h > 38) h = 38`; `ui_fill_rect(rp, 6s+5, 0xb9+h, 6s+8, 0xdf, s+0xd)`; frame colour 0.
 Fade in.
@@ -809,7 +815,7 @@ DS:0044, 0xd9, DS:0046, 0xa, 0xc0, 7, 0, 0)`. If `id == -1` return. Text:
   + (DS:224d == 0 ? " aufnehmen." : "")`;
 * `> 23`: `DS:28ac[id]` (24..26 = `"Wie hoch soll der Kredit sein ?"`, `"Laufzeit des Kredites (Mon.) ?"`,
   `"Prozentsatz des Kredites ?"`).
-`DS:0046 = text_width`. Ids 24..26: `DS:0044 = 2`, `ui_draw_text_at(rp, text, 2, 0xe1, 1)`. Others:
+The `if (id == -1)` return leaves `DS:0044` as it is. `DS:0046 = text_width`. Ids 24..26: `DS:0044 = 2`, `ui_draw_text_at(rp, text, 2, 0xe1, 1)`. Others:
 `DS:0044 = 0x85 - width/2` (signed `/2`), `ui_draw_text_centered_shadow(rp, text, 0, 0x10a, 0xe1, 1, 0)`.
 
 ### 3.9 1000:2895 `fixture_week_of_nth_match` (was FUN_1000_2895)

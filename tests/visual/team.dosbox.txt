@@ -1,0 +1,133 @@
+# DOSBox side of the team scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN and walks the "Mannschaft" sub screens (see team.port.txt).
+# The original may refresh the transfer market when the game is resumed (1 in 5,
+# time seeded); recapture if r09-market shows other players than BOGDAN and BEIN.
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+click 30 216 240
+wait 2
+click 107 174 240
+wait 2
+shot r01-contracts
+click 50 32 240 3
+wait 2
+shot r02-info
+click 200 220 240
+wait 2
+click 50 69 240
+wait 2
+shot r03-negotiate
+click 100 223 240
+wait 1
+type 4000
+key Return
+wait 1
+shot r04-salary
+click 212 208 240
+wait 2
+wait 4
+shot r05-extended
+click 50 37 240
+wait 2
+click 100 215 240
+wait 1
+type 5
+key Return
+wait 1
+shot r06-length
+click 212 208 240
+wait 2
+wait 1
+shot r07-too-long
+click 206 166 240
+wait 2
+wait 1
+shot r08-refused
+click 293 196 240
+wait 4
+click 107 216 240
+wait 2
+shot r09-market
+move 250 38 240
+wait 1
+shot r10-hover
+click 200 116 240
+wait 2
+shot r11-loan
+click 250 116 240
+wait 2
+click 250 38 240
+wait 1
+type 1000
+key Return
+wait 1
+shot r12-rejected
+wait 4
+click 250 38 240
+wait 8
+shot r13-already
+click 40 75 240
+wait 2
+shot r14-listed
+click 250 38 240
+wait 2
+shot r15-reclaimed
+click 293 210 240
+wait 4
+shot r16-office
+click 161 132 240
+wait 2
+shot r17-training
+click 70 44 240
+wait 2
+shot r18-kondition
+click 265 44 240
+wait 2
+shot r19-tor
+click 227 208 240
+wait 2
+shot r20-intensity
+click 293 210 240
+wait 4
+click 161 174 240
+wait 2
+shot r21-camp
+move 20 30 240
+wait 2
+shot r22-legend
+click 90 30 240
+wait 0.3
+shot r23-closed
+wait 4
+click 90 180 240
+wait 0.3
+shot r24-no-money
+wait 4
+click 293 210 240
+wait 4
+click 161 216 240
+wait 2
+shot r25-scorers
+click 240 181 240
+wait 2
+shot r26-players
+click 82 181 240
+wait 2
+click 100 102 240
+wait 2
+shot r27-info
+click 200 220 240
+wait 2
+shot r28-closed
+click 293 210 240
+wait 4
+shot r29-office

@@ -966,33 +966,137 @@ Innenbandabri~, Wadenbeinbruch, Kapselri~, Leistenbruch, Kreuzbandri~.
 
 ### 3.8 `screen_top_scorers` 24a4:1ad5
 
-`uint16 screen_top_scorers(int16 no_display)`. Caller: office menu 2 case 6 (`no_display = 0`).
+`u8 screen_top_scorers(i16 no_display)`. Callers: office menu 2 case 6 (`no_display = 0`) and the
+season end (`no_display = 1`, with `FAR:304a` = the manager asked). Ported as
+`crates/bmp/src/game/scorers.rs`.
 
-1. For every human manager `m` and squad slot `i < squad_count(m, 0)`:
-   `P(Q(m,i)[0x0f])[0x22] = Q(m,i)[0x03]` (copy the squad goal counters into the pool).
-2. `ord[p] = p` for `p` 1..150; exchange sort: for `i` 1..150, for `j > i`: swap if
-   `goals[ord[i]] < goals[ord[j]]` or (equal and `games[ord[j]] < games[ord[i]]`), using the
-   bytes `+0x22`/`+0x23`.
-3. Display (font 2; title `LBL[110]`; mode text `DS:2664[mode]`): walk `ord`, keep players whose
-   team id is in the range `DS:2272[2*tier] .. DS:2273[2*tier]` of the current manager's tier;
-   stop at the first player with fewer than 2 goals. In mode 1 only the players of the human
-   managers' teams are listed; the rank stays the rank in the whole tier. (A per-manager counter
-   is kept, but its "first player only" test is or-ed with the mode flag, so it never limits
-   mode 1 and is unused in mode 0.) Up to 20 rows (y from 0x22, step 7):
-   `"<rank>. <name>"`, the team name, goals, and the ratio `g*10/games` printed as
-   `"<q/10>.<q%10>"`. The 20 listed player ids are remembered; clicking a row opens
-   `screen_player_info` for it. Exact columns are in Appendix A.
+```c
+for (m = 0; m < DS:07ab; m++) for (i = 0; i < (u8)squad_count(m, 0); i++)
+    P(Q(m,i).player_id).goals /*+22*/ = Q(m,i).goals[0];
+for (i = 1; i < 151; i++) ord[i] = i;
+for (i = 1; i < 151; i++) { cur = ord[i];                         // exchange sort, not stable
+    for (j = i+1; j < 151; j++) { o = ord[j];
+        if (P(o).goals > P(cur).goals || (== && P(o).games /*+23*/ < P(cur).games))
+            { ord[i] = o; ord[j] = cur; cur = o; } } }
+if (!no_display) {
+    ui_draw_button(rp, 0x23, 0x08, 0xfa, 0xb5, &rects[0], 0, 8);
+    ui_draw_button(rp, 0x10c, 0xc1, 0, 0x22, &rects[1], 0, 8);
+}
+REDRAW:
+ids[0..19] = 0; cnt[0..3] = 0;
+if (!no_display) {
+    ui_draw_line(rp, 0x24, 0x1a, 0x11c, 0x1a, 1); font 1;
+    ui_draw_text_centered_shadow(rp, "Die Besten der " + UI[225+mode] /*"Liga"/"Spieler"*/, 0x23, 0x11d, 0x10, 1, 7);
+    font 2;
+    ui_draw_text_at(rp, "PL. SPIELER                 VEREIN", 0x26, 0x18, 1);
+    ui_draw_text_at(rp, "TORE       TORE/SPIEL", 0xd2, 0x18, 1);
+}
+DS:079c = 2; y = 0x22; rank = 0; rcap = 0; rows = 0;
+for (si = 1; si < 0x97; si++) {
+    p = ord[si]; team = (i8)P(p).team;
+    if (team < DS:2272[2*tier] || team > DS:2273[2*tier]) continue;   // tier = M(FAR:304a).league
+    if (P(p).goals < 2) break;
+    human = 0; col = 1;
+    for (m = 0; m < DS:07ab; m++) if (M(m).team == team) {
+        if (cnt[m] != 0 && mode == 0) continue;
+        human = 1; cnt[m]++; break; }
+    if (manager_index_of_team(team, 0xff) != 0) col = 0x0b;
+    rank++; if (rcap < 0x13) rcap++;
+    if (rcap == 1 && col == 0x0b && no_display && M(FAR:304a).team == team) { ret = 1; break; }
+    if (!no_display && rows < 20 && (mode == 0 || human)) {
+        ui_draw_text_at(rp, fmt(rank) + ". " + P(p).name, 0x26, y, col);
+        ui_draw_text_at(rp, CLUB(team).name, 0x72, y, col);
+        ui_draw_text_at(rp, fmt(P(p).goals), 0xd4, y, col);
+        ids[rows] = p;
+        DS:079c = 1; q = 10*goals; if (games) q /= games;              // no games: goals.0
+        s = fmt(q/10) + "." + fmt(q%10); DS:079c = 2;
+        ui_draw_text_at(rp, s, 0xfc, y, col);
+        rows++; y += 7;
+        if (mode == 0 && si == 12) {                 // si is the ORDER index, not the row
+            y += 0x0e; rastport_set_color(rp, 1);
+            for (si = y-0x12; si < y-7; si += 2) rastport_put_pixel(rp, 0x2d, si);   // reuses si (bug)
+        }
+    }
+    last_y = (u8)y;                                   // uninitialised before the first listed row
+}
+if (no_display) return ret;
+if (y == 0x22) ui_draw_text_centered_shadow(rp, "NOCH KEINE EINTR[GE VORHANDEN...", 0x23, 0x11d, 0x28, 1, 0);
+ICONS:
+DS:07b3 = 0;
+ui_register_icon_slot(0x36, 0xaf, UI[16] "LIGA", DS:5340[mode]);       // 0x11 / 0x0a
+ui_register_icon_slot(0xd4, 0xaf, UI[17] "SPIELER", DS:5341[-mode]);   // 0x0a / 0x11
+screen_fade(1);
+for (;;) {
+    h = ui_hit_test_buttons(rects, 2, 0); input_poll_mouse(); my = mouse y;
+    if ((FAR:2ea2 == 1 || FAR:2ea2 == 3) && h == 1 && my > 0x1d && last_y > my) {
+        k = (my - 0x1e) / 7;
+        if (k < 20) for g in 0..4 with (g < DS:07ab || g == 4), j < squad_count(g, 0):
+            if (Q(g,j).player_id == ids[k]) { FAR:304a = g; screen_player_info(j); FAR:304a = FAR:5358; goto ICONS; }
+        FAR:2ea2 = 0;                                  // AI clubs' players: no info
+    }
+    if (FAR:2ea2 == 1 && ui_hit_icon_slot() != 0) { mode ^= 1; ui_fill_rect(rp, 0x24, 9, 0x11b, 0xbb, 8); goto REDRAW; }
+    if (FAR:2ea2 == 1 && h == 2) { ui_wait_with_highlight(0x10c, 0xc1); return ret; }
+}
+```
+`DS:2272` = `{0,17} {18,37} {38,57}`. Either icon toggles the mode (also the active one); the sort is
+not redone. Closing the player info does not redraw the list (the window restores its background).
 
 ### 3.9 `screen_player_info` 24a4:0906
 
-`void (... player ...)`. Callers: `screen_top_scorers`, `screen_transfer_market` 3277:04a5,
-3277:2a8f. Window (0x59,0x37,0xe0,0xae), title `LBL[43] "Info ]ber " + name` (font 1, colour
-0xb), exit icon `UI[209] "AHA !"` at (0xac,0xd6). Lines: name / position; `UI[212] "STATUS: "`
-with the injury name `UI[53+type]` (via `text_to_upper_de`) or the status texts `UI[131..135]`
-("VERLETZT ", "GESPERRT.", "FALLEND.", "KONSTANT.", "STEIGEND."); `UI[218] "TORE:"`,
-`UI[219] "SPIELE:"` (`format_long_or_blank`), `UI[220] "DATEN:"` with the attribute values,
-`UI[223] "TENDENZ"` bar (0x5f..0xc1, y 0xb4..0xbe) and `UI[224] "ERSCH|PFUNG"` bar
-(0xd0..0x132) scaled by `x*0x26/...` and `x*0x64/...`. Draw details: Appendix A.
+`void screen_player_info(u8 slot)` for `R = Q(FAR:304a, slot)`, `PL = P(R.player_id)`. Callers:
+`screen_top_scorers`, `screen_transfer_market` 3277:04a5, `contract_negotiation` 3277:2a8f.
+`COLX = DS:532c = {0x89, 0xc4, 0xff}`, `BAR = DS:5324 = 0c 0d 0e 0f 13 12 11 10` (followed by
+`89 00 c4 00 ff 00 02 03 ..`, read by the unclamped exhaustion marker).
+
+```c
+id = ui_draw_button(rp, 0x59, 0x37, 0xe0, 0xae, &rect, 1, 8);   // saves the background: DS:079c = 1
+font 1; ui_draw_text_centered_shadow(rp, "Info ]ber " + PL.name, 0x59, 0x139, 0x3f, 0x0b, 0);
+ui_draw_line(rp, 0x5a, 0x41, 0x138, 0x41, 0x0b);
+DS:07b3 = 0; font 2; ui_register_icon_slot(0xac, 0xd6, "AHA !", 0x0a);
+k = (u8)((i16)(PL.age - 18) / 5); if (k > 3) k = 3;            // unsigned: age <= 13 -> 3
+ui_draw_text_at(rp, PL.name + " IST " + fmt(PL.age) + " JAHRE ALT, " + UI[202+k], 0x5c, 0x49, 1);
+    // "(GR}NSCHNABEL)", "(NOCH GANZ FRISCH)", "(MITTELALTER)", "(FAST AM ENDE)"
+s = "STATUS: "; st = R.status & 3; lp = R.lineup_position;
+if (lp != 0 && lp < 12) s += "IST F]R'S N[CHSTE SPIEL EINGEPLANT (NR." + fmt(lp) + ")";
+else if (lp > 11)       s += "H}TET DIE ERSATZBANK";
+else if (st == 0)       s += "KANN SPIELEN, DARF ABER SCHEINBAR NICHT...";
+else { DS:079c = 1;
+       if (st == 1) s += "NOCH " + fmt(R.suspended) + " SPIELE ";
+       s += UI[133-st];                       // "GESPERRT.", "VERLETZT ", st 3: "UEFA-Pokal" (quirk)
+       if (st == 2) s += "(" + upper(UI[53 + R[0x17]]) + ")"; }
+ui_draw_text_at(rp, s, 0x5c, 0x51, 1);
+for k < 3: ui_draw_text_centered_shadow(rp, UI[190+k] /*LIGA, DFB-POKAL, EUROPACUP*/, COLX[k], COLX[k]+0x3a, 0x5c, 1, 0);
+DS:079c = 2;
+ui_draw_text_at(rp, "TORE:", 0x5c, 0x64, 1);
+for k < 3: ui_draw_text_at(rp, blank(R.goals[k]) + "(" + blank(R.w[0x22+2k]) + ")", COLX[k]+0x0c, 0x64, 1);
+ui_draw_text_at(rp, "SPIELE:", 0x5c, 0x6c, 1);
+for k < 3: ui_draw_text_at(rp, blank(R.games[k]) + "(" + blank(R.w[0x1c+2k]) + ")", COLX[k]+0x0c, 0x6c, 1);
+ui_draw_text_at(rp, "DATEN:", 0x5c, 0x77, 1);
+DS:07b2 = 0;
+for (i = 0; i < 9; i++) { ry = (i/3)*16 + 0x77; x0 = COLX[i%3];
+    ui_draw_text_centered_shadow(rp, UI[193+i], x0, x0+0x3a, ry, 1, 0);
+        // KONDITION TECHNIK FORM / ROTE KARTEN GELBE KARTEN GELB-ROTE K. / SEITE(N) GEHALT/M. VERTRAGSDAUER
+    v = i<3 ? R.skills[i] : i<6 ? R.cards[i-3] : i==6 ? PL[0x20] : i==7 ? R.salary*mul/div (unsigned) : R.contract;
+    s = blank(v);
+    if (i == 6) s = UI[206 + (v>1) + (v>4)];  // LINKS / MITTE / RECHTS replaces the number
+    else if (i == 7) s += " DM";
+    else if (i == 8) { s += " JAHR"; if (v > 1) s += "E"; }
+    ui_draw_text_centered_shadow(rp, s, x0, x0+0x3a, ry+7, 1, 0xff); }
+ui_draw_text_at(rp, "TENDENZ", 0x7f, 0xb1, 1);
+ui_fill_rect(rp, 0x5f,0xb4,0xc1,0xbe, 1); ui_fill_rect(rp, 0x60,0xb5,0xc0,0xbd, 0);
+for i < 8: ui_fill_rect(rp, (i+8)*12, 0xb7, (i+9)*12, 0xbb, BAR[7-i]);
+t = (u8)(((i32)(i16)(R.tendency - 30) * 100) / 38); if (t > 0x5e) t = 0x5e;
+ui_draw_line(rp, 0x5f+t, 0xb5, 0x5f+t, 0xbd, BAR[7 - t/12]);
+ui_draw_text_at(rp, "ERSCH|PFUNG", 0xea, 0xb1, 1);
+ui_fill_rect(rp, 0xd0,0xb4,0x132,0xbe, 1); ui_fill_rect(rp, 0xd1,0xb5,0x131,0xbd, 0);
+for i < 8: ui_fill_rect(rp, 12*i+0xd1, 0xb7, 12*i+0xdd, 0xbb, BAR[i]);
+e = (u8)(((i32)(i16)(R.exhaustion - 50) * 0x5e) / 100);      // no clamp
+ui_draw_line(rp, 0xd0+e, 0xb5, 0xd0+e, 0xbd, BAR[e/12]);
+do { input_poll_mouse(); h = ui_hit_icon_slot(); } while (!(FAR:2ea2 == 1 && h == 1));
+ui_redraw_buttons(id, 0); DS:07b2 = 1;
+```
+`blank` = `format_long_or_blank` 362f:0a9f. The bracketed values (`R.w[0x22..]`, `R.w[0x1c..]`) are
+presumably career totals.
 
 ## 4. Segment 362f: settings, statistics, eternal table, history, contracts
 
@@ -2000,6 +2104,9 @@ contain stray prologue pushes at the start of a function.
 ```
 
 ### 24a4:0906 screen_player_info
+
+(In these traces `4a01:0dd2` is `strcat` and `4a01:0e18` is `strcpy`; the labels below have them
+swapped.)
 
 ```
 095f ui_draw_button ( 0x59, 0x37, 0xe0, 0xae, &[BP + 0xff7a], 0x1, 0x8, SI, DI )

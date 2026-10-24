@@ -7,13 +7,17 @@ pub mod cup_screens;
 pub mod disk;
 pub mod league;
 pub mod load_game;
+pub mod negotiation;
 pub mod office;
+pub mod scorers;
 pub mod season;
 pub mod squad_screen;
 pub mod stadium;
 pub mod start_menu;
 pub mod stats_screens;
 pub mod tables;
+pub mod training;
+pub mod transfer_screen;
 pub mod widgets;
 
 use bmp_formats::mana::ManaDat;
@@ -54,6 +58,9 @@ pub struct Session {
     /// the data image.
     /// TODO(re): its writer is not traced.
     pub highscore_tag: i32,
+    /// `DS:5258`: weekly training-camp prices; scaled once per program run
+    /// by the first visit of the camp screen.
+    pub camp_prices: [i32; 8],
 }
 
 impl Session {
@@ -68,6 +75,7 @@ impl Session {
             save_disabled: false,
             cheat_05f5: false,
             highscore_tag: 0,
+            camp_prices: training::CAMP_BASE_PRICES,
         }
     }
 }

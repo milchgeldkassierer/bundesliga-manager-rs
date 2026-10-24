@@ -69,7 +69,7 @@ pub fn player_value_calc(state: &GameState, rng: &mut Rng, slot: u8, mode: u8) -
 }
 
 /// [`player_value_calc`] of record `p` whose player is `age` years old.
-pub(crate) fn player_value_of(rng: &mut Rng, p: &SquadPlayer, age: u8, mode: u8) -> i32 {
+pub fn player_value_of(rng: &mut Rng, p: &SquadPlayer, age: u8, mode: u8) -> i32 {
     if mode & 1 != 0 {
         return record_salary(p, age);
     }

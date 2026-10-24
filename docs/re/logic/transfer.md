@@ -137,7 +137,16 @@ listed with its text where it is used.
   1-based registration index of the slot under the mouse (`x` in `(X, X+0x39)`, `y` in `(Y, Y+0xc)`,
   exclusive), else 0. Style 0x12 is the highlighted look, 1 the normal look.
 * `dialog_okay(s1, s2, s3, s4)` = 4091:0e3a: 4-line box with OKAY button, waits for the click.
-  `ui_dialog_box(s1, s2)` = 176b:0e57: 2-line message box. `message_broadcast(manager, l1, l2, l3, b1,
+  `ui_dialog_box(s1, s2)` = 176b:0e57: 2-line message box in the top right corner that needs no
+  click. It saves the screen rectangle (0xa4, 0x0c) 0x9d x 0x22 into a blank bitmap (which resets
+  `DS:079c` to 1), sets font 1, draw mode 0 and colour 0x10, and grows a filled box from
+  `(x, y, w, h) = (0xb3, 0x1b, 7, 3)`: per step fill `(x+1, y+1)-(w+x-1, h+y-1)`, then `x--, w += 10,
+  y--, h += 2` while `h < 0x23` (a message starting with `"Auto-"`, `DS:4f8c`, starts at the full
+  size `(0xa4, 0x0c, 0x9d, 0x21)` instead). With the final `x = 0xa3, y = 0x0b, w = 0xa7, h = 0x23`:
+  `ui_draw_frame(x+3, y+3, w+x-0xc, h+y-3, 0)`, `ui_draw_frame(x+2, y+2, w+x-0xb, h+y-2, 0x13)`, the
+  lines centred between 0xb9 and 0x12f at y 0x1a and 0x27 (colour 0x1d, shadow 0 = 0xff), then
+  `delay_ticks((2 - quick) * 30)`, font 2, and the saved rectangle is copied back with the same
+  growing steps. Returns 1. `message_broadcast(manager, l1, l2, l3, b1,
   b2)` = 4091:146c: "An Alle:"-style box addressed to manager `manager` with two buttons; returns
   non-zero if the first button was chosen.
 * `player_card` = 2ecd:000e, `screen_transfer_market_list` = 2ecd:06af, `FUN_2ecd_29c6`,
@@ -478,7 +487,7 @@ browse:
   len = sal = 0;
   ui_set_font(rp, 2);
   do {
-    slot = player_card(6, 0x1e, 0, cnt, 0xef + 0xb5*m10, 0xb8, 0xd146, 0x0003, arg2, 4);
+    slot = player_card(6, 0x1e, 0, cnt, 0xef - 0x4b*m10, 0xb8, 0xd146, 0x0003, arg2, 4);   // MOV AL,0xb5; IMUL byte: signed, so 0xa4 with the board open
     click = FAR:2ea2; FAR:2ea2 = 0;
     if (m10) FUN_2ecd_29c6(bmp, arg3, arg2, 0, 0, 0xa8, m10, 1);
   } while (slot == 0x7f);

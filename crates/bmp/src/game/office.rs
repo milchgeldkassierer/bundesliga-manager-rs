@@ -18,12 +18,15 @@ use super::disk::{
 };
 use super::league::has_rescheduled_match_today;
 use super::load_game::screen_load_game;
+use super::scorers::screen_top_scorers;
 use super::season::calendar_compute_date;
 use super::squad_screen::screen_squad_lineup;
 use super::stadium::screen_stadium;
 use super::start_menu::Pictures;
 use super::stats_screens::{screen_eternal_table, screen_manager_history, screen_statistics};
 use super::tables::{screen_fixtures, screen_league_table, screen_strength_table};
+use super::training::{screen_training, screen_training_camp};
+use super::transfer_screen::screen_transfer_market;
 use super::widgets::ui_wait_right_click_button;
 use super::{
     GAME_OPTION_A, GAME_OPTION_B, SEASON_START_DAY, Session, append_ordinal_suffix,
@@ -578,6 +581,17 @@ pub fn office_menu_dispatcher(
                     (3, 1) => {
                         screen_squad_lineup(host, session, state, rules, 0, 0xff, None)?;
                     }
+                    (3, 2) => {
+                        screen_squad_lineup(host, session, state, rules, 0x63, 0xff, None)?;
+                    }
+                    (3, 3) => screen_transfer_market(host, session, state, rules)?,
+                    (3, 4) => screen_training(host, session, state)?,
+                    // office_free_bitmaps(3) / office_load_bitmaps(3) around the
+                    // call only free memory.
+                    (3, 5) => screen_training_camp(host, session, state)?,
+                    (3, 6) => {
+                        screen_top_scorers(host, session, state, false)?;
+                    }
                     (4, 1..=4) => screen_cup_matches(host, session, state, (si - 1) as u8, 0)?,
                     (5, 1) => {
                         if let Some(loaded) = screen_load_game(host, session, pics, 0)? {
@@ -596,8 +610,6 @@ pub fn office_menu_dispatcher(
                     _ => {}
                 }
                 // TODO(#15): (5, 5) is start_menu_new_or_load(0), adding managers.
-                // TODO(#29): (3, 2) is screen_squad_lineup(0x63, 0xff), which needs the
-                // contract negotiation.
                 // TODO(#15): the other screens of flow.md §6.5.
                 host.screen_fade(0)?;
                 host.g.palette_load_slot(0, 0x100);

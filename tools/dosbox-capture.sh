@@ -5,6 +5,7 @@
 # Usage: tools/dosbox-capture.sh <out_dir> <script>
 #   <script> is a file of lines: "wait <seconds>" | "key <xdotool key>" | "type <text>" | "shot <name>"
 #   | "click <x> <y> [<mode height 200|240>] [<button>]" (game coordinates, scaled to the window)
+#   | "move <x> <y> [<mode height 200|240>]" (pointer motion without a click)
 #   | "fetch <file>" (copy a file the game wrote, e.g. a save, from the game directory to <out_dir>)
 # The game runs from a fresh temporary copy of $BMP_DOS_DIR (default ~/Apps/bmp-dos/game), so
 # neither real saves nor the files a scenario writes (saves, high scores) persist between runs.
@@ -58,6 +59,11 @@ while read -r cmd arg; do
       eval "$(DISPLAY=$DISP xdotool getwindowgeometry --shell "$WIN")"
       px=$(( (cx * WIDTH + WIDTH / 2) / 320 )); py=$(( (cy * HEIGHT + HEIGHT / 2) / ch ))
       DISPLAY=$DISP xdotool mousemove --window "$WIN" "$px" "$py" sleep 0.2 mousedown "$cb" sleep 0.35 mouseup "$cb" ;;
+    move)
+      read -r cx cy ch <<<"$arg"; ch=${ch:-200}
+      eval "$(DISPLAY=$DISP xdotool getwindowgeometry --shell "$WIN")"
+      px=$(( (cx * WIDTH + WIDTH / 2) / 320 )); py=$(( (cy * HEIGHT + HEIGHT / 2) / ch ))
+      DISPLAY=$DISP xdotool mousemove --window "$WIN" "$px" "$py" ;;
     key)  DISPLAY=$DISP xdotool key --window "$WIN" --delay 80 $arg ;;
     type) DISPLAY=$DISP xdotool type --window "$WIN" --delay 120 "$arg" ;;
     shot)

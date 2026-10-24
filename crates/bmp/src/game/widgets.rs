@@ -3,7 +3,7 @@
 use bmp_game::rng::{format_long_thousands, spinner_round_bound};
 
 use super::GAME_OPTION_A;
-use crate::gfx::{Gfx, ui_draw_line, ui_draw_text_centered_shadow, ui_fill_rect};
+use crate::gfx::{Gfx, ui_draw_frame, ui_draw_line, ui_draw_text_centered_shadow, ui_fill_rect};
 use crate::host::{Host, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, Run};
 /// Most text buttons that can be registered (`DS:07b3` stops counting at 10; the
 /// 11th registration overwrites slot 10).
@@ -109,11 +109,64 @@ pub fn ui_wait_right_click_button(host: &mut Host, x: i16, y: i16, auto_play: bo
     Ok(())
 }
 
-/// Two-line message box.
+/// `DS:4f8c` (`LBL[329]`): messages starting with this prefix open at full size
+/// and stay half as long.
+const QUICK_PREFIX: &[u8] = b"Auto-";
+
+/// Two-line message box in the top right corner (0xa4..0x140, 0x0c..0x2c):
+/// it grows from the centre, shows the lines for 60 ticks (30 for an
+/// "Auto-..." message), then the saved background is restored the same way.
+/// No click is needed. Always returns `true` (a message was shown).
 ///
-/// TODO(#15): the box itself (176b:0e57) is not ported; like the original it
-/// reports 1 (a message was shown).
-pub fn ui_dialog_box(_host: &mut Host, _line1: &[u8], _line2: &[u8]) -> Run<bool> {
+/// Origin: BMMAIN.EXE 176b:0e57 (ui_dialog_box)
+pub fn ui_dialog_box(host: &mut Host, line1: &[u8], line2: &[u8]) -> Run<bool> {
+    let quick = line1.len() >= QUICK_PREFIX.len() && line1[..QUICK_PREFIX.len()] == *QUICK_PREFIX;
+    let (start, full) = (
+        (0xb3i16, 0x1bi16, 7i16, 3i16),
+        (0xa4i16, 0x0ci16, 0x9di16, 0x21i16),
+    );
+    let saved = host.blank_bitmap(0x9e, 0x22, 0);
+    let screen = host.screen();
+    host.g
+        .blit_bitmap(screen, 0xa4, 0x0c, saved, 0, 0, 0x9d, 0x22);
+    host.set_font(1);
+    Gfx::rastport_set_draw_mode(&mut host.rp, 0);
+    Gfx::rastport_set_color(&mut host.rp, 0x10);
+    let (mut x, mut y, mut w, mut h) = if quick { full } else { start };
+    loop {
+        host.g.vga_wait_vretrace();
+        host.g
+            .rastport_fill_rect(&host.rp, x + 1, y + 1, w + x - 1, h + y - 1);
+        x -= 1;
+        w += 10;
+        y -= 1;
+        h += 2;
+        if h >= 0x23 {
+            break;
+        }
+    }
+    let (g, rp) = (&mut host.g, &mut host.rp);
+    ui_draw_frame(g, rp, x + 3, y + 3, w + x - 0xc, h + y - 3, 0);
+    ui_draw_frame(g, rp, x + 2, y + 2, w + x - 0xb, h + y - 2, 0x13);
+    ui_draw_text_centered_shadow(g, rp, line1, 0xb9, 0x12f, 0x1a, 0x1d, 0);
+    ui_draw_text_centered_shadow(g, rp, line2, 0xb9, 0x12f, 0x27, 0x1d, 0);
+    host.delay_ticks((2 - i32::from(quick)) * 0x1e)?;
+    host.set_font(2);
+    let (mut x, mut y, mut w, mut h) = if quick { full } else { start };
+    loop {
+        host.g.vga_wait_vretrace();
+        let screen = host.screen();
+        host.g
+            .blit_bitmap(saved, x - 0xa4, y - 0xc, screen, x, y, w, h);
+        x -= 1;
+        w += 10;
+        y -= 1;
+        h += 2;
+        if h >= 0x23 {
+            break;
+        }
+    }
+    host.g.free(saved);
     Ok(true)
 }
 
@@ -345,12 +398,27 @@ fn input_erase(host: &mut Host, x: i16, y: i16, w: i16, h: i16, bg: u8) {
 /// Origin: BMMAIN.EXE 176b:07d7 (ui_scroll_text_box, numeric mode)
 pub fn ui_input_number(
     host: &mut Host,
-    mut x: i16,
+    x: i16,
     y: i16,
     max_chars: usize,
     color: u8,
     bg: u8,
 ) -> Run<i32> {
+    Ok(ui_input_number_typed(host, x, y, max_chars, color, bg)?.0)
+}
+
+/// [`ui_input_number`] that also tells whether anything was typed (the
+/// caller's buffer is not empty); Esc counts as nothing typed.
+///
+/// Origin: BMMAIN.EXE 176b:07d7 (ui_scroll_text_box, numeric mode)
+pub fn ui_input_number_typed(
+    host: &mut Host,
+    mut x: i16,
+    y: i16,
+    max_chars: usize,
+    color: u8,
+    bg: u8,
+) -> Run<(i32, bool)> {
     let mut text: Vec<u8> = Vec::new();
     let height = host.rp.font.map_or(8, |f| {
         host.g.fonts[f as usize]
@@ -362,11 +430,11 @@ pub fn ui_input_number(
         let key = host.getch()?;
         if key == b'\r' {
             ui_fill_rect(&mut host.g, &mut host.rp, x + 2, y - 4, x + 4, y, bg);
-            return Ok(number_value(&text));
+            return Ok((number_value(&text), !text.is_empty()));
         }
         input_erase(host, x + 2, y - 4, 3, 5, bg);
         match key {
-            0x1b => return Ok(0),
+            0x1b => return Ok((0, false)),
             8 => {
                 if let Some(c) = text.pop() {
                     let w = host.g.rastport_text_width(&host.rp, &[c]);

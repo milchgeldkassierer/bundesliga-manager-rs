@@ -1,0 +1,213 @@
+# Port side of the team scenario (bmp run --script syntax, milliseconds):
+# load 07072019.MAN and open the screens of the office "Mannschaft" submenu
+# after the lineup: contracts (player info, a salary raise that the player
+# accepts, a five-season offer refused with "Wer wird sich denn SO lange
+# verpflichten ?"), transfer market (hover, LEIHEN switch, a refused low bid,
+# the "bereits abgelehnt" repeat, an own player listed and taken back),
+# training (two bars and the intensity), training camp (legend hover, a
+# closed camp, a camp that is too expensive), top scorers (both modes and the
+# player info of a listed player). Every click is preceded by a pointer move.
+# The four camp frames differ (99.24 %) in one picture: the port shows
+# "Luxushotel La Preux" closed because the original runs the weekly
+# training-camp counters (DS:0620) when a game is resumed, which the port's
+# season loop does not do yet (#23/#31). The same resume step may refresh the
+# transfer market (random_range(0, managers + 3) == 0, 3277:1e38); the
+# reference was captured from a run without a refresh. The RNG-dependent
+# outcomes (contract demand, bid acceptance) are avoided: the raise is accepted
+# and the low bid refused before any random draw decides.
+# seed: 35372
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+click 30 216
+wait 500
+move 107 174
+wait 200
+click 107 174
+wait 1000
+shot r01-contracts
+move 50 32
+wait 200
+rclick 50 32
+wait 1000
+shot r02-info
+move 200 220
+wait 200
+click 200 220
+wait 1000
+move 50 69
+wait 200
+click 50 69
+wait 1000
+shot r03-negotiate
+move 100 223
+wait 200
+click 100 223
+wait 500
+type 4000
+key enter
+wait 500
+shot r04-salary
+move 212 208
+wait 200
+click 212 208
+wait 1000
+wait 4000
+shot r05-extended
+move 50 37
+wait 200
+click 50 37
+wait 1000
+move 100 215
+wait 200
+click 100 215
+wait 500
+type 5
+key enter
+wait 500
+shot r06-length
+move 212 208
+wait 200
+click 212 208
+wait 1000
+wait 1000
+shot r07-too-long
+move 206 166
+wait 200
+click 206 166
+wait 1000
+wait 1000
+shot r08-refused
+move 293 196
+wait 200
+click 293 196
+wait 2000
+move 107 216
+wait 200
+click 107 216
+wait 1000
+shot r09-market
+move 250 38
+wait 500
+shot r10-hover
+move 200 116
+wait 200
+click 200 116
+wait 1000
+shot r11-loan
+move 250 116
+wait 200
+click 250 116
+wait 1000
+move 250 38
+wait 200
+click 250 38
+wait 500
+type 1000
+key enter
+wait 500
+shot r12-rejected
+wait 4000
+move 250 38
+wait 200
+click 250 38
+wait 4000
+shot r13-already
+move 40 75
+wait 200
+click 40 75
+wait 1000
+shot r14-listed
+move 250 38
+wait 200
+click 250 38
+wait 1000
+shot r15-reclaimed
+move 293 210
+wait 200
+click 293 210
+wait 2000
+shot r16-office
+move 161 132
+wait 200
+click 161 132
+wait 1000
+shot r17-training
+move 70 44
+wait 200
+click 70 44
+wait 1000
+shot r18-kondition
+move 265 44
+wait 200
+click 265 44
+wait 1000
+shot r19-tor
+move 227 208
+wait 200
+click 227 208
+wait 1000
+shot r20-intensity
+move 293 210
+wait 200
+click 293 210
+wait 2000
+move 161 174
+wait 200
+click 161 174
+wait 1000
+shot r21-camp
+move 20 30
+wait 1000
+shot r22-legend
+move 90 30
+wait 200
+click 90 30
+wait 400
+shot r23-closed
+wait 4000
+move 90 180
+wait 200
+click 90 180
+wait 400
+shot r24-no-money
+wait 4000
+move 293 210
+wait 200
+click 293 210
+wait 2000
+move 161 216
+wait 200
+click 161 216
+wait 1000
+shot r25-scorers
+move 240 181
+wait 200
+click 240 181
+wait 1000
+shot r26-players
+move 82 181
+wait 200
+click 82 181
+wait 1000
+move 100 102
+wait 200
+click 100 102
+wait 1000
+shot r27-info
+move 200 220
+wait 200
+click 200 220
+wait 1000
+shot r28-closed
+move 293 210
+wait 200
+click 293 210
+wait 2000
+shot r29-office
