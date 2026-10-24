@@ -786,6 +786,15 @@ pub fn penalty_shootout_start(
     Ok(())
 }
 
+/// A scored kick of a penalty shoot-out: the score digits of the first live panel (the
+/// shoot-out's only pairing) with the kick counted. The kick's ticker event drew the score
+/// before the shoot-out counted it.
+///
+/// Origin: BMMAIN.EXE 1310:356d (match_penalty_shootout, 1310:391c..3942)
+pub fn penalty_shootout_goal(ui: &mut ScreenSeason<'_>, state: &GameState, rt: &Runtime) {
+    match_draw_score_digit_pair(ui.host, &ui.live, state, rt, 0, true);
+}
+
 /// The end of a penalty shoot-out with a human club: after 50 ticks the "Endergebnis:"
 /// screen with both clubs and the kicks scored ("4 : 3   n.E."), then a click.
 ///

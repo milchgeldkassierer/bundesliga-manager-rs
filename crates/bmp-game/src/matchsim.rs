@@ -541,6 +541,21 @@ pub trait MatchHooks {
     ) {
     }
 
+    /// Display: a kick of the penalty shoot-out of pairing `slot` of cup row `cup` was scored
+    /// and counted in the result cells. The original redraws the score digits of the first
+    /// live panel; the event panel of the kick was already cleared by its ticker event,
+    /// which drew the score before this kick counted.
+    ///
+    /// Origin: BMMAIN.EXE 1310:356d (match_penalty_shootout, 1310:391c..3942)
+    fn penalty_shootout_goal(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _cup: u8,
+        _slot: u8,
+    ) {
+    }
+
     /// Display: the shoot-out of pairing `slot` of cup row `cup` is decided (the result cells
     /// hold the kicks scored, without the +20). The original waits 50 ticks and shows the
     /// "Endergebnis:" screen with the clubs and the score, then waits for a click.
@@ -816,6 +831,7 @@ pub fn match_penalty_shootout<H: MatchHooks + ?Sized>(
             if goal != 0 {
                 let r = &mut state.cup_results.as_flattened_mut()[cell + usize::from(shooter)];
                 *r = r.wrapping_add(1);
+                hooks.penalty_shootout_goal(state, rt, cup, slot);
             }
             shooter ^= 1;
             if shooter == first {
@@ -1717,6 +1733,8 @@ mod tests {
             end: bool,
             score: [u8; 2],
         },
+        /// A scored shoot-out kick with the result cells after it counted.
+        ShootoutGoal([u8; 2]),
     }
 
     /// Hooks for computer-only match days: every logic hook only records its call and returns
@@ -1786,6 +1804,11 @@ mod tests {
         fn penalty_shootout_start(&mut self, s: &mut GameState, _: &mut Runtime, c: u8, p: u8) {
             let score = s.cup_results[usize::from(c) * 16 + usize::from(p / 2)];
             self.calls.push(Call::Shootout { end: false, score });
+        }
+
+        fn penalty_shootout_goal(&mut self, s: &mut GameState, _: &mut Runtime, c: u8, p: u8) {
+            let score = s.cup_results[usize::from(c) * 16 + usize::from(p / 2)];
+            self.calls.push(Call::ShootoutGoal(score));
         }
 
         fn penalty_shootout_end(&mut self, s: &mut GameState, _: &mut Runtime, c: u8, p: u8) {
@@ -2170,6 +2193,19 @@ mod tests {
             assert_eq!(*e, expected);
             assert_eq!(e.kind, nth_range(start, k + 1, 0, 2).min(1) as u8);
             goals[usize::from(shooter)] += e.kind;
+        }
+        // Every scored kick is redrawn after it counted, right after its ticker event.
+        let mut score = [0u8; 2];
+        for (i, c) in hooks.calls.iter().enumerate() {
+            if let Call::Ticker(e) = c {
+                score[usize::from(e.side)] += e.kind;
+                let next = hooks.calls.get(i + 1);
+                if e.kind != 0 {
+                    assert_eq!(next, Some(&Call::ShootoutGoal(score)));
+                } else {
+                    assert!(!matches!(next, Some(Call::ShootoutGoal(_))));
+                }
+            }
         }
         assert_ne!(goals[0], goals[1]);
         // The screens frame the kicks: the start sees 0:0 (the extra-time score is dropped),

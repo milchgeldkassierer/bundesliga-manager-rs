@@ -406,6 +406,18 @@ impl SeasonUi for ScreenSeason<'_> {
         }
     }
 
+    fn penalty_shootout_goal(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        _cup: u8,
+        _slot: u8,
+    ) {
+        if !self.quitting() {
+            super::live_match::penalty_shootout_goal(self, state, rt);
+        }
+    }
+
     fn penalty_shootout_end(
         &mut self,
         state: &mut GameState,

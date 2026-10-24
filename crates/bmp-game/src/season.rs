@@ -1544,6 +1544,16 @@ pub trait SeasonUi {
     ) {
     }
 
+    /// Display: [`MatchHooks::penalty_shootout_goal`].
+    fn penalty_shootout_goal(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _cup: u8,
+        _slot: u8,
+    ) {
+    }
+
     /// Display: [`MatchHooks::penalty_shootout_end`].
     fn penalty_shootout_end(
         &mut self,
@@ -1665,6 +1675,16 @@ impl<U: SeasonUi + ?Sized> MatchHooks for SeasonHooks<'_, U> {
         slot: u8,
     ) {
         self.0.penalty_shootout_start(state, rt, cup, slot);
+    }
+
+    fn penalty_shootout_goal(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        cup: u8,
+        slot: u8,
+    ) {
+        self.0.penalty_shootout_goal(state, rt, cup, slot);
     }
 
     fn penalty_shootout_end(&mut self, state: &mut GameState, rt: &mut Runtime, cup: u8, slot: u8) {
