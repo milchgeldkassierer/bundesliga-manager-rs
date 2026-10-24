@@ -1,0 +1,80 @@
+# Port side of the matchday scenario (bmp run --script syntax, milliseconds):
+# load 07072019.MAN, switch on the newspaper and the half-time and full-time fixtures
+# of the 2. Bundesliga in the settings, end the turn with a click on the calendar
+# sheet and play the match day: live view in both halves, the fixtures at half-time
+# and full-time, the 2. Bundesliga table, the newspaper and the next office turn.
+# Seed 55768 was recovered from the reference's half-time fixtures (results and club
+# strengths): run from program start through the loaded game's loop top, the office
+# turn and the first half, it reproduces the frame exactly (searched around the seed
+# expected from the capture time; no other of about 22000 seeds tried came close). The live-view waits are tuned to the reference's minutes (the
+# DOSBox timing is not exact): the blinking chance text and the goal panel of the
+# first half and the 62nd minute of the second half.
+# seed: 55768
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 161 132
+wait 100
+click 161 132
+wait 1000
+move 245 108
+wait 100
+click 245 108
+wait 300
+move 187 43
+wait 100
+click 187 43
+wait 300
+move 187 62
+wait 100
+click 187 62
+wait 300
+shot m00-settings
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot m01-office
+move 280 75
+wait 100
+click 280 75
+wait 2300
+shot m02-live
+wait 2500
+shot m03-live
+wait 30000
+shot m04-half-time
+move 293 213
+wait 100
+click 293 213
+wait 940
+shot m05-live
+wait 30000
+shot m06-full-time
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot m07-table
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot m08-newspaper
+move 160 120
+wait 100
+click 160 120
+wait 2000
+shot m09-office

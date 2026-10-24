@@ -5,8 +5,10 @@ pub mod contract;
 pub mod credits;
 pub mod cup_screens;
 pub mod disk;
+pub mod live_match;
 pub mod load_game;
 pub mod negotiation;
+pub mod newspaper;
 pub mod office;
 pub mod scorers;
 pub mod season;
@@ -82,9 +84,8 @@ impl Session {
 /// How [`run`] ended.
 #[derive(Debug)]
 pub enum Exit {
-    /// The first office turn of a new or loaded game ended; the screens do not run the
-    /// rest of the season loop yet (#31, they do not implement `bmp_game::season::SeasonUi`).
-    EndOfTurn,
+    /// The last season of the game is over.
+    GameOver,
 }
 
 /// `time(NULL)`: the seconds since the epoch, the source of both RNG seeds.
@@ -166,8 +167,8 @@ fn load_main_pictures(host: &mut Host) -> Result<(), String> {
     Ok(())
 }
 
-/// `main`: title picture, club selection, then the first office turn of a new or a
-/// loaded game. `time` is the first seed's `time()`; `time2` the second one's, read
+/// `main`: title picture, club selection, then the season loop of a new or a loaded
+/// game. `time` is the first seed's `time()`; `time2` the second one's, read
 /// once the start menu has set up a new game (`None`: the clock at that moment).
 ///
 /// Origin: BMMAIN.EXE 18bc:0418 (main)

@@ -520,13 +520,11 @@ impl Host {
     }
 
     /// Origin: BMMAIN.EXE 176b:0182 (sound_play_voice)
-    #[allow(dead_code)] // TODO(#16): called by the live match and goal scenes.
     pub fn voice_play(&mut self, n: u8) {
         self.with_voices(|v| v.play(n));
     }
 
     /// Origin: BMMAIN.EXE 176b:020f (sound_stop_voice)
-    #[allow(dead_code)] // TODO(#16): called by the live match and goal scenes.
     pub fn voice_stop(&mut self) {
         self.with_voices(|v| v.stop());
     }
@@ -534,7 +532,6 @@ impl Host {
     /// Busy-waits until the voice output has ended (the original polls no input).
     ///
     /// Origin: BMMAIN.EXE 176b:024b (sound_wait_voice_end)
-    #[allow(dead_code)] // TODO(#16): called by the live match and goal scenes.
     pub fn voice_wait_end(&mut self) -> Run<()> {
         loop {
             let mut busy = false;
@@ -552,7 +549,6 @@ impl Host {
     }
 
     /// Origin: BMMAIN.EXE 176b:027d (sound_restart_loop_voice)
-    #[allow(dead_code)] // TODO(#16): called by the live match and goal scenes.
     pub fn voice_restart_loop(&mut self) {
         self.with_voices(|v| v.restart_loop());
     }

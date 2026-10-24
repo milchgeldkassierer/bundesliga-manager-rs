@@ -1439,6 +1439,65 @@ pub trait SeasonUi {
 
     /// The newspapers of a match day, in manager order.
     fn show_newspapers(&mut self, state: &GameState, papers: Vec<Newspaper>);
+
+    /// Display: [`MatchHooks::period_start`].
+    fn period_start(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _league_mask: u8,
+        _cup_mask: u8,
+        _from: u8,
+    ) {
+    }
+
+    /// Display: [`MatchHooks::period_minute`].
+    fn period_minute(&mut self, _state: &GameState, _rt: &Runtime, _to: u8, _minute: u8) {}
+
+    /// [`MatchHooks::pause_requested`]: the settings key or the pause click.
+    fn pause_requested(&mut self, _state: &mut GameState, _rt: &mut Runtime, _minute: u8) -> bool {
+        false
+    }
+
+    /// Display: [`MatchHooks::period_end`].
+    #[allow(clippy::too_many_arguments)]
+    fn period_end(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _rng: &mut Rng,
+        _league_mask: u8,
+        _cup_mask: u8,
+        _tier: Option<u8>,
+        _to: u8,
+    ) {
+    }
+
+    /// Display: [`MatchHooks::matchday_results`].
+    #[allow(clippy::too_many_arguments)]
+    fn matchday_results(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _rng: &mut Rng,
+        _league_mask: u8,
+        _cup_mask: u8,
+        _penalties: bool,
+    ) {
+    }
+
+    /// Display: a live ticker event is about to be applied ([`match_ticker_events`]): the event
+    /// panel, the card and injury whistles and the blinking chance text.
+    ///
+    /// Origin: BMMAIN.EXE 2a58:0ca3 (match_ticker_events, the screen before 2a58:11b0)
+    fn ticker_event_start(&mut self, _state: &GameState, _rt: &Runtime, _event: &TickerEvent) {}
+
+    /// Display: a live ticker event was applied: the event texts (scorer and assistant are
+    /// the last entries of the newspaper record), the waits and the panel redraw.
+    ///
+    /// Origin: BMMAIN.EXE 2a58:0ca3 (match_ticker_events, the screen after the logic) and
+    /// 1310:322c (match_event_redraw)
+    fn ticker_event_end(&mut self, _state: &GameState, _rt: &Runtime, _event: &TickerEvent) {}
 }
 
 /// The match engine's hooks of the season loop.
@@ -1478,7 +1537,55 @@ impl<U: SeasonUi + ?Sized> MatchHooks for SeasonHooks<'_, U> {
         rng: &mut Rng,
         event: TickerEvent,
     ) {
+        self.0.ticker_event_start(state, rt, &event);
         match_ticker_events(state, rt, rng, event, self.0);
+        self.0.ticker_event_end(state, rt, &event);
+    }
+
+    fn pause_requested(&mut self, state: &mut GameState, rt: &mut Runtime, minute: u8) -> bool {
+        self.0.pause_requested(state, rt, minute)
+    }
+
+    fn period_start(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        league_mask: u8,
+        cup_mask: u8,
+        from: u8,
+    ) {
+        self.0.period_start(state, rt, league_mask, cup_mask, from);
+    }
+
+    fn period_minute(&mut self, state: &GameState, rt: &Runtime, to: u8, minute: u8) {
+        self.0.period_minute(state, rt, to, minute);
+    }
+
+    fn period_end(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        rng: &mut Rng,
+        league_mask: u8,
+        cup_mask: u8,
+        tier: Option<u8>,
+        to: u8,
+    ) {
+        self.0
+            .period_end(state, rt, rng, league_mask, cup_mask, tier, to);
+    }
+
+    fn matchday_results(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        rng: &mut Rng,
+        league_mask: u8,
+        cup_mask: u8,
+        penalties: bool,
+    ) {
+        self.0
+            .matchday_results(state, rt, rng, league_mask, cup_mask, penalties);
     }
 
     fn cup_check_ties_extra_time(

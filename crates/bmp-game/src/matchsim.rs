@@ -438,6 +438,63 @@ pub trait MatchHooks {
         false
     }
 
+    /// Display: a period starts after its chances were planned. A match day shown live
+    /// ([`Runtime::live_match_shown`]) draws the score panels and the time bar and starts the
+    /// crowd sound; otherwise the screen is only faded in.
+    ///
+    /// Origin: BMMAIN.EXE 1310:2303 (match_live_period, 1310:2489..24ef)
+    fn period_start(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _league_mask: u8,
+        _cup_mask: u8,
+        _from: u8,
+    ) {
+    }
+
+    /// Display: `minute` of a period starts (the wait, the time bar and the minute ticker of
+    /// a match shown live). Called before [`MatchHooks::pause_requested`].
+    ///
+    /// Origin: BMMAIN.EXE 1310:2303 (match_live_period, 1310:24f9..2550)
+    fn period_minute(&mut self, _state: &GameState, _rt: &Runtime, _to: u8, _minute: u8) {}
+
+    /// Display: a period ended. On a league day it is called for every played `tier` right
+    /// after that tier's results (after minute 90 its table update and computer scorers),
+    /// where the option-selected fixture screen of the tier follows; then once with `None`
+    /// for the cup result screens. The first call stops the crowd and clears the screen.
+    /// `rng`: the match-day fixture screen recomputes the team strengths.
+    ///
+    /// Origin: BMMAIN.EXE 1310:2303 (match_live_period, 1310:2aab..2c94)
+    #[allow(clippy::too_many_arguments)]
+    fn period_end(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _rng: &mut Rng,
+        _league_mask: u8,
+        _cup_mask: u8,
+        _tier: Option<u8>,
+        _to: u8,
+    ) {
+    }
+
+    /// Display: the match day's result screens before the cup round is completed: the
+    /// shoot-out results (`penalties`: a cup tie went to penalties) and the league tables of
+    /// the masked tiers.
+    ///
+    /// Origin: BMMAIN.EXE 1310:15db (matchday_play, 1310:1a6a..1b9e)
+    fn matchday_results(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _rng: &mut Rng,
+        _league_mask: u8,
+        _cup_mask: u8,
+        _penalties: bool,
+    ) {
+    }
+
     /// A click on the live score panel of pairing `slot` of `comp` (league tier, or cup row
     /// plus 10) in `minute`, which opens the substitution dialog (2a58:1f75). Returns the
     /// manager whose lineup changed; the engine then re-plans that match's chances.
@@ -884,14 +941,15 @@ pub fn match_live_period<H: MatchHooks + ?Sized>(
             }
         }
     }
-    // UI: the score panels, the time bar and the crowd sound.
+    hooks.period_start(state, rt, league_mask, cup_mask, from);
 
     for minute in from..=to {
+        hooks.period_minute(state, rt, to, minute);
         // TODO(re): match.md §7 open question 4 — a pause skips the whole minute.
         if hooks.pause_requested(state, rt, minute) {
             continue;
         }
-        // UI: the time bar, the minute ticker and a pending message dialog.
+        // TODO(#32): the pending message dialog (FAR:4bd8) of a right click.
         if cup_mask == 0 {
             for tier in 0..tiers {
                 if (active >> tier) & 1 == 0 {
@@ -945,16 +1003,19 @@ pub fn match_live_period<H: MatchHooks + ?Sized>(
         }
     }
 
-    // UI: the period's result screens.
     match_write_forfeit_results(state, rt, 2);
-    if cup_mask == 0 && to == 90 {
+    if cup_mask == 0 {
         for tier in 0..3 {
             if (active >> tier) & 1 != 0 {
-                league_apply_round_and_sort(state, rng, tier, RoundMode::Apply, 1, false);
-                matchday_assign_ai_scorers(state, rng, tier);
+                if to == 90 {
+                    league_apply_round_and_sort(state, rng, tier, RoundMode::Apply, 1, false);
+                    matchday_assign_ai_scorers(state, rng, tier);
+                }
+                hooks.period_end(state, rt, rng, league_mask, cup_mask, Some(tier as u8), to);
             }
         }
     }
+    hooks.period_end(state, rt, rng, league_mask, cup_mask, None, to);
 }
 
 /// Plays a match day: the league tiers of `league_mask` on a league day (`cup_mask == 0`;
@@ -1052,14 +1113,15 @@ pub fn matchday_play<H: MatchHooks + ?Sized>(
     match_live_period(state, rt, rng, hooks, league_mask, cup_mask, 1, 45);
     match_live_period(state, rt, rng, hooks, league_mask, cup_mask, 46, 90);
     rt.live_match_shown = 0;
+    let mut penalties = false;
     if cup_mask != 0 && hooks.cup_check_ties_extra_time(state, rt, rng, cup_mask, cup_bytes, false)
     {
         match_live_period(state, rt, rng, hooks, league_mask, cup_mask, 91, 105);
         match_live_period(state, rt, rng, hooks, league_mask, cup_mask, 106, 120);
         // Whether a tie needed penalties only decides which result screens are shown.
-        hooks.cup_check_ties_extra_time(state, rt, rng, cup_mask, cup_bytes, true);
+        penalties = hooks.cup_check_ties_extra_time(state, rt, rng, cup_mask, cup_bytes, true);
     }
-    // UI: the league tables of the masked tiers.
+    hooks.matchday_results(state, rt, rng, league_mask, cup_mask, penalties);
     if cup_mask != 0 {
         hooks.cup_round_complete(state, rt, rng, cup_mask.wrapping_sub(1));
     }

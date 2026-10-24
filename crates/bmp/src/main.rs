@@ -196,7 +196,7 @@ fn run_game(args: &Args) -> Result<(), String> {
         return Ok(());
     }
     match game::run(&mut host, time, time2)? {
-        Ok(game::Exit::EndOfTurn) => eprintln!("end of turn (the season loop is not ported yet)"),
+        Ok(game::Exit::GameOver) => {}
         Err(host::Quit) => {}
     }
     Ok(())

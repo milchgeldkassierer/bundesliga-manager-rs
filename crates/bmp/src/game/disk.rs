@@ -447,7 +447,7 @@ pub enum HighscoreMode {
 /// with the variant digit (0 normal, 1 or 3 for the one-year scenarios).
 ///
 /// Origin: BMMAIN.EXE 422b:21c4 (highscore_load_save, read)
-fn highscore_load(data: &Path, state: &GameState) -> (HighScoreTable, u8) {
+pub(crate) fn highscore_load(data: &Path, state: &GameState) -> (HighScoreTable, u8) {
     let name = highscore_file_name(state.scenario, state.level);
     let variant = name.as_bytes()[5] - b'0';
     let path = find_case_insensitive(&data.join(&name)).unwrap_or(data.join(&name));

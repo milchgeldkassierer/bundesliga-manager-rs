@@ -1,0 +1,51 @@
+# DOSBox side of the matchday scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN, switches on the newspaper and the half-time and full-time
+# fixtures of the 2. Bundesliga in the settings, ends the turn with a click on the
+# calendar sheet and plays the match day: live view in both halves, the fixtures at
+# half-time and full-time, the 2. Bundesliga table, the newspaper, the next office.
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+click 291 173 240
+wait 3
+click 161 132 240
+wait 5
+click 245 108 240
+wait 1
+click 187 43 240
+wait 1
+click 187 62 240
+wait 1
+shot m00-settings
+click 293 213 240
+wait 5
+shot m01-office
+click 280 75 240
+wait 2
+shot m02-live
+wait 2
+shot m03-live
+wait 25
+shot m04-half-time
+click 293 213 240
+wait 1
+shot m05-live
+wait 25
+shot m06-full-time
+click 293 213 240
+wait 4
+shot m07-table
+click 293 213 240
+wait 4
+shot m08-newspaper
+click 160 120 240
+wait 8
+shot m09-office

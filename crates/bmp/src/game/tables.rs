@@ -6,6 +6,7 @@
 //! [`bmp_game::league`]; this module ports the drawing and input handling and
 //! the small text formatters of the segment.
 
+use bmp_game::ai::squad_recalc_team_strength;
 use bmp_game::league::{
     LEAGUE_FIRST_TEAM, LEAGUE_ROUND_COUNT, LEAGUE_TEAM_COUNT, NO_MATCH, NOT_PLAYED, POINTS_PER_WIN,
     RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
@@ -640,7 +641,7 @@ pub fn screen_fixtures(
     by_round: bool,
 ) -> Run<()> {
     if mode != 0 {
-        // TODO(#25): manager_ai_weekly 1f9d:0002 for every manager (match-day views).
+        recalc_team_strengths(session, state, false);
     }
     let mut redraw = true;
     let mut count: i16 = 2;
@@ -743,9 +744,19 @@ pub fn screen_fixtures(
         fixtures_build_round_pairings(state, league, cur);
     }
     if mode != 0 {
-        // TODO(#25): manager_ai_weekly 1f9d:0002 for every manager.
+        recalc_team_strengths(session, state, true);
     }
     Ok(())
+}
+
+/// The match-day views recompute every manager's team strength (`full`: with the lineup
+/// rules and their random draws).
+///
+/// Origin: BMMAIN.EXE 3a41:120a (screen_fixtures, 3a41:1225 and 3a41:1cfc)
+fn recalc_team_strengths(session: &mut Session, state: &mut GameState, full: bool) {
+    for m in 0..state.manager_count {
+        squad_recalc_team_strength(state, &session.rt, &mut session.rng, m, full);
+    }
 }
 
 /// Appends `"<day>.<month>."` of the date globals.

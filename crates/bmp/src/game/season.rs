@@ -1,20 +1,367 @@
-//! The part of the season loop (segment 2a58) that leads into the first office turn
-//! of a new or a loaded game. The loop's logic is [`bmp_game::season`].
-//! Spec: `docs/re/logic/season.md` §3.1.
+//! The screens of the season loop (segment 2a58): the screen crate's [`SeasonUi`], which runs
+//! the office turns, the match-day titles, the live match view and the newspapers while
+//! [`bmp_game::season::season_main_loop`] drives the game. Spec: `docs/re/logic/season.md` §3.
 
-use bmp_game::season::{office_turn_start, season_slot_start};
+use bmp_formats::savegame::HighScoreTable;
+use bmp_game::finance::FinanceEvent;
+use bmp_game::matchsim::TickerEvent;
+use bmp_game::news::{NewsEnv, Newspaper};
+use bmp_game::rng::{NumberFormat, Rng};
+use bmp_game::runtime::Runtime;
+use bmp_game::season::{GameOver, SeasonEndEvent, SeasonUi, SpecialDate, Title};
 use bmp_game::state::GameState;
 
+use super::disk::{HighscoreMode, highscore_load, highscore_screen};
+use super::live_match::LiveView;
 use super::office::{self, OfficeBitmaps};
 use super::start_menu::Pictures;
-use super::{Exit, Session};
-use crate::host::{Host, Run};
+use super::{Exit, Session, newspaper};
+use crate::host::{Host, Quit, Run};
 
-/// `season_main_loop(resume)` up to the first office turn: of the stored current
-/// manager after a game was loaded (`resume`), of manager 0 in a new game.
-///
-/// TODO(#31): the rest of the loop runs through [`bmp_game::season::season_main_loop`]
-/// once the screens implement its `SeasonUi`; until then the turn ends the run.
+/// Game font 2 (`flow`), whose widths the newspaper layout measures.
+const NEWS_FONT: u16 = 1;
+
+/// `rastport_text_width` of one font.
+type TextWidth = dyn Fn(&[u8]) -> i16;
+
+/// The season loop's screens: the host, the session (whose random generator and runtime the
+/// loop holds while it runs, see [`ScreenSeason::lend`]) and the live match view.
+pub struct ScreenSeason<'a> {
+    pub(crate) host: &'a mut Host,
+    pub(crate) session: &'a mut Session,
+    pics: &'a Pictures,
+    bitmaps: &'a OfficeBitmaps,
+    /// The player quit inside a callback that cannot stop the loop; the next loop-level
+    /// callback returns it.
+    quit: Option<Quit>,
+    /// `format_long_thousands` state handed to the logic ([`SeasonUi::number_format`]).
+    fmt: NumberFormat,
+    fmt_lent: bool,
+    /// Glyph widths of game font 2 for [`SeasonUi::news_env`].
+    text_width: Box<TextWidth>,
+    pub(crate) live: LiveView,
+}
+
+impl<'a> ScreenSeason<'a> {
+    pub fn new(
+        host: &'a mut Host,
+        session: &'a mut Session,
+        pics: &'a Pictures,
+        bitmaps: &'a OfficeBitmaps,
+    ) -> Self {
+        let widths: Vec<u16> = (0..=255u8)
+            .map(|c| host.g.text_width(NEWS_FONT, &[c]))
+            .collect();
+        let text_width = Box::new(move |t: &[u8]| {
+            t.iter()
+                .fold(0u16, |a, &c| a.wrapping_add(widths[usize::from(c)])) as i16
+        });
+        let fmt = host.number_format();
+        Self {
+            host,
+            session,
+            pics,
+            bitmaps,
+            quit: None,
+            fmt,
+            fmt_lent: false,
+            text_width,
+            live: LiveView::default(),
+        }
+    }
+
+    /// Writes a number format the logic changed back into the host globals.
+    pub(crate) fn sync_format(&mut self) {
+        if self.fmt_lent {
+            self.host.number_pad = self.fmt.pad_width;
+            self.host.number_no_separators = self.fmt.no_separators;
+            self.fmt_lent = false;
+        }
+    }
+
+    /// Runs `f` with the loop's random generator and runtime moved back into the session, as
+    /// the office screens read them from there.
+    pub(crate) fn lend<R>(
+        &mut self,
+        rng: &mut Rng,
+        rt: &mut Runtime,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        std::mem::swap(&mut self.session.rng, rng);
+        std::mem::swap(&mut self.session.rt, rt);
+        let r = f(self);
+        std::mem::swap(&mut self.session.rng, rng);
+        std::mem::swap(&mut self.session.rt, rt);
+        r
+    }
+
+    /// `FAR:5354`: the crests of the managers' clubs.
+    pub(crate) fn crest_cache(&self) -> crate::gfx::BitmapId {
+        self.pics.crest_cache
+    }
+
+    /// `FAR:2f24`: the manager portraits.
+    pub(crate) fn portraits(&self) -> crate::gfx::BitmapId {
+        self.pics.portraits
+    }
+
+    /// Remembers a quit from a callback that cannot return it.
+    pub(crate) fn keep(&mut self, r: Run<()>) {
+        if let Err(q) = r {
+            self.quit = Some(q);
+        }
+    }
+
+    /// Whether the player quit; screens are skipped from then on.
+    pub(crate) fn quitting(&self) -> bool {
+        self.quit.is_some()
+    }
+
+    fn check(&mut self) -> Result<(), Quit> {
+        self.sync_format();
+        match self.quit.take() {
+            Some(q) => Err(q),
+            None => Ok(()),
+        }
+    }
+}
+
+impl SeasonUi for ScreenSeason<'_> {
+    type Stop = Quit;
+
+    fn office_turn(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        rng: &mut Rng,
+        arg: u8,
+    ) -> Result<(), Quit> {
+        self.check()?;
+        let (pics, bitmaps) = (self.pics, self.bitmaps);
+        self.lend(rng, rt, |ui| {
+            ui.host.input_wait_release()?;
+            office::office_menu_dispatcher(ui.host, ui.session, pics, bitmaps, state, arg)
+        })
+    }
+
+    /// Origin: BMMAIN.EXE 1310:01f2 (matchday_show_title)
+    fn title(&mut self, _state: &GameState, title: Title) -> Result<(), Quit> {
+        self.check()?;
+        let text: &[u8] = match title {
+            Title::League => b"Ligaspiel",
+            Title::DfbCup => b"DFB-Pokal",
+            Title::EuropeanCup => b"Europapokal",
+            Title::Relegation => b"Relegationsspiel",
+            Title::Rescheduled => b"Nachholspiele",
+            Title::SeasonEnd => b"SAISONENDE",
+        };
+        let auto = self.session.auto_play;
+        super::live_match::matchday_show_title(self.host, text, auto)
+    }
+
+    fn winter_break(&mut self) -> Result<(), Quit> {
+        // TODO(#82): the "WINTERPAUSE" screen.
+        self.check()
+    }
+
+    fn special_date(&mut self, _state: &GameState, _date: SpecialDate) -> Result<(), Quit> {
+        // TODO(#82): the screens of the special dates (2a58:2a06).
+        self.check()
+    }
+
+    fn championship_winner(&mut self, state: &GameState, m: u8) -> Result<(), Quit> {
+        self.check()?;
+        let auto = self.session.auto_play;
+        super::live_match::screen_title_winner(self.host, state, m, auto)
+    }
+
+    fn clear_screen(&mut self) {
+        let (g, rp) = (&mut self.host.g, &mut self.host.rp);
+        crate::gfx::ui_fill_rect(g, rp, 0, 0, 319, 239, 0);
+    }
+
+    fn highscores(&mut self, state: &GameState) -> HighScoreTable {
+        highscore_load(&self.host.data, state).0
+    }
+
+    fn highscore_insert(&mut self, state: &GameState, rng: &mut Rng) {
+        let mut st = state.clone();
+        std::mem::swap(&mut self.session.rng, rng);
+        let r = highscore_screen(self.host, self.session, &mut st, HighscoreMode::Insert);
+        std::mem::swap(&mut self.session.rng, rng);
+        self.keep(r);
+    }
+
+    fn game_end(&mut self, _state: &GameState, _table: &HighScoreTable) -> Result<(), Quit> {
+        // TODO(#83): write HIGH.XY, highscore_screen(0) and game_end_screen 2a58:000c.
+        self.check()
+    }
+
+    fn ask_draw(&mut self, _cup: u8) -> bool {
+        // TODO(#15): the "An Alle ... AUSLOSUNG BEIWOHNEN ?" question and the draw screens.
+        false
+    }
+
+    fn forfeit_penalty(&mut self, _state: &GameState, _m: u8) {
+        // TODO(#82): the dialog "Ihr Spiel wird mit 0:2 gewertet".
+    }
+
+    fn finance_events(&mut self, _state: &GameState, _m: u8, _events: &[FinanceEvent]) {
+        // TODO(#82): the dialogs of the loans due and the finished constructions.
+    }
+
+    fn number_format(&mut self) -> &mut NumberFormat {
+        if !self.fmt_lent {
+            self.fmt.pad_width = self.host.number_pad;
+            self.fmt.no_separators = self.host.number_no_separators;
+            self.fmt_lent = true;
+        }
+        &mut self.fmt
+    }
+
+    fn auto_play(&self) -> bool {
+        self.session.auto_play
+    }
+
+    fn goal_scene(
+        &mut self,
+        _state: &GameState,
+        _rng: &mut Rng,
+        _goal: bool,
+        _side: u8,
+        _penalty: u8,
+    ) -> u8 {
+        // TODO(#16): tore_scene_play 24a4:05ec (TORE\ scenes, their random draws (#82) and the
+        // replays); the scene is skipped.
+        0
+    }
+
+    fn substitution(&mut self, state: &mut GameState, rt: &mut Runtime, m: u8, cup_mode: u8) {
+        self.sync_format();
+        if self.quitting() {
+            return;
+        }
+        let r = super::live_match::injury_and_substitution(self, state, rt, m, cup_mode);
+        self.keep(r);
+    }
+
+    fn season_end(&mut self, _state: &GameState, _event: SeasonEndEvent<'_>) {
+        // TODO(#83): the season-end reports, dialogs and messages.
+    }
+
+    fn contract_negotiation(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &Runtime,
+        _rng: &mut Rng,
+        _slot: u8,
+    ) -> bool {
+        // TODO(#83): contract_negotiation 3277:2a8f in mode 1.
+        false
+    }
+
+    fn news_env(&self) -> NewsEnv<'_> {
+        // The newspaper loads its pictures (vga_load_picture sets DS:079c to 1) before it
+        // expands the texts.
+        NewsEnv {
+            fmt: NumberFormat {
+                pad_width: 1,
+                ..self.host.number_format()
+            },
+            text_width: &*self.text_width,
+        }
+    }
+
+    fn show_newspapers(&mut self, _state: &GameState, papers: Vec<Newspaper>) {
+        self.sync_format();
+        for paper in &papers {
+            if self.quitting() {
+                return;
+            }
+            let auto = self.session.auto_play;
+            let r = newspaper::newspaper_show(self.host, paper, auto);
+            self.keep(r);
+        }
+    }
+
+    fn period_start(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        league_mask: u8,
+        cup_mask: u8,
+        from: u8,
+    ) {
+        self.sync_format();
+        if !self.quitting() {
+            let r = super::live_match::period_start(self, state, rt, league_mask, cup_mask, from);
+            self.keep(r);
+        }
+    }
+
+    fn period_minute(&mut self, state: &GameState, rt: &Runtime, to: u8, minute: u8) {
+        if !self.quitting() {
+            let r = super::live_match::period_minute(self, state, rt, to, minute);
+            self.keep(r);
+        }
+    }
+
+    fn period_end(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        rng: &mut Rng,
+        league_mask: u8,
+        cup_mask: u8,
+        tier: Option<u8>,
+        to: u8,
+    ) {
+        self.sync_format();
+        if !self.quitting() {
+            let r = self.lend(rng, rt, |ui| {
+                super::live_match::period_end(ui, state, league_mask, cup_mask, tier, to)
+            });
+            self.keep(r);
+        }
+    }
+
+    fn matchday_results(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        rng: &mut Rng,
+        league_mask: u8,
+        cup_mask: u8,
+        penalties: bool,
+    ) {
+        self.sync_format();
+        if !self.quitting() {
+            let r = self.lend(rng, rt, |ui| {
+                super::live_match::matchday_results(ui, state, league_mask, cup_mask, penalties)
+            });
+            self.keep(r);
+        }
+    }
+
+    fn ticker_event_start(&mut self, state: &GameState, rt: &Runtime, event: &TickerEvent) {
+        self.sync_format();
+        if !self.quitting() {
+            let r = super::live_match::ticker_event_start(self, state, rt, event);
+            self.keep(r);
+        }
+    }
+
+    fn ticker_event_end(&mut self, state: &GameState, rt: &Runtime, event: &TickerEvent) {
+        self.sync_format();
+        if !self.quitting() {
+            let r = super::live_match::ticker_event_end(self, state, rt, event);
+            self.keep(r);
+        }
+    }
+}
+
+/// `season_main_loop(resume)`: runs the season loop with the screens until the game ends or
+/// the player quits.
 ///
 /// Origin: BMMAIN.EXE 2a58:3176 (season_main_loop)
 pub fn season_main_loop(
@@ -25,28 +372,17 @@ pub fn season_main_loop(
     state: &mut GameState,
     resume: bool,
 ) -> Run<Exit> {
-    let saved_mgr = state.current_manager;
-    let mut fmt = host.number_format();
-    // TODO(#31): the finance dialogs of the day (`SeasonUi::finance_events`) are not shown.
-    let wf = season_slot_start(
-        state,
-        &session.rt,
-        &mut session.rng,
-        &mut fmt,
-        &mut |_, _, _| {},
-    );
-    host.number_pad = fmt.pad_width;
-    host.number_no_separators = fmt.no_separators;
-    if wf == 0 {
-        // TODO(#31): DAY_ADVANCE before the first office turn (no shipped save
-        // stops on such a week, and week 0 of a new game has a matchday).
-        return Ok(Exit::EndOfTurn);
+    // The loop owns the random generator and the runtime while it runs.
+    let mut rng = std::mem::take(&mut session.rng);
+    let mut rt = std::mem::take(&mut session.rt);
+    let mut ui = ScreenSeason::new(host, session, pics, bitmaps);
+    let r = bmp_game::season::season_main_loop(state, &mut rt, &mut rng, &mut ui, resume);
+    ui.sync_format();
+    drop(ui);
+    session.rng = rng;
+    session.rt = rt;
+    match r {
+        Ok(GameOver) => Ok(Exit::GameOver),
+        Err(q) => Err(q),
     }
-    // OFFICE_B_TEST: manager 0 gets the first turn, after a load the stored manager.
-    state.current_manager = if resume { saved_mgr } else { 0 };
-    host.input_wait_release()?;
-    office_turn_start(state, &mut session.rng);
-    let week = state.season_week;
-    office::office_menu_dispatcher(host, session, pics, bitmaps, state, week)?;
-    Ok(Exit::EndOfTurn)
 }
