@@ -769,6 +769,25 @@ fn cup_pairing_bytes(state: &GameState, cup_mask: u8) -> u8 {
     round_pairings(state.event_state[usize::from(cup_mask > 1)]) << 1
 }
 
+/// Pairing bytes of the cup round played on a match day, shared by [`match_live_period`]
+/// (BMMAIN.EXE 1310:2303) and [`matchday_play`] (BMMAIN.EXE 1310:15db): `cup_mask == 0` is a
+/// league day, which has no cup pairing bytes, so it gives 0; otherwise
+/// [`cup_pairing_bytes`].
+fn matchday_cup_bytes(state: &GameState, cup_mask: u8) -> u8 {
+    if cup_mask != 0 {
+        cup_pairing_bytes(state, cup_mask)
+    } else {
+        0
+    }
+}
+
+/// League tiers walked on a league day, shared by [`match_live_period`] (BMMAIN.EXE
+/// 1310:2303) and [`matchday_play`] (BMMAIN.EXE 1310:15db): `league_mask == 0` walks only the
+/// tier-0 pairing list (rescheduled games), any other mask all three tiers.
+fn league_tier_count(league_mask: u8) -> u8 {
+    if league_mask == 0 { 1 } else { 3 }
+}
+
 /// Home and away club of league pairing `slot` (even) of `tier`.
 fn league_pairing(state: &GameState, tier: u8, slot: u8) -> (u8, u8) {
     let [h, a] = state.matchday_pairings[usize::from(tier)][usize::from(slot / 2)];
@@ -898,12 +917,8 @@ pub fn match_live_period<H: MatchHooks + ?Sized>(
     let active = if league_mask == 0 { 1 } else { league_mask };
     let managers = usize::from(state.manager_count).min(MANAGER_SLOTS);
     rt.period_chances_used[..managers].fill([0; 2]);
-    let cup_bytes = if cup_mask != 0 {
-        cup_pairing_bytes(state, cup_mask)
-    } else {
-        0
-    };
-    let tiers = if league_mask == 0 { 1 } else { 3 };
+    let cup_bytes = matchday_cup_bytes(state, cup_mask);
+    let tiers = league_tier_count(league_mask);
 
     if cup_mask == 0 {
         match_write_forfeit_results(state, rt, NOT_PLAYED);
@@ -1058,14 +1073,10 @@ pub fn matchday_play<H: MatchHooks + ?Sized>(
     // not kept: FAR:3052 (live managers), FAR:4bf1 and FAR:5140 (event counters of the panel).
     let managers = usize::from(state.manager_count).min(MANAGER_SLOTS);
     rt.period_chances_used[..managers].fill([0; 2]);
-    let cup_bytes = if cup_mask != 0 {
-        cup_pairing_bytes(state, cup_mask)
-    } else {
-        0
-    };
+    let cup_bytes = matchday_cup_bytes(state, cup_mask);
 
     if cup_mask == 0 {
-        let tiers = if league_mask == 0 { 1 } else { 3 };
+        let tiers = league_tier_count(league_mask);
         for tier in 0..tiers {
             let t = usize::from(tier);
             let round = state.competition_rounds[t];
