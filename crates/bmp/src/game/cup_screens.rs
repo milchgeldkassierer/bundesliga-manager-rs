@@ -11,6 +11,7 @@
 //! `screen_title_winner` (§7) is [`super::live_match::screen_title_winner`].
 
 use bmp_game::cups::{CUP_ROUND_PAIRINGS, CupDrawUi};
+use bmp_game::matchsim::CUP_ROW_CELLS;
 use bmp_game::rng::NumberFormat;
 use bmp_game::season::calendar_compute_date;
 use bmp_game::state::GameState;
@@ -79,7 +80,7 @@ fn cup_slot(state: &GameState, c: u8, s: usize) -> u8 {
     state
         .cup_pairings
         .as_flattened()
-        .get(usize::from(c) * 32 + s)
+        .get(usize::from(c) * CUP_ROW_CELLS + s)
         .copied()
         .unwrap_or(0)
 }
@@ -88,7 +89,7 @@ fn cup_goal(state: &GameState, c: u8, s: usize) -> u8 {
     state
         .cup_results
         .as_flattened()
-        .get(usize::from(c) * 32 + s)
+        .get(usize::from(c) * CUP_ROW_CELLS + s)
         .copied()
         .unwrap_or(0)
 }
@@ -97,7 +98,7 @@ fn cup_goal(state: &GameState, c: u8, s: usize) -> u8 {
 fn first_leg_goal(state: &GameState, c: u8, s: usize) -> u8 {
     state
         .cup_first_leg_goals
-        .get((usize::from(c) - 1) * 32 + s)
+        .get((usize::from(c) - 1) * CUP_ROW_CELLS + s)
         .copied()
         .unwrap_or(0)
 }

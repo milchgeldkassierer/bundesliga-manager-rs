@@ -209,7 +209,7 @@ pub(crate) fn league_result_cell(tier: u8, round: i16, slot: u8) -> Option<usize
 
 /// Cells in one cup row of the flattened [`GameState::cup_pairings`],
 /// [`GameState::cup_results`] and [`GameState::cup_first_leg_goals`].
-pub(crate) const CUP_ROW_CELLS: usize = 32;
+pub const CUP_ROW_CELLS: usize = 32;
 
 /// Byte range of cup row `cup` in the flattened [`GameState::cup_pairings`] and
 /// [`GameState::cup_results`].

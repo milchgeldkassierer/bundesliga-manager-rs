@@ -310,7 +310,7 @@ pub fn cup_draw_first_round(
                 slots_mut(state, 0)[usize::from(human_slot[m])] = team;
             }
         }
-        for i in 0..32u8 {
+        for i in 0..CUP_ROW_CELLS as u8 {
             // A human manager's slot keeps its club but is animated like the others.
             let human = cup == 0 && human_slot[..managers].contains(&i);
             if !human {
@@ -318,7 +318,11 @@ pub fn cup_draw_first_round(
                     let t = rng.random_range(lo.into(), hi.into()) as u8;
                     slots_mut(state, cup)[usize::from(i)] = t;
                     let drawn = compared.clone().any(|j| {
-                        let lim = if j == cup { usize::from(i) } else { 32 };
+                        let lim = if j == cup {
+                            usize::from(i)
+                        } else {
+                            CUP_ROW_CELLS
+                        };
                         slots(state, j)[..lim].contains(&t)
                     });
                     let managed = state.active_managers().iter().any(|m| m.team == t);
@@ -333,7 +337,7 @@ pub fn cup_draw_first_round(
             }
         }
         if cup == 0 {
-            amateur_home_swaps(state, rt, 32);
+            amateur_home_swaps(state, rt, CUP_ROW_CELLS as u8);
         } else {
             state.euro_second_leg_pending[c - 1] = 0;
             // The original runs on into the next row until it meets 0x80; a row is never full.
@@ -359,7 +363,7 @@ pub fn cup_draw_first_round(
         }
     }
     if cup != 0 && shown {
-        for i in 0..32u8 {
+        for i in 0..CUP_ROW_CELLS as u8 {
             let team = slots(state, cup)[usize::from(i)];
             ui.animate_slot(state, cup, i, team);
         }

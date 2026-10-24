@@ -8,6 +8,7 @@
 
 use bmp_formats::savegame::HighScoreEntry;
 
+use crate::matchsim::CUP_ROW_CELLS;
 use crate::squad::LineupRules;
 use crate::state::{Layout, MANAGER_SLOTS, NewsRecord};
 
@@ -74,7 +75,7 @@ pub struct Runtime {
     /// FAR:4d3c (= FAR:433c + 10 * 256) `[cup row][slot][goal]`: goal minutes of the cup
     /// fixtures, 0 = none. After a match, byte 0 of `[m][i]` also holds the newspaper grade
     /// 1 (best)..6 of squad slot `i` of human manager `m` (`docs/re/logic/news.md` §3).
-    pub cup_goal_minutes: [[[u8; 8]; 32]; 4],
+    pub cup_goal_minutes: [[[u8; 8]; CUP_ROW_CELLS]; 4],
     /// FAR:4bf0 (count), FAR:305c, FAR:0028: the matches shown in the live view.
     pub live_matches: Vec<LiveMatch>,
     /// FAR:90ca: newspaper match record of each human manager.
@@ -152,7 +153,7 @@ impl Default for Runtime {
             quick_sim_result: [0; 2],
             manager_last_score: [[0; 2]; MANAGER_SLOTS],
             league_goal_minutes: [[[0; 8]; 20]; 3],
-            cup_goal_minutes: [[[0; 8]; 32]; 4],
+            cup_goal_minutes: [[[0; 8]; CUP_ROW_CELLS]; 4],
             live_matches: Vec::new(),
             news_records: Layout::zeroed(),
             forfeits: Vec::new(),
