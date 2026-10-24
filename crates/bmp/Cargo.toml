@@ -7,5 +7,6 @@ license.workspace = true
 [dependencies]
 bmp-formats.workspace = true
 bmp-game.workspace = true
+bmp-sound.workspace = true
 sdl2 = "0.37"
 png = "0.17"

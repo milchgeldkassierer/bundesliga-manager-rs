@@ -9,9 +9,10 @@ with Ghidra. Graphics must match the original pixel for pixel within minimal tol
 (pass its directory via `--data <dir>` or `BMP_DATA`).
 
 ## Layout
-- `crates/bmp-formats` – parsers for `.VGA`, `.CP`, `.PAL`, `TORE/*.T|V`, `MANA.DAT`, `*.MAN`
+- `crates/bmp-formats` – parsers for `.VGA`, `.CP`, `.PAL`, `TORE/*.T|V`, `MANA.DAT`, `*.MAN`, `.CMF`, `.VOC`
 - `crates/bmp-game` – game logic reconstructed from BMMAIN.EXE
-- `crates/bmp` – binary: rendering (320×200 framebuffer), input, sound
+- `crates/bmp-sound` – OPL2 (YM3812) emulation, SBFMDRV-compatible CMF player, digitised voices
+- `crates/bmp` – binary: rendering (320×200 framebuffer), input, sound output (SDL2)
 - `docs/re/` – reverse-engineering notes (file formats, function map, memory layout)
 - `tools/` – Ghidra scripts and helper tools
 

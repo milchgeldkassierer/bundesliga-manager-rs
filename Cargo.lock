@@ -20,6 +20,7 @@ version = "0.1.0"
 dependencies = [
  "bmp-formats",
  "bmp-game",
+ "bmp-sound",
  "png",
  "sdl2",
 ]
@@ -30,6 +31,13 @@ version = "0.1.0"
 
 [[package]]
 name = "bmp-game"
+version = "0.1.0"
+dependencies = [
+ "bmp-formats",
+]
+
+[[package]]
+name = "bmp-sound"
 version = "0.1.0"
 dependencies = [
  "bmp-formats",

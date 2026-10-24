@@ -1,3 +1,4 @@
+mod audio;
 mod compare;
 mod game;
 mod gfx;
@@ -13,12 +14,21 @@ use video::{Mode, Vga, Window};
 const USAGE: &str = "usage: bmp [--data <dir>] [--version]
        bmp [--data <dir>] show-pic <name> [--palette <0..2>] [--screenshot <out.png>]
        bmp [--data <dir>] run [--script <file> --shots <dir>] [--time <seconds>] [--time2 <seconds>]
+                              [--nosound] [0]
+       bmp [--data <dir>] render-music <out.wav> [--tail <ms>] [--opl-log <out.txt>]
+       bmp [--data <dir>] play-sound music|1..5
        bmp compare <port.png> <reference.png> [--diff <out.png>] [--threshold <percent>]
   <name> is a file below PIC/, e.g. 47.CP or 120.VGA
   run starts the game; with --script it runs headless on a virtual clock
   (see host::parse_script); --time fixes the time of the first RNG seed and --time2
   that of the second one, read when a new game starts (default: --time when given,
-  else the clock at that moment)
+  else the clock at that moment); --nosound or a trailing 0 (BMP.BAT's argument)
+  disable sound like `bmmain 0` (no title music: the title is shown only briefly)
+  render-music writes the title tune (SOUND/BM2TITLE.CMF) as rendered by the OPL2
+  emulation to a 16-bit mono WAV file at 49716 Hz, plus <ms> (default 1000) of release;
+  --opl-log lists the OPL register writes as \"<ms> <register> <value>\" lines (hex)
+  play-sound plays the title tune or digitised voice 1..5 (1 crowd, 2 goal, 3 whistle,
+  4 injury, 5 miss) on the default audio device
   compare exits 0 when at least <percent> (default 90) of the pixels match, 1 otherwise";
 
 struct Args {
@@ -164,20 +174,112 @@ fn run_game(args: &Args) -> Result<(), String> {
     let time = parse("--time", take_opt(&mut rest, "--time")?)?;
     let time2 = parse("--time2", take_opt(&mut rest, "--time2")?)?.or(time);
     let time = time.unwrap_or_else(game::time_now);
+    let sound = sound_enabled(&mut rest);
+    if let Some(extra) = rest.first() {
+        return Err(format!("unexpected argument '{extra}'\n{USAGE}"));
+    }
     let dir = data_dir(args)?;
     let mut host = match script {
         Some(path) => {
             let text = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
             std::fs::create_dir_all(&shots).map_err(|e| format!("{shots}: {e}"))?;
-            host::Host::with_script(&dir, host::parse_script(&text)?, Path::new(&shots))?
+            host::Host::with_script(&dir, host::parse_script(&text)?, Path::new(&shots), sound)?
         }
-        None => host::Host::with_window(&dir, 3)?,
+        None => host::Host::with_window(&dir, 3, sound)?,
     };
     match game::run(&mut host, time, time2)? {
         Ok(game::Exit::EndOfTurn) => eprintln!("end of turn (the season loop is not ported yet)"),
         Err(host::Quit) => {}
     }
     Ok(())
+}
+
+/// Takes the sound switches out of the arguments after the command: `--nosound`, and
+/// the program argument that `BMP.BAT` passes through to `bmmain`; `main`
+/// (18bc:0418) clears the sound flag `DS:018c` when it is `0`.
+fn sound_enabled(rest: &mut Vec<String>) -> bool {
+    let mut sound = true;
+    if let Some(i) = rest.iter().position(|a| a == "--nosound") {
+        rest.remove(i);
+        sound = false;
+    }
+    if let Some(i) = rest.iter().position(|a| !a.starts_with("--")) {
+        sound &= rest.remove(i) != "0";
+    }
+    sound
+}
+
+fn load_title_music(dir: &Path) -> Result<bmp_formats::cmf::Cmf, String> {
+    let path = dir.join("SOUND").join("BM2TITLE.CMF");
+    let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    bmp_formats::cmf::Cmf::parse(&bytes).map_err(|e| e.to_string())
+}
+
+/// Renders the title tune offline to a WAV file at the OPL2's native rate.
+fn render_music(args: &Args) -> Result<(), String> {
+    let mut rest = args.rest[1..].to_vec();
+    let tail_ms = take_opt(&mut rest, "--tail")?
+        .map(|t| t.parse::<u64>().map_err(|e| format!("--tail: {e}")))
+        .transpose()?
+        .unwrap_or(1000);
+    let log = take_opt(&mut rest, "--opl-log")?;
+    let [out] = rest.as_slice() else {
+        return Err(USAGE.to_string());
+    };
+    let cmf = load_title_music(&data_dir(args)?)?;
+    let rate = bmp_sound::opl::NATIVE_RATE;
+    let (samples, writes) = bmp_sound::music::Music::render_all(
+        &cmf,
+        (tail_ms as f64 * rate / 1000.0) as usize,
+        log.is_some(),
+    );
+    if let Some(path) = log {
+        let text: String = writes
+            .iter()
+            .map(|(n, r, v)| format!("{:.3} {r:02x} {v:02x}\n", *n as f64 * 1000.0 / rate))
+            .collect();
+        std::fs::write(&path, text).map_err(|e| format!("{path}: {e}"))?;
+    }
+    audio::write_wav(Path::new(out), rate.round() as u32, &samples)
+        .map_err(|e| format!("{out}: {e}"))?;
+    println!(
+        "{out}: {:.3} s ({} samples at {rate:.1} Hz, {tail_ms} ms release included)",
+        samples.len() as f64 / rate,
+        samples.len()
+    );
+    Ok(())
+}
+
+/// Plays the title tune or one digitised voice on the default audio device.
+fn play_sound(args: &Args) -> Result<(), String> {
+    let what = args.rest.get(1).ok_or(USAGE)?;
+    let dir = data_dir(args)?;
+    let sdl = sdl2::init()?;
+    let card = audio::SoundCard::open(&sdl.audio()?)?;
+    if what == "music" {
+        card.mixer().music = Some(bmp_sound::music::Music::start(&load_title_music(&dir)?));
+    } else {
+        let n: u8 = what.parse().map_err(|_| USAGE.to_string())?;
+        if !(1..=5).contains(&n) {
+            return Err(USAGE.to_string());
+        }
+        let path = dir.join("SOUND").join("DIGI.VOC");
+        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let mut voices = bmp_sound::voice::Voices::from_digi(&bytes).map_err(|e| e.to_string())?;
+        voices.play(n);
+        card.mixer().voices = Some(voices);
+    }
+    let start = std::time::Instant::now();
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let mut m = card.mixer();
+        let music = m.music.as_mut().is_some_and(|m| m.poll_status() != 0);
+        let voice = m.voices.as_ref().is_some_and(|v| v.busy());
+        // The crowd loops for hours; stop it after one pass.
+        if !music && (!voice || (what == "1" && start.elapsed().as_secs_f64() > 2.904)) {
+            return Ok(());
+        }
+    }
 }
 
 fn run() -> Result<ExitCode, String> {
@@ -190,6 +292,8 @@ fn run() -> Result<ExitCode, String> {
         Some("show-pic") => show_pic(&args).map(|()| ExitCode::SUCCESS),
         Some("compare") => compare_frames(&args),
         Some("run") => run_game(&args).map(|()| ExitCode::SUCCESS),
+        Some("render-music") => render_music(&args).map(|()| ExitCode::SUCCESS),
+        Some("play-sound") => play_sound(&args).map(|()| ExitCode::SUCCESS),
         Some("--help") | Some("-h") => {
             println!("{USAGE}");
             Ok(ExitCode::SUCCESS)
@@ -213,6 +317,19 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
     use compare::RgbImage;
+
+    #[test]
+    fn sound_switches() {
+        let v = |a: &[&str]| {
+            let mut rest: Vec<String> = a.iter().map(|s| s.to_string()).collect();
+            (sound_enabled(&mut rest), rest)
+        };
+        let none: Vec<String> = Vec::new();
+        assert_eq!(v(&[]), (true, none.clone()));
+        assert_eq!(v(&["0"]), (false, none.clone()));
+        assert_eq!(v(&["--nosound"]), (false, none.clone()));
+        assert_eq!(v(&["1"]), (true, none));
+    }
 
     fn compare_args(rest: &[&str]) -> Args {
         Args {

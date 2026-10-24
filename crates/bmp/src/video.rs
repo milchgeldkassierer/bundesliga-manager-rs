@@ -105,6 +105,7 @@ pub struct Window {
     creator: sdl2::render::TextureCreator<sdl2::video::WindowContext>,
     pub events: sdl2::EventPump,
     mouse: sdl2::mouse::MouseUtil,
+    sdl: sdl2::Sdl,
 }
 
 impl Window {
@@ -129,7 +130,13 @@ impl Window {
             creator,
             events,
             mouse: sdl.mouse(),
+            sdl,
         })
+    }
+
+    /// The SDL audio subsystem of the window's SDL context.
+    pub fn audio(&self) -> Result<sdl2::AudioSubsystem, String> {
+        self.sdl.audio()
     }
 
     /// Hides the host cursor; the game draws its own pointer into VRAM.

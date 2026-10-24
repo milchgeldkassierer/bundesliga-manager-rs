@@ -202,23 +202,27 @@ fn load_main_pictures(host: &mut Host) -> Result<(), String> {
 /// Origin: BMMAIN.EXE 18bc:0418 (main)
 pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, String> {
     host.load_palette_slots()?;
-    // TODO(#17): music. Without a sound card the original shows the title for the
-    // `delay_ticks(150)` below only; with music it waits until the tune ends or the
-    // player clicks. The port waits for a click, as with music.
     let _ = host.screen_fade(0);
+    // Sound Blaster present and sound not disabled: start the title tune.
+    let music = host.music_start()?;
     host.load_screen_picture(47)?;
     host.g.palette_load_slot(2, 0x100);
     host.g.mouse_pointer_show();
     if host.screen_fade(1).is_err() {
         return Ok(Err(crate::host::Quit));
     }
-    loop {
-        match host.input_poll_mouse() {
-            Err(q) => return Ok(Err(q)),
-            Ok(LEFT_DOWN) => break,
-            Ok(_) => {}
+    // The title stays until the tune ends or the player clicks. Without music the
+    // only pause is the `delay_ticks(150)` below.
+    if music {
+        while host.music_poll_status() != 0 {
+            match host.input_poll_mouse() {
+                Err(q) => return Ok(Err(q)),
+                Ok(LEFT_DOWN) => host.music_stop(),
+                Ok(_) => {}
+            }
         }
     }
+    host.voice_init()?;
     let mana = load_mana(host)?;
     let mut session = Session::new(Rng::default());
     // TODO(#27): the European cup draws.

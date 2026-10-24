@@ -147,8 +147,11 @@ void main(int argc, char far * far *argv)          // 18bc:0418, cdecl far
             if (FAR:2ea2 == 1) { fmdrv_stop_music(); fmdrv_shutdown(); }
         }
     if (cmf) mem_free(cmf, 0);
-    sound_voice_init();                             // 176b:0006 (CT-VOICE + EMS)
-    sound_load_digi_voc();                          // 176b:005f
+    sound_voice_init();      // 176b:0006: if DS:018c && ems_detect() > 6 && (sb_probe_port() & 4)
+                             //   && sb_detect_irq() && ctvoice_init() == 0: DS:014c = EMS page frame, DS:018d = 1
+    sound_load_digi_voc();   // 176b:005f: if DS:018d: DIGI.VOC = 5 concatenated VOC files, slot i of
+                             //   length DS:0164[i] (7018,16080,29084,22331,15813) copied to its own EMS
+                             //   handle (DS:0150[i], 1/1/2/2/1 pages); see docs/re/voc.md
     mana_load_club_table();                         // 362f:36ec (MANA.DAT); 800 RNG draws on the
                                                     // power-on generator state (before seed #1)
     for (int i = 0; i < 2; i++) {                   // button frame pictures
@@ -206,6 +209,49 @@ menu, `interest_rates_update`; then seed #2 (`time()` again), `league_strength_d
 only displays the European cup draws made under seed #1, so the player sees the DFB-Pokal draw followed by
 the three European draws (each only animated if the user enabled the display, `FAR:57c8`). Because both seeds are `time()` (seconds), a
 bit-exact replay needs both seed values.
+
+### 2.1 Sound
+
+The title tune is `SOUND\BM2TITLE.CMF`, played by the embedded SBFMDRV (format and driver
+semantics: [cmf.md](../cmf.md)). It runs from `fmdrv_play_music` until the driver processes the
+end-of-track event 18762 ticks of 12428 PIT clocks later (**195.42 s**); `main`'s wait loop then
+sees status byte 0. A left click instead stops the music at once (`fmdrv_stop_music`, which sets the
+status byte to 0, and `fmdrv_shutdown`). The title does not wait at all without music (`bmmain 0`,
+no Sound Blaster or no FM driver): it only stays up during the loading and the `delay_ticks(150)`.
+
+Digitised sound (format, sample table and API semantics: [voc.md](../voc.md)) is only heard on the
+live match screen and in the goal scenes. Voices: 1 crowd loop, 2 goal, 3 whistle, 4 injury,
+5 miss. All calls are no-ops unless `DS:018d`.
+
+```c
+match_live_period:                       // 1310
+    if (show) { ...; sound_play_voice(1); }                  // 1310:24df  period start: crowd loop
+    ...minute loop...
+    if (show) sound_stop_voice();                            // 1310:2ab4  period end
+match_ticker_events(type, ...):          // 2a58
+    v = (type == 2 || type == 3) ? 3 : (type == 4) ? 4 : 0;  // cards -> whistle, injury
+    if (v) { sound_play_voice(v); sound_wait_voice_end(); sound_restart_loop_voice(); }  // 2a58:1198
+    ...
+    if (type <= 1 && DS:05d4 == 0 && DS:0607 == 0) {         // no goal scenes
+        sound_play_voice(type == 1 ? 2 : 5);                 // 2a58:14c0 goal / miss
+        sound_wait_voice_end(); sound_restart_loop_voice();
+    }
+tore_play_frames:                        // 1c7c:0004, from tore_scene_play 24a4:08bb
+    sound_restart_loop_voice();
+    for (i = start; i <= last; i++) {
+        for (k = 0; k < 4; k++) if ((s8)sound_frames[k] == i) { sound_play_voice(k + 2); played = 1; }
+        ... draw (sound_restart_loop_voice() per object), wait ticks (restart in the wait loop) ...
+    }
+    ... 7-tick pause with restarts ...
+    if (played && DS:018e != 1) sound_stop_voice();          // 1c7c:0380
+    sound_restart_loop_voice();
+fatal_error_exit:  sound_voice_shutdown();                   // 176b:12a2 -> ctvoice_terminate
+```
+
+Port: `Host::music_start` / `music_poll_status` / `music_stop` and `Host::voice_*`
+(`crates/bmp/src/host.rs`) on the emulated card of `crates/bmp-sound`. `bmp run --nosound` or
+`bmp run 0` clears the sound flag like `bmmain 0`. Headless runs keep the flag set and run the card
+silently on the virtual clock, so the title still ends with the tune or a click.
 
 ## 3. Startup helpers
 

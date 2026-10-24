@@ -382,7 +382,7 @@ Texts in quotes are the German in-game strings the function references, reproduc
 | 18bc:2061 | `FUN_18bc_2061` | ui | called by start_menu_new_or_load; draws UI | low | 291 | 4 |
 | 18bc:2184 | *start_menu_new_or_load* | game-season | title/start menu: number of managers, names, teams, level (string table DS:4a2a "Spiel-Level"), or load game; returns 0 for new game | low | 6670 | 2 |
 | 18bc:3b92 | *office_show_cached_background* | ui | show office background: load picture once into VGA page 2 (offset 0x9600) and page-copy afterwards | medium | 113 | 18 |
-| 1c7c:0004 | *goal_scene_sound_sync* | sound | play crowd/goal samples synchronized to TORE scene playback (called by 24a4:05ec) | low | 908 | 1 |
+| 1c7c:0004 | `tore_play_frames` | sound | plays a TORE goal scene frame by frame and starts voices 2..5 on the frames listed in the TORE header (see voc.md §5; called by 24a4:05ec) | medium | 908 | 1 |
 | 1cb5:0000 | `FUN_1cb5_0000` | game-season | called by screen_load_game | low | 18 | 1 |
 | 1cb5:0012 | *season_end_messages* | game-season | promotion/relegation/licence/sponsor/top-scorer/European-cup qualification messages at season end | medium | 5035 | 1 |
 | 1cb5:13bd | *random_weekly_events* | game-season | random events: hooligan damage to stadium, comfort downgrade, training injuries | medium | 4632 | 1 |

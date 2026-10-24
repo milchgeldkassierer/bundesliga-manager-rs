@@ -7,6 +7,10 @@
 //! tick counter and presents frames. Two backends exist: an SDL window running in
 //! real time, and a scripted headless backend with a virtual clock for reproducible
 //! screenshots and tests.
+//!
+//! The Sound Blaster is emulated by [`SoundCard`]: with a window it plays through
+//! SDL audio, headless (or without an audio device) it runs silently on the same
+//! clock, so the music still ends the title screen at the same time.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -14,6 +18,7 @@ use std::time::{Duration, Instant};
 
 use bmp_formats::{cp, font::FontSet, pal, vga};
 
+use crate::audio::SoundCard;
 use crate::gfx::{Bitmap, BitmapId, Gfx, PALETTE_SLOT_OFFSET, RastPort, Ui};
 use crate::video::{Vga, Window};
 
@@ -156,10 +161,12 @@ pub struct Host {
     keys: VecDeque<u8>,
     backend: Backend,
     vga: Vga,
+    /// The sound card; `None` when sound is disabled (`DS:018c` = 0).
+    card: Option<SoundCard>,
 }
 
 impl Host {
-    fn new(data: &Path, backend: Backend) -> Result<Self, String> {
+    fn new(data: &Path, backend: Backend, card: Option<SoundCard>) -> Result<Self, String> {
         let mut g = Gfx::new();
         let fonts = FontSet::load(data).map_err(|e| e.to_string())?;
         g.set_fonts(&fonts);
@@ -181,12 +188,23 @@ impl Host {
             keys: VecDeque::new(),
             backend,
             vga: Vga::new(),
+            card,
         })
     }
 
-    pub fn with_window(data: &Path, scale: u32) -> Result<Self, String> {
+    /// A window; `sound` = the sound flag `DS:018c`. Without an audio device
+    /// the card runs silently.
+    pub fn with_window(data: &Path, scale: u32, sound: bool) -> Result<Self, String> {
         let win = Window::open(scale)?;
         win.hide_cursor();
+        let card = sound.then(|| {
+            win.audio()
+                .and_then(|a| SoundCard::open(&a))
+                .unwrap_or_else(|e| {
+                    eprintln!("no audio output ({e}); sound runs silently");
+                    SoundCard::silent()
+                })
+        });
         let now = Instant::now();
         Self::new(
             data,
@@ -195,10 +213,17 @@ impl Host {
                 start: now,
                 last_present: now,
             },
+            card,
         )
     }
 
-    pub fn with_script(data: &Path, steps: Vec<ScriptStep>, shots: &Path) -> Result<Self, String> {
+    /// The headless backend; with `sound` a silent card runs on the virtual clock.
+    pub fn with_script(
+        data: &Path,
+        steps: Vec<ScriptStep>,
+        shots: &Path,
+        sound: bool,
+    ) -> Result<Self, String> {
         Self::new(
             data,
             Backend::Script {
@@ -207,6 +232,7 @@ impl Host {
                 steps: steps.into(),
                 shots: shots.to_path_buf(),
             },
+            sound.then(SoundCard::silent),
         )
     }
 
@@ -265,6 +291,9 @@ impl Host {
                 }
                 let elapsed = start.elapsed().as_secs_f64();
                 self.g.bios_ticks = (elapsed * TICKS_PER_SECOND) as u32;
+                if let Some(card) = &mut self.card {
+                    card.sync(elapsed);
+                }
                 if last_present.elapsed() >= Duration::from_millis(14) {
                     *last_present = Instant::now();
                     self.g.to_vga(&mut self.vga);
@@ -275,6 +304,11 @@ impl Host {
             }
             Backend::Script { .. } => {
                 self.advance_script()?;
+                if let (Some(card), Backend::Script { now_ms, .. }) =
+                    (&mut self.card, &self.backend)
+                {
+                    card.sync(*now_ms as f64 / 1000.0);
+                }
             }
         }
         Ok(())
@@ -368,6 +402,108 @@ impl Host {
     /// AH=06h DL=FFh); 0 when none is pending.
     pub fn read_key_nowait(&mut self) -> u8 {
         self.keys.pop_front().unwrap_or(0)
+    }
+
+    // ----- sound (4d6c, 176b) ------------------------------------------------------------
+
+    /// The sound checks and driver calls of `main` for the title music: with sound
+    /// enabled (`DS:018c`; the card always passes `sb_detect_port` and
+    /// `fmdrv_init`) it reads `SOUND\BM2TITLE.CMF` and starts it. Returns whether
+    /// the music plays (`main`'s `music` flag).
+    ///
+    /// Origin: BMMAIN.EXE 18bc:0418 (main, 18bc:04a0..05d8)
+    pub fn music_start(&mut self) -> Result<bool, String> {
+        let Some(card) = &self.card else {
+            return Ok(false);
+        };
+        let path = self.data.join("SOUND").join("BM2TITLE.CMF");
+        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let cmf = bmp_formats::cmf::Cmf::parse(&bytes).map_err(|e| e.to_string())?;
+        card.mixer().music = Some(bmp_sound::music::Music::start(&cmf));
+        Ok(true)
+    }
+
+    /// Non-zero while the music plays.
+    ///
+    /// Origin: BMMAIN.EXE 4d6c:0580 (fmdrv_poll_status)
+    pub fn music_poll_status(&mut self) -> u8 {
+        let Some(card) = &self.card else {
+            return 0;
+        };
+        card.mixer().music.as_mut().map_or(0, |m| m.poll_status())
+    }
+
+    /// `fmdrv_stop_music` followed by `fmdrv_shutdown`.
+    ///
+    /// Origin: BMMAIN.EXE 4d6c:0544 (fmdrv_stop_music), 4d6c:059a (fmdrv_shutdown)
+    pub fn music_stop(&mut self) {
+        if let Some(card) = &self.card {
+            let mut mixer = card.mixer();
+            if let Some(m) = mixer.music.as_mut() {
+                m.stop();
+            }
+        }
+    }
+
+    /// `sound_voice_init` + `sound_load_digi_voc`: with sound enabled the voices
+    /// of `SOUND\DIGI.VOC` become available (`DS:018d`).
+    ///
+    /// Origin: BMMAIN.EXE 176b:0006 (sound_voice_init), 176b:005f (sound_load_digi_voc)
+    pub fn voice_init(&mut self) -> Result<(), String> {
+        let Some(card) = &self.card else {
+            return Ok(());
+        };
+        let path = self.data.join("SOUND").join("DIGI.VOC");
+        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let voices = bmp_sound::voice::Voices::from_digi(&bytes).map_err(|e| e.to_string())?;
+        card.mixer().voices = Some(voices);
+        Ok(())
+    }
+
+    fn with_voices(&mut self, f: impl FnOnce(&mut bmp_sound::voice::Voices)) {
+        if let Some(card) = &self.card
+            && let Some(v) = card.mixer().voices.as_mut()
+        {
+            f(v);
+        }
+    }
+
+    /// Origin: BMMAIN.EXE 176b:0182 (sound_play_voice)
+    #[allow(dead_code)] // TODO(#16): called by the live match and goal scenes.
+    pub fn voice_play(&mut self, n: u8) {
+        self.with_voices(|v| v.play(n));
+    }
+
+    /// Origin: BMMAIN.EXE 176b:020f (sound_stop_voice)
+    #[allow(dead_code)] // TODO(#16): called by the live match and goal scenes.
+    pub fn voice_stop(&mut self) {
+        self.with_voices(|v| v.stop());
+    }
+
+    /// Busy-waits until the voice output has ended (the original polls no input).
+    ///
+    /// Origin: BMMAIN.EXE 176b:024b (sound_wait_voice_end)
+    #[allow(dead_code)] // TODO(#16): called by the live match and goal scenes.
+    pub fn voice_wait_end(&mut self) -> Run<()> {
+        loop {
+            let mut busy = false;
+            self.with_voices(|v| {
+                busy = v.busy();
+                if !busy {
+                    v.ended();
+                }
+            });
+            if !busy {
+                return Ok(());
+            }
+            self.pump()?;
+        }
+    }
+
+    /// Origin: BMMAIN.EXE 176b:027d (sound_restart_loop_voice)
+    #[allow(dead_code)] // TODO(#16): called by the live match and goal scenes.
+    pub fn voice_restart_loop(&mut self) {
+        self.with_voices(|v| v.restart_loop());
     }
 
     // ----- timer ----------------------------------------------------------------------

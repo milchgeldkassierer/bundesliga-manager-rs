@@ -3,6 +3,7 @@
 //! Every module documents the Ghidra addresses in `BMMAIN.EXE` its format was
 //! reconstructed from.
 
+pub mod cmf;
 pub mod cp;
 pub mod exepack;
 pub mod font;
@@ -11,6 +12,7 @@ pub mod pal;
 pub mod savegame;
 pub mod tore;
 pub mod vga;
+pub mod voc;
 
 use std::path::PathBuf;
 
