@@ -1,5 +1,6 @@
 name: ci
-on: [push, pull_request]
+# GitHub Actions is not used (no paid minutes); checks run locally via harness/harness.config.json.
+on: workflow_dispatch
 jobs:
   tests:
     runs-on: ubuntu-latest
