@@ -135,7 +135,7 @@ code (INT 34h-3Dh) after `FUN_1f9d_11e0`, which Ghidra has not disassembled. The
 | 1cb5 | 59 | `season_end_messages` 1cb5:0012 (16), `random_weekly_events` 1cb5:13bd (36), `event_helper_2756` 1cb5:2756 (1), 1cb5:2987 (6) |
 | 1f9d | 36 | `manager_ai_weekly` 1f9d:0002 (7), `league_init_or_ai` 1f9d:0697 (5), `match_engine_helper_08e9` 1f9d:08e9 (14), `match_engine_substitutions` 1f9d:0c3b (5), undisassembled FP code 1f9d:13f1..1666 (5) |
 | 212a | 12 | 212a:000a (1), 212a:072d (7), `finance_weekly_processing` 212a:0a6d (4) |
-| 24a4 | 32 | `tore_scene_play` 24a4:05ec (4), 24a4:14d4 (7), 24a4:174e (1), 24a4:1798 (2), 24a4:23da (3), 24a4:24bf (1), `player_aging_or_development` 24a4:2cb4 (8), 24a4:30cf (6) |
+| 24a4 | 32 | `tore_scene_play` 24a4:05ec (4), 24a4:14d4 (7), 24a4:174e (1), 24a4:1798 (2), 24a4:23da (3), 24a4:24bf (1), `advertising_offers_generate` 24a4:2cb4 (8), 24a4:30cf (6) |
 | 27c2 | 5 | `competition_init` 27c2:09e0 (3), `cup_round_setup` 27c2:13a2 (2) |
 | 2a58 | 11 | `match_ticker_events` 2a58:0ca3 (2), 2a58:20b2 (4), `special_date_events` 2a58:2a06 (3), `season_main_loop` 2a58:3176 (2) |
 | 2ecd | 2 | `screen_lineup` 2ecd:18bf (1), `transfer_list_add` 2ecd:37d8 (1) |

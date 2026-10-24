@@ -432,8 +432,8 @@ Texts in quotes are the German in-game strings the function references, reproduc
 | 24a4:2636 | `FUN_24a4_2636` | game-stats | called by finance_weekly_processing, 24a4:2b15, screen_statistics | low | 492 | 3 |
 | 24a4:2822 | `FUN_24a4_2822` | game-stats | called by finance_weekly_processing, 24a4:2b15, screen_statistics | low | 755 | 3 |
 | 24a4:2b15 | `FUN_24a4_2b15` | game-stats | no direct callers found (reached via unrecovered switch case or pointer) | low | 165 | 0 |
-| 24a4:2bba | `FUN_24a4_2bba` | game-stats | called by player_aging_or_development, expenses_panel | low | 250 | 2 |
-| 24a4:2cb4 | *player_aging_or_development* | game-squad | per-manager periodic player update (RNG) | low | 1051 | 3 |
+| 24a4:2bba | `FUN_24a4_2bba` | game-stats | called by advertising_offers_generate, expenses_panel | low | 250 | 2 |
+| 24a4:2cb4 | `advertising_offers_generate` | game-finance | fills the current manager's advertising offers (amounts FAR:002e, lengths FAR:2ec2) (RNG; stats.md §3.6) | high | 1051 | 3 |
 | 24a4:30cf | `FUN_24a4_30cf` | game-stats | called by random_weekly_events, match_ticker_events; uses RNG | low | 278 | 2 |
 | 27c2:0006 | *cup_draw* | game-season | "DFB-Pokal Auslosung" cup draw screen | medium | 882 | 2 |
 | 27c2:0378 | `FUN_27c2_0378` | game-season | called by competition_init, cup_round_setup; draws UI | low | 1314 | 3 |
