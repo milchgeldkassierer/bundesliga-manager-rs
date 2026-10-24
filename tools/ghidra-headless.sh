@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Startet den GhidraMCP-Headless-Server (Ghidra 12.2, JDK 25) für die MCP-Bridge.
-# Pfade per Umgebungsvariablen überschreibbar.
+# Starts the GhidraMCP headless server (Ghidra 12.2, JDK 25) for the MCP bridge.
+# All paths can be overridden via environment variables.
 set -euo pipefail
 GHIDRA_HOME=${GHIDRA_HOME:-$HOME/Apps/ghidra_12.2_PUBLIC}
 JAVA_HOME=${JAVA_HOME:-$HOME/Apps/jdk-25.0.5+8}

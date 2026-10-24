@@ -1,1 +1,1 @@
-//! Spiellogik, rekonstruiert aus `BMMAIN.EXE`.
+//! Game logic reconstructed from `BMMAIN.EXE`.

@@ -1,12 +1,12 @@
-//! Parser für die Original-Datenformate von Bundesliga Manager Professional.
+//! Parsers for the original data formats of Bundesliga Manager Professional.
 //!
-//! Jedes Modul dokumentiert die Ghidra-Adressen in `BMMAIN.EXE`, aus denen das Format
-//! rekonstruiert wurde.
+//! Every module documents the Ghidra addresses in `BMMAIN.EXE` its format was
+//! reconstructed from.
 
 use std::path::PathBuf;
 
-/// Verzeichnis mit den Original-Spieldaten aus der Umgebungsvariable `BMP_DATA`.
-/// Tests, die Originaldaten brauchen, werden übersprungen, wenn sie fehlt.
+/// Directory holding the original game data, taken from the `BMP_DATA` environment
+/// variable. Tests that need original data are skipped when it is unset.
 pub fn data_dir() -> Option<PathBuf> {
     std::env::var_os("BMP_DATA").map(PathBuf::from)
 }
