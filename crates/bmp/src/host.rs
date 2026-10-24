@@ -180,12 +180,20 @@ pub struct Host {
     vga: Vga,
     /// The sound card; `None` when sound is disabled (`DS:018c` = 0).
     card: Option<SoundCard>,
+    /// The code of a pending `fatal_error_exit` (the first failure wins): set where the
+    /// original calls it, handled by `game::run`, where the game state is reachable.
+    pub fatal: Option<u8>,
 }
 
 impl Host {
     fn new(data: &Path, backend: Backend, card: Option<SoundCard>) -> Result<Self, String> {
         let mut g = Gfx::new();
-        let fonts = FontSet::load(data).map_err(|e| e.to_string())?;
+        // `font_load_all() == 0` is `fatal_error_exit(3)`; without fonts there is nothing to draw
+        // the message with, so the port only reports it.
+        let fonts = FontSet::load(data).map_err(|e| {
+            let kind = crate::game::fatal::error_text(crate::game::fatal::FONT_ERROR);
+            format!("{}: {e}", String::from_utf8_lossy(kind))
+        })?;
         g.set_fonts(&fonts);
         let rp = g.screen_open();
         g.mouse_open(true, true);
@@ -210,13 +218,19 @@ impl Host {
             backend,
             vga: Vga::new(),
             card,
+            fatal: None,
         })
     }
 
     /// A window; `sound` = the sound flag `DS:018c`. Without an audio device
     /// the card runs silently.
     pub fn with_window(data: &Path, scale: u32, sound: bool) -> Result<Self, String> {
-        let win = Window::open(scale)?;
+        // A failed `screen_open` is `fatal_error_exit(0)`; without a screen the port only
+        // reports it.
+        let win = Window::open(scale).map_err(|e| {
+            let kind = crate::game::fatal::error_text(crate::game::fatal::GRAPHICS_ERROR);
+            format!("{}: {e}", String::from_utf8_lossy(kind))
+        })?;
         win.hide_cursor();
         let card = sound.then(|| {
             win.audio()
@@ -257,8 +271,22 @@ impl Host {
         )
     }
 
-    /// Processes pending input, advances the clock and presents the screen.
+    /// Records `fatal_error_exit(code)` (the first failure wins) with `detail` on stderr and
+    /// returns the [`Quit`] that unwinds to `game::run`, which shows the error screen.
+    pub fn fatal_error(&mut self, code: u8, detail: &str) -> Quit {
+        let kind = crate::game::fatal::error_text(code);
+        eprintln!("{}: {detail}", String::from_utf8_lossy(kind));
+        self.fatal.get_or_insert(code);
+        Quit
+    }
+
+    /// Processes pending input, advances the clock and presents the screen. A pending
+    /// fatal error ends the run here, so a failure that a caller does not propagate
+    /// itself still reaches `fatal_error_exit`.
     pub fn pump(&mut self) -> Run<()> {
+        if self.fatal.is_some() {
+            return Err(Quit);
+        }
         match &mut self.backend {
             Backend::Window {
                 win,
@@ -710,13 +738,32 @@ impl Host {
         std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))
     }
 
-    /// Loads `PIC\<n>.VGA` into a new bitmap.
+    /// Loads `PIC\<n>.VGA` into a new bitmap. A missing file is `fatal_error_exit(2)`
+    /// (176b:042f), recorded in [`Host::fatal`]; the error is also returned.
+    ///
+    /// DEVIATION: the original reads whatever a damaged file holds; a file the port cannot
+    /// decode is treated like a missing one.
     ///
     /// Origin: BMMAIN.EXE 176b:0356 (vga_load_picture, from-file path)
     pub fn load_picture(&mut self, n: u16) -> Result<BitmapId, String> {
         self.number_pad = 1;
-        let img = vga::parse(&self.read_pic(&format!("{n}.VGA"))?).map_err(|e| e.to_string())?;
+        let img = self
+            .read_pic(&format!("{n}.VGA"))
+            .and_then(|b| vga::parse(&b).map_err(|e| format!("PIC\\{n}.VGA: {e}")))
+            .inspect_err(|e| {
+                self.fatal_error(crate::game::fatal::DISK_ERROR, e);
+            })?;
         Ok(self.g.alloc(Bitmap::from_image(&img)))
+    }
+
+    /// [`Host::load_picture`] for callers that end the run on a failure.
+    pub fn picture(&mut self, n: u16) -> Run<BitmapId> {
+        self.load_picture(n).map_err(|_| Quit)
+    }
+
+    /// [`Host::load_screen_picture`] for callers that end the run on a failure.
+    pub fn screen_picture(&mut self, n: u16) -> Run<()> {
+        self.load_screen_picture(n).map_err(|_| Quit)
     }
 
     /// A blank `w x h` bitmap filled with `color`. The original's blank pictures
@@ -732,11 +779,17 @@ impl Host {
     }
 
     /// Decodes `PIC\<n>.CP` straight into the draw page (`vga_load_picture(n, 30000, ..)`).
+    /// Failures are recorded like [`Host::load_picture`]'s.
     ///
     /// Origin: BMMAIN.EXE 176b:0356 (vga_load_picture, 30000 = full screen)
     pub fn load_screen_picture(&mut self, n: u16) -> Result<(), String> {
         self.number_pad = 1;
-        let img = cp::decode(&self.read_pic(&format!("{n}.CP"))?).map_err(|e| e.to_string())?;
+        let img = self
+            .read_pic(&format!("{n}.CP"))
+            .and_then(|b| cp::decode(&b).map_err(|e| format!("PIC\\{n}.CP: {e}")))
+            .inspect_err(|e| {
+                self.fatal_error(crate::game::fatal::DISK_ERROR, e);
+            })?;
         let base = if self.g.draw_page != 0 {
             crate::gfx::PAGE_SIZE as usize
         } else {

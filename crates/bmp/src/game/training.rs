@@ -149,7 +149,7 @@ fn training_camp_apply(
     state: &mut GameState,
     camp: usize,
 ) -> Run<bool> {
-    let pic = host.load_picture(0x1c).expect("PIC\\28.VGA");
+    let pic = host.picture(0x1c)?;
     let (slot, _) = host
         .ui
         .draw_button(&mut host.g, &mut host.rp, 0x84, 0x4e, 0x39, 0x3a, true, 7);
@@ -183,7 +183,11 @@ pub fn screen_training_camp(
 ) -> Run<()> {
     let m = state.current_manager as usize;
     let any_closed = state.ds_0620.iter().any(|&c| c > 0);
-    let closed = any_closed.then(|| host.load_picture(0x2b).expect("PIC\\43.VGA"));
+    let closed = if any_closed {
+        Some(host.picture(0x2b)?)
+    } else {
+        None
+    };
     // copy_protection_penalty("Trainingslager"): the protection counts as passed.
     if session.camp_prices[0] < 10 {
         for i in 0..8 {
@@ -191,7 +195,7 @@ pub fn screen_training_camp(
             session.camp_prices[i] = lmul(session.camp_prices[i], n as i32);
         }
     }
-    let tiles = host.load_picture(5).expect("PIC\\5.VGA");
+    let tiles = host.picture(5)?;
     host.set_font(2);
     let screen = host.screen();
     for (i, camp_name) in CAMP_NAMES.iter().enumerate() {
@@ -454,8 +458,8 @@ fn set_training_value(state: &mut GameState, m: usize, group_b: bool, row: usize
 pub fn screen_training(host: &mut Host, session: &mut Session, state: &mut GameState) -> Run<()> {
     let m = state.current_manager as usize;
     // copy_protection_penalty("Training"): the protection counts as passed.
-    let p1 = host.load_picture(1).expect("PIC\\1.VGA");
-    let p25 = host.load_picture(0x25).expect("PIC\\37.VGA");
+    let p1 = host.picture(1)?;
+    let p25 = host.picture(0x25)?;
     let exit = host
         .ui
         .draw_button(&mut host.g, &mut host.rp, 0x10c, 0xc1, 0, 0x22, false, 8)

@@ -655,18 +655,14 @@ pub fn screen_load_game(
     for m in 0..usize::from(state.manager_count).min(4) {
         let team = state.managers[m].team as usize;
         let code = state.clubs.get(team).map_or(0, |c| c.crest) & 0x7f;
-        let spr = host
-            .load_picture(u16::from(code) + 0x50)
-            // `GameState::from_savegame` refuses a crest code without a picture.
-            .expect("crest picture (fatal_error_exit 2 in the original)");
+        // `GameState::from_savegame` refuses a crest code without a shipped picture.
+        let spr = host.picture(u16::from(code) + 0x50)?;
         host.g
             .blit_bitmap(spr, 0, 0, screen_crest, 0x29 * m as i16, 0, 0x28, 0x26);
         host.g.free(spr);
     }
     host.screen_fade(0)?;
-    let sheet = host
-        .load_picture(0)
-        .expect("PIC\\0.VGA (fatal_error_exit 2 in the original)");
+    let sheet = host.picture(0)?;
     for i in 0..4usize {
         // FAR:4bec[i] = 0 (per-manager flag, not modelled yet).
         if state.managers[i].slot == 0 {

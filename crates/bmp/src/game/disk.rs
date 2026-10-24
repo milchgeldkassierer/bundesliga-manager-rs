@@ -217,9 +217,7 @@ pub fn screen_save_game(
 /// Origin: BMMAIN.EXE 18bc:1c1d (quit_game_confirm)
 pub fn quit_game_confirm(host: &mut Host, session: &Session, state: &GameState) -> Run<()> {
     // `ui_draw_button` loads PIC\37.VGA itself for icon 0xc8.
-    let pic = host
-        .load_picture(37)
-        .expect("PIC\\37.VGA (fatal_error_exit 2 in the original)");
+    let pic = host.picture(37)?;
     host.ui.picture_37 = Some(pic);
     host.ui
         .draw_button(&mut host.g, &mut host.rp, 0x10a, 0xc4, 0, 0x40c8, false, 8);
@@ -335,9 +333,7 @@ fn settings_cheat(session: &mut Session, state: &mut GameState, key: u8) -> bool
 ///
 /// Origin: BMMAIN.EXE 362f:01b8 (screen_settings)
 pub fn screen_settings(host: &mut Host, session: &mut Session, state: &mut GameState) -> Run<()> {
-    let pic = host
-        .load_picture(0x21)
-        .expect("PIC\\33.VGA (fatal_error_exit 2 in the original)");
+    let pic = host.picture(0x21)?;
     copy_protection(host, session)?;
     let panel = host
         .ui
@@ -542,8 +538,7 @@ pub fn highscore_screen(
     }
     if mode != HighscoreMode::Insert {
         host.g.mouse_pointer_hide(0);
-        host.load_screen_picture(0x2d)
-            .expect("PIC\\45.CP (fatal_error_exit 2 in the original)");
+        host.screen_picture(0x2d)?;
         host.g.mouse_pointer_show();
         host.set_font(2);
     }

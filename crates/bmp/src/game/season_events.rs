@@ -101,7 +101,8 @@ pub fn special_date_screen(
     ui_fill_rect(&mut host.g, &mut host.rp, 0, 0, 0x13f, 0xef, 0x10);
     ui_draw_frame(&mut host.g, &mut host.rp, 0, 0, 0x13f, 0xef, 0x13);
     let pic = if birthday { 0x29 } else { 0x2a };
-    if let Ok(bm) = host.load_picture(pic) {
+    {
+        let bm = host.picture(pic)?;
         let screen = host.screen();
         host.g.blit_bitmap(bm, 0, 0, screen, 0x88, 0x34, 0x30, 0x39);
         ui_draw_frame(&mut host.g, &mut host.rp, 0x86, 0x32, 0xb7, 0x6c, 0x1d);

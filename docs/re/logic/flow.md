@@ -333,6 +333,50 @@ mouse_pointer_show();
 ```
 No fade-in: callers fade in after drawing.
 
+### 3.5 `fatal_error_exit` 176b:114c — `void (u8 code)`
+
+```c
+char text[100] = "";
+if (code != 99) {
+    switch (code) {                                 // jump table 176b:11a6
+    case 0: strcpy(text, "GRAFIK-Error");   break;  // DS:01bd
+    case 1: strcpy(text, "LIB-Error");      break;  // DS:01b3
+    case 2: strcpy(text, "DISK-Error");     break;  // DS:01ca
+    case 3: strcpy(text, "FONT-Error");     break;  // DS:01d5
+    case 4: strcpy(text, "MEMORY-Error");   break;  // DS:01e0
+    case 5: strcpy(text, "BildLade-Error"); break;  // DS:01ed
+    }                                               // > 5: empty
+    rastport_clear(FAR:2f28, 0);                    // 4930:0545
+    ui_set_font(FAR:2f28, 3);
+    ui_draw_text_centered_shadow(FAR:2f28, text, 0, 0x140, 0x78, 0x11, 0);
+    screen_fade(1);
+    delay_ticks(10);
+    screen_save_game("ERROR.MAN");                  // DS:01fc, 422b:07fe: no selector, no question
+    ui_set_font(FAR:2f28, 2);
+    ui_draw_text_centered_shadow(FAR:2f28, LBL[348], 0, 0x140, 0x8c, 0x11, 0);
+                                    // FAR:4f84 -> DS:3e08 "SPIELSTAND WURDE GESICHERT (ERROR.MAN) - <TASTE>"
+    input_wait_click(FAR:6dc0);                     // 176b:0d0a
+}
+sound_voice_shutdown();                             // 176b:12a1: common teardown
+if (DS:018d) free the 5 EMS handles DS:0150[i];
+mouse_close(FAR:6dc0); screen_close(FAR:2e70);
+free the bitmaps FAR:05b0, 4d38, 57d4, 4b56, 551c, 578c[0..1], 57bc; font_free_all(); messages free;
+exit(0);
+```
+Callers and codes (25 call sites): 0 `startup_init_screen_mouse_palette` (screen/mouse open);
+2 `vga_load_picture` 176b:042f (picture file missing; a short file is read as it is),
+`sound_load_digi_voc`, `main` (CMF), the palette file, `tore_scene_open` (TORE files);
+3 the fonts; 4 every failed `mem_alloc`; 99 `main`, `season_main_loop` (game end, demo stop)
+and `quit_game_confirm`. No caller passes 1 or 5. The crash save is written to the current
+directory (the game directory) like every save.
+
+Port: `crates/bmp/src/game/fatal.rs`. The failure records the code in `Host::fatal` and unwinds
+with `Quit` to `game::run`, which holds the session and the game state and runs the screen
+there; `Host::pump` ends the run as well while a code is pending, so a failure no caller
+propagates still gets there. DEVIATION: `ERROR.MAN` is only written once a game state exists
+(the original saves whatever is in memory). Code 0 and 3 happen before the port has a screen or
+fonts, so it only prints the message.
+
 ## 4. `start_menu_new_or_load` 18bc:2184 — `int (u8 allow_load)`
 
 Called by `main` with `allow_load = 1` (new game or load) and by the office (menu 5, icon 5 "new

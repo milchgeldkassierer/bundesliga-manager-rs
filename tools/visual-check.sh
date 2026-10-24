@@ -26,6 +26,8 @@
 # and values in C notation), e.g. a save with a broken signature, version or checksum.
 # A "# fixture-edit: <file> <save> <op>..." line makes the fixture <file> a copy of the save
 # <save> of $BMP_DATA with game-state edits (crates/bmp-game/examples/save_patch.rs lists them).
+# A "# fixture-delete: <path>" line removes the file <path> (e.g. PIC/33.VGA) from the game
+# directories of both the port and the DOSBox capture, e.g. to provoke a fatal error.
 # Fixtures and references belong together: delete both to regenerate them.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -84,6 +86,7 @@ PY
     cycles=$(sed -n 's/^# cycles: *//p' "tests/visual/$name.dosbox.txt")
     aim=$(sed -n 's/^# aim-seed: *\([0-9]*\).*/\1/p' "tests/visual/$name.dosbox.txt")
     env DOSBOX_CYCLES="${cycles:-${DOSBOX_CYCLES:-max}}" BMP_DOS_EXTRA="$([ -d "$fix" ] && echo "$fix")" \
+      BMP_DOS_DELETE="$(sed -n 's/^# fixture-delete: *//p' "tests/visual/$name.port.txt")" \
       ${aim:+DOSBOX_SEED=$aim} \
       tools/dosbox-capture.sh "$ref" "tests/visual/$name.dosbox.txt"
   fi
@@ -91,6 +94,7 @@ PY
   data=$(mktemp -d)
   cp -r "$DATA"/. "$data" && chmod -R u+w "$data"
   [ -d "$fix" ] && cp -r "$fix"/. "$data"
+  for file in $(sed -n 's/^# fixture-delete: *//p' "tests/visual/$name.port.txt"); do rm -f "$data/$file"; done
   seed=$(sed -n 's/^# seed: *\([0-9]*\).*/\1/p' "tests/visual/$name.port.txt")
   seed2=$(sed -n 's/^# seed2: *\([0-9]*\).*/\1/p' "tests/visual/$name.port.txt")
   "$BIN" --data "$data" run --script "tests/visual/$name.port.txt" --shots "$out" \

@@ -465,14 +465,14 @@ impl DrawBoard {
             return Ok(false);
         }
         host.screen_fade(0)?;
-        let board = host.load_picture(0x2f).expect("PIC\\47.VGA");
+        let board = host.picture(0x2f)?;
         let screen = host.screen();
         host.g
             .blit_bitmap(board, 0, 0, screen, 0x13, 0x1a, 0x11a, 0xcb);
         host.g.free(board);
         self.phase = 0;
         let backup = host.blank_bitmap(0x113, 0xc6, 0);
-        let lamps = host.load_picture(0x30).expect("PIC\\48.VGA");
+        let lamps = host.picture(0x30)?;
         let compose = host.blank_bitmap(0x78, 0x0e, 0);
         let mut label = RastPort::new(host.blank_bitmap(0x73, 9, 0));
         Host::set_rastport_font(&mut label, 2);

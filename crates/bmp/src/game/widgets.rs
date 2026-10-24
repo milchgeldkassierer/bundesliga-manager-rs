@@ -209,9 +209,7 @@ pub fn ui_value_spinner(
     let mut v = v;
     let lo = spinner_round_bound(lo, GAME_OPTION_A, v0);
     let hi = spinner_round_bound(hi, GAME_OPTION_A, v0);
-    let pic = host
-        .load_picture(0x15)
-        .expect("PIC\\21.VGA (fatal_error_exit in the original)");
+    let pic = host.picture(0x15)?;
     let screen = host.screen();
     host.g.blit_bitmap(pic, 0, 0, screen, x, y, 0x46, 0x27);
     host.set_font(1);

@@ -370,12 +370,12 @@ pub fn screen_manager_contract(
     // The pictures are part of the game data; vga_load_picture exits the
     // program when one is missing.
     let pics = Pics {
-        buttons: host.load_picture(0x1f).expect("PIC\\31.VGA"),
-        logos: host.load_picture(0x20).expect("PIC\\32.VGA"),
+        buttons: host.picture(0x1f)?,
+        logos: host.picture(0x20)?,
     };
     host.screen_fade(0)?;
     host.g.mouse_pointer_hide(0);
-    host.load_screen_picture(0x2e).expect("PIC\\46.CP");
+    host.screen_picture(0x2e)?;
     host.g.mouse_pointer_show();
     host.set_font(2);
     contract_draw_board(host, &pics, state);

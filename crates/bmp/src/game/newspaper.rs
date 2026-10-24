@@ -47,12 +47,14 @@ pub fn newspaper_show(host: &mut Host, paper: &Newspaper, auto: bool) -> Run<()>
     ui_fill_rect(&mut host.g, &mut host.rp, 0, 0, 0x13f, 0xef, 9);
     ui_fill_rect(&mut host.g, &mut host.rp, 5, 1, 0x13a, 0xee, 0x0f);
     let screen = host.screen();
-    if let Ok(pic) = host.load_picture(MASTHEAD) {
+    {
+        let pic = host.picture(MASTHEAD)?;
         host.g.blit_bitmap(pic, 0, 0, screen, 10, 3, 0x12b, 0x1e);
         host.g.free(pic);
     }
     host.g.palette_load_rgb4(&NEWS_PALETTE, 16);
-    if let Ok(pic) = host.load_picture(paper.photo) {
+    {
+        let pic = host.picture(paper.photo)?;
         let (w, h) = {
             let bm = host.g.bitmap(pic);
             (bm.width, bm.height)

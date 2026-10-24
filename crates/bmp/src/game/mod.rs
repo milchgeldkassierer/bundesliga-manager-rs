@@ -5,6 +5,7 @@ pub mod contract;
 pub mod credits;
 pub mod cup_screens;
 pub mod disk;
+pub mod fatal;
 pub mod goal_scene;
 pub mod live_match;
 pub mod load_game;
@@ -29,7 +30,7 @@ use bmp_formats::mana::ManaDat;
 use bmp_game::newgame::{self, CupDraws};
 use bmp_game::rng::Rng;
 use bmp_game::runtime::Runtime;
-use bmp_game::state::GERMAN_CLUBS;
+use bmp_game::state::{GERMAN_CLUBS, GameState};
 
 pub use bmp_game::runtime::SEASON_START_DAY;
 
@@ -94,6 +95,9 @@ impl Session {
 pub enum Exit {
     /// The last season of the game is over.
     GameOver,
+    /// `fatal_error_exit` showed its error screen; the program ends with `exit(0)` like the
+    /// original.
+    Fatal,
 }
 
 /// `time(NULL)`: the seconds since the epoch, the source of both RNG seeds.
@@ -119,8 +123,7 @@ pub fn office_show_cached_background(host: &mut Host) -> Run<()> {
     host.g.mouse_pointer_hide(0);
     if !host.office_bg_cached {
         // The file is part of the game data; a failure here is fatal in the original.
-        host.load_screen_picture(22)
-            .expect("PIC\\22.CP (fatal_error_exit 2 in the original)");
+        host.screen_picture(22)?;
         host.g.vga_copy_page(0, 0x9600);
         host.office_bg_cached = true;
     } else {
@@ -178,9 +181,38 @@ fn load_main_pictures(host: &mut Host) -> Result<(), String> {
 /// `main`: title picture, club selection, then the season loop of a new or a loaded
 /// game. `time` is the first seed's `time()`; `time2` the second one's, read
 /// once the start menu has set up a new game (`None`: the clock at that moment).
+/// A fatal error anywhere on the way ends in [`fatal::fatal_error_exit`] with the session
+/// and the game state as far as they exist.
 ///
 /// Origin: BMMAIN.EXE 18bc:0418 (main)
 pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, String> {
+    let mut session = None;
+    let mut state = None;
+    let code = match run_main(host, time, time2, &mut session, &mut state) {
+        Ok(Ok(exit)) => return Ok(Ok(exit)),
+        Ok(Err(q)) => match host.fatal.take() {
+            Some(code) => code,
+            None => return Ok(Err(q)),
+        },
+        // A failure without a traced code (e.g. an unreadable MANA.DAT) counts as a
+        // missing file; picture failures have printed their message already.
+        Err(e) => host.fatal.take().unwrap_or_else(|| {
+            eprintln!("{e}");
+            fatal::DISK_ERROR
+        }),
+    };
+    Ok(fatal::fatal_error_exit(host, session.as_mut(), state.as_mut(), code).map(|()| Exit::Fatal))
+}
+
+/// The body of [`run`]; `session_slot` and `state_slot` receive the session and the game
+/// state as soon as they exist, for the crash save of `fatal_error_exit`.
+fn run_main(
+    host: &mut Host,
+    time: i32,
+    time2: Option<i32>,
+    session_slot: &mut Option<Session>,
+    state_slot: &mut Option<GameState>,
+) -> Result<Run<Exit>, String> {
     host.load_palette_slots()?;
     let _ = host.screen_fade(0);
     // Sound Blaster present and sound not disabled: start the title tune.
@@ -204,15 +236,15 @@ pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, 
     }
     host.voice_init()?;
     let mana = load_mana(host)?;
-    let mut session = Session::new(Rng::default());
+    let session = session_slot.insert(Session::new(Rng::default()));
     // The European draws before the start menu show no screen.
-    let mut world = newgame::startup(
+    let world = state_slot.insert(newgame::startup(
         &mana,
         &mut session.rt,
         &mut session.rng,
         time,
         &mut CupDraws(|_: u8| false),
-    );
+    ));
     load_main_pictures(host)?;
     let pics = start_menu::Pictures::load(host)?;
     // The 32x23 picture of icon code 0x23, cut from the icon sheet.
@@ -229,12 +261,12 @@ pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, 
         host,
         &pics,
         &world.clubs[..GERMAN_CLUBS],
-        &mut session,
+        session,
     )? {
         Ok(o) => o,
         Err(q) => return Ok(Err(q)),
     };
-    let (mut state, resume) = match outcome {
+    let resume = match outcome {
         start_menu::Outcome::NewGame(choices) => {
             // `bitmap_free(FAR:57d4)`: the icon sheet, reloaded by `office_load_bitmaps(2)`.
             if let Some(icons) = host.ui.icons.take() {
@@ -244,30 +276,27 @@ pub fn run(host: &mut Host, time: i32, time2: Option<i32>) -> Result<Run<Exit>, 
             // The draw screens borrow the session; the logic holds its generator and runtime.
             let mut rt = std::mem::take(&mut session.rt);
             let mut rng = std::mem::take(&mut session.rng);
-            let mut draws = CupDraws(cup_screens::DrawScreens::new(host, &mut session));
-            newgame::new_game(
-                &mut world, &mut rt, &mut rng, &mana, &choices, time2, &mut draws,
-            );
+            let mut draws = CupDraws(cup_screens::DrawScreens::new(host, session));
+            newgame::new_game(world, &mut rt, &mut rng, &mana, &choices, time2, &mut draws);
             let quit = draws.0.quit.take();
             session.rt = rt;
             session.rng = rng;
             if let Some(q) = quit {
                 return Ok(Err(q));
             }
-            (world, false)
+            false
         }
-        start_menu::Outcome::LoadGame(state) => (*state, true),
+        start_menu::Outcome::LoadGame(loaded) => {
+            *world = *loaded;
+            true
+        }
     };
-    host.sync_options(&state);
+    let state = world;
+    host.sync_options(state);
     let bitmaps = office::OfficeBitmaps::load(host, if resume { 1 } else { 2 })?;
     // TODO(#7): tore_scene_open 24a4:0419 opens TORE\ANZAHL for the goal scenes.
     Ok(season::season_main_loop(
-        host,
-        &mut session,
-        &pics,
-        &bitmaps,
-        &mut state,
-        resume,
+        host, session, &pics, &bitmaps, state, resume,
     ))
 }
 

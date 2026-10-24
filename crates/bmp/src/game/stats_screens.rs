@@ -581,7 +581,7 @@ pub fn screen_eternal_table(
     state: &mut GameState,
 ) -> Run<()> {
     let ord = eternal_table_order(state);
-    let pic = host.load_picture(0x24).expect("PIC\\36.VGA");
+    let pic = host.picture(0x24)?;
     copy_protection(host, session)?;
     panel(host, 5, 8, 0x87, 0xde, false);
     panel(host, 0x91, 8, 0xa8, 0xb4, false);

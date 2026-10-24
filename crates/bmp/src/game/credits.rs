@@ -343,9 +343,7 @@ pub fn screen_credits(
     state: &mut GameState,
 ) -> Run<()> {
     host.number_no_separators = false;
-    let Ok(pic7) = host.load_picture(7) else {
-        return Ok(());
-    };
+    let pic7 = host.picture(7)?;
     // copy_protection_penalty: the protection is treated as passed (DS:05ac != 0).
     for a in 0..2i16 {
         for b in 0..2i16 {

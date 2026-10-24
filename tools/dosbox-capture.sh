@@ -28,7 +28,8 @@
 # in October). The real seed may still be off by a second or two; recover it afterwards.
 # The game runs from a fresh temporary copy of $BMP_DOS_DIR (default ~/Apps/bmp-dos/game), so
 # neither real saves nor the files a scenario writes (saves, high scores) persist between runs.
-# BMP_DOS_EXTRA names a directory whose files are copied into that copy first (fixture saves).
+# BMP_DOS_EXTRA names a directory whose files are copied into that copy first (fixture saves);
+# BMP_DOS_DELETE lists files (relative paths) removed from it.
 set -euo pipefail
 OUT=$(realpath -m "$1"); SCRIPT=$(realpath "$2")
 DOSBOX=${DOSBOX:-$(ls -d "$HOME"/Apps/dosbox-staging*/ | head -1)dosbox}
@@ -61,6 +62,7 @@ PY
 fi
 cp -r "$GAME" "$WORK/game"; GAME="$WORK/game"
 if [ -n "${BMP_DOS_EXTRA:-}" ]; then cp -r "$BMP_DOS_EXTRA"/. "$GAME"; fi
+for f in ${BMP_DOS_DELETE:-}; do rm -f "$GAME/$f"; done
 MAPPER=
 if [ "${DOSBOX_AUDIO:-0}" = 1 ]; then
   sed -e 's/ *"stick_[^"]*"//g' -e '/^hand_decfskip/d' -e 's/^hand_caprawopl .*/hand_caprawopl "key 64 mod1"/' \

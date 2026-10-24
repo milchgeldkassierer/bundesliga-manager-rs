@@ -1,0 +1,37 @@
+# Port side of the fatal_error scenario (bmp run --script syntax, milliseconds).
+# The game directory lacks PIC\33.VGA (tools/visual-check.sh "# fixture-delete:"). Load
+# 07072019.MAN like the disk scenario, open the office "Disk/Optionen" submenu and click
+# "Einstellungen": screen_settings 362f:01b8 loads PIC\33.VGA first, and vga_load_picture
+# 176b:0356 ends the program with fatal_error_exit(2) 176b:114c: the cleared screen with
+# "DISK-Error", the crash save ERROR.MAN, "SPIELSTAND WURDE GESICHERT (ERROR.MAN) - <TASTE>",
+# then a click ends the program. ERROR.MAN must equal the original's byte for byte (its
+# header draws from the RNG, so the seed has to be the capture's).
+# fixture-delete: PIC/33.VGA
+# seed: 4242
+# compare-file: ERROR.MAN
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+shot f00-office
+move 291 173
+wait 100
+click 291 173
+wait 500
+shot f01-submenu
+move 161 132
+wait 100
+click 161 132
+wait 1500
+shot f02-error
+move 160 120
+wait 100
+click 160 120
+wait 500

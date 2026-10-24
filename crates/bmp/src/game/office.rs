@@ -36,7 +36,7 @@ use super::{
     office_show_cached_background,
 };
 use crate::gfx::{BitmapId, Gfx, Ui, ui_draw_line, ui_draw_text_centered_shadow};
-use crate::host::{Host, LEFT_DOWN, RIGHT_DOWN, Run};
+use crate::host::{Host, LEFT_DOWN, Quit, RIGHT_DOWN, Run};
 
 /// Pictures of the office (`office_load_bitmaps`).
 pub struct OfficeBitmaps {
@@ -351,7 +351,8 @@ pub fn string_xor_copy(text: &[u8], key: u8) -> Vec<u8> {
 fn matchday_info_panel(host: &mut Host, auto: bool) -> Run<()> {
     let (g, rp) = (&mut host.g, &mut host.rp);
     crate::gfx::ui_fill_rect(g, rp, 0, 0x2b, 0x13f, 0xef, 0);
-    if let Ok(pic) = host.load_picture(0x27) {
+    {
+        let pic = host.picture(0x27)?;
         let screen = host.screen();
         host.g
             .blit_bitmap(pic, 0, 0, screen, 0xf3, 0x2d, 0x4c, 0x4c);
@@ -724,8 +725,9 @@ pub fn office_menu_dispatcher(
                     // free memory.
                     (5, 5) => {
                         let save = state.current_manager;
+                        // Its only errors are picture loads, which record their fatal error.
                         let added = start_menu_add_managers(host, pics, state, session)
-                            .expect("start menu pictures (fatal_error_exit in the original)")?;
+                            .unwrap_or(Err(Quit))?;
                         let mut rt = std::mem::take(&mut session.rt);
                         add_managers(state, &mut rt, &mut session.rng, &added, rules);
                         session.rt = rt;

@@ -107,7 +107,7 @@ pub(super) fn screen_messages(
     single: Option<&[u8]>,
     auto: bool,
 ) -> Run<()> {
-    let pic = host.load_picture(2).expect("PIC\\2.VGA");
+    let pic = host.picture(2)?;
     fill(host, 0x3b, 0x72, 0xf5, 0xea, 4);
     ui_draw_frame(&mut host.g, &mut host.rp, 0x39, 0x70, 0x106, 0xea, 7);
     for k in 0..3i16 {

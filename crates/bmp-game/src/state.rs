@@ -1344,8 +1344,8 @@ impl GameState {
     // `finance_weekly_balance_per_round` 24a4:2b15 (R6003), a day counter past
     // the season overflows or gives day 0 of a month in `calendar_compute_date`
     // 1310:1190, and a crest code without a picture file ends the program in
-    // `screen_load_game` (`fatal_error_exit` 2). The port would panic there
-    // (`state.md` §1.1).
+    // `screen_load_game` (`fatal_error_exit` 2). The port refuses such saves
+    // up front (`state.md` §1.1).
     fn check_saved_values(&self) -> Result<(), StateError> {
         let check = |field: &'static str, index: usize, ok: bool| {
             if ok {

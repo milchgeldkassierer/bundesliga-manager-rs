@@ -1,0 +1,25 @@
+# DOSBox side of the fatal_error scenario (tools/dosbox-capture.sh syntax, seconds).
+# Without PIC\33.VGA: loads 07072019.MAN, opens "Disk/Optionen" > "Einstellungen", which ends
+# the game with the DISK-Error screen; the crash save ERROR.MAN is fetched after the click.
+# aim-seed: 4242
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+shot f00-office
+click 291 173 240
+wait 3
+shot f01-submenu
+click 161 132 240
+wait 5
+shot f02-error
+click 160 120 240
+wait 4
+fetch ERROR.MAN

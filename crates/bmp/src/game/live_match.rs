@@ -1320,7 +1320,8 @@ pub fn screen_title_winner(
     centered(host, title, 0, 0x13f, 0xdd, 0x1d, 0);
     host.set_font(1);
     centered(host, wins, 0, 0x13f, 0x3c, 0x1d, 0);
-    if let Ok(pic) = host.load_picture(0x32 + u16::from(comp)) {
+    {
+        let pic = host.picture(0x32 + u16::from(comp))?;
         let screen = host.screen();
         host.g
             .blit_bitmap(pic, 0, 0, screen, 0x74, 0x54, 0x58, 0x58);

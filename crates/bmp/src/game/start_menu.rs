@@ -101,11 +101,8 @@ impl Screen<'_> {
     /// (`DS:05da == 0`).
     ///
     /// Origin: BMMAIN.EXE 18bc:1cdd (draw_club_crest)
-    fn draw_club_crest(&mut self, code: u8, dst: BitmapId, x: i16, y: i16) {
-        let spr = self
-            .host
-            .load_picture(u16::from(code) + 0x50)
-            .expect("crest picture (fatal_error_exit 2 in the original)");
+    fn draw_club_crest(&mut self, code: u8, dst: BitmapId, x: i16, y: i16) -> Run<()> {
+        let spr = self.host.picture(u16::from(code) + 0x50)?;
         let mut rp = rp_for(dst);
         ui_fill_rect(
             &mut self.host.g,
@@ -118,6 +115,7 @@ impl Screen<'_> {
         );
         self.blit(spr, 0, 0, dst, x, y, 0x26, 0x26);
         self.g().free(spr);
+        Ok(())
     }
 
     /// §4.2, label 18bc:22ca.
@@ -177,7 +175,7 @@ impl Screen<'_> {
         self.blit(screen, 0x11, 0x30, self.strip, 0, 0, 0x11f, 0x26);
         for i in 0..7usize {
             let code = self.clubs[i].crest & 0x7f;
-            self.draw_club_crest(code, self.strip, i as i16 * 0x29 + 1, 0);
+            self.draw_club_crest(code, self.strip, i as i16 * 0x29 + 1, 0)?;
         }
         self.blit(self.strip, 0, 0, screen, 0x11, 0x30, 0x11f, 0x26);
         self.host.set_font(1);
@@ -225,7 +223,7 @@ impl Screen<'_> {
                     );
                 }
                 let code = self.clubs[*pos as usize].crest & 0x7f;
-                self.draw_club_crest(code, self.strip, 1, 0);
+                self.draw_club_crest(code, self.strip, 1, 0)?;
             } else {
                 for k in 0..6i16 {
                     self.blit(
@@ -244,7 +242,7 @@ impl Screen<'_> {
                     n -= 0x40;
                 }
                 let code = self.clubs[n as usize].crest & 0x7f;
-                self.draw_club_crest(code, self.strip, 0xf7, 0);
+                self.draw_club_crest(code, self.strip, 0xf7, 0)?;
             }
             self.blit(self.strip, 0, 0, screen, 0x11, 0x30, 0x11f, 0x26);
             self.fill(0x55, 0x59, 0xeb, 0x63, 5);

@@ -197,6 +197,8 @@ fn run_game(args: &Args) -> Result<(), String> {
     }
     match game::run(&mut host, time, time2)? {
         Ok(game::Exit::GameOver) => {}
+        // `fatal_error_exit` ends the original with `exit(0)` after its error screen.
+        Ok(game::Exit::Fatal) => {}
         Err(host::Quit) => {}
     }
     Ok(())

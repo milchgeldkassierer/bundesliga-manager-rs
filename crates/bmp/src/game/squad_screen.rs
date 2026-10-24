@@ -1145,9 +1145,9 @@ pub fn screen_squad_lineup(
         maxp = p1;
     }
     // The pictures are part of the game data; the original exits on a failure.
-    let pic37 = host.load_picture(0x25).expect("PIC\\37.VGA");
+    let pic37 = host.picture(0x25)?;
     let save13 = host.blank_bitmap(0xd, 0xd, 0);
-    let pic6 = host.load_picture(6).expect("PIC\\6.VGA");
+    let pic6 = host.picture(6)?;
     let mut sc = Screen {
         pic6,
         pic6_rp: RastPort::new(pic6),
