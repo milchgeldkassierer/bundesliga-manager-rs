@@ -1060,8 +1060,12 @@ Return value: the y position of the event panel (used by `match_event_redraw`).
 The forfeit dialog ("Ihr Spiel wird mit 0:2 gewertet. Sie zahlen 200.000 DM Strafe", `dialog_okay`)
 appears over the match-day title screen ("Ligaspiel" on the flag) and no live view follows for the
 manager (scenario `rare_scenes`, 100 %). A save whose human club has fewer than 8 available
-starters reaches it; in automatic play the injured and banned starters are never replaced, so a
-club soon plays every match with 7 starters and forfeits each one (observed in the port).
+starters reaches it. Injured and banned starters are replaced only by `auto_lineup` 2ecd:3360
+(weekly in `season_main_loop`, after injuries and bans), which returns at once while the manager's
+automatic lineup is off (`DS:079e[2m] == 1`, squad.md §3.1). `07072019.MAN` (the source of the
+fixture) has it off for its manager, so in automatic play that club soon fields 7 starters and
+forfeits every match (observed in the port); with the automatic lineup on, fit reserves fill the
+gaps and only a squad with fewer than 8 fit players forfeits.
 For every human manager `m` whose club plays:
 
 * **Forfeit:** if `mgr(m).+0x13d == 'd'` (fewer than 8 fit players, set by
