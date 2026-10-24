@@ -156,16 +156,20 @@ record! {
         /// +0x04 `long` interest paid on every payment day (summed by
         /// `finance_sum_entries(1, ..)`).
         pub interest_payment: i32,
-        /// +0x08 not yet traced.
-        pub unknown_08: u8,
+        /// +0x08 day of month the loan was taken.
+        pub day_taken: u8,
         /// +0x09 payment day of month, compared with FAR:2eba.
         pub payment_day: u8,
-        /// +0x0a not yet traced.
-        pub unknown_0a: u8,
+        /// +0x0a month (0-based) the loan was taken.
+        pub month_taken: u8,
         /// +0x0b due month, compared with FAR:2e8e.
         pub due_month: u8,
-        /// +0x0c..0x0f not yet traced.
-        pub unknown_0c: [u8; 4],
+        /// +0x0c interest rate in percent.
+        pub rate: u8,
+        /// +0x0d never written by `credit_take`.
+        pub unknown_0d: u8,
+        /// +0x0e `int` year the loan was taken.
+        pub year_taken: i16,
         /// +0x10 `int` due year, compared with FAR:a7a0.
         pub due_year: i16,
     }
@@ -216,8 +220,17 @@ record! {
         /// 1 = 2. Bundesliga, 2 = amateur (compared with
         /// `league_of_rank(..) >> 1`).
         pub league: u8,
-        /// +0x139..0x140 per-manager state bytes (training, finances, AI).
-        pub values_139: [u8; 8],
+        /// +0x139 (FAR:237b) days until the next training camp may be
+        /// booked: `random(7, 18)` after a booking, decremented daily by
+        /// `finance_daily_processing` 212a:0a6d.
+        pub camp_cooldown: u8,
+        /// +0x13a..0x13e per-manager state bytes (training, AI).
+        pub values_13a: [u8; 5],
+        /// +0x13f (FAR:2381) training intensity 0..=0x22 (`screen_training`);
+        /// drives a monthly cost and [`Manager::fatigue_sum`].
+        pub training_intensity: u8,
+        /// +0x140 per-manager state byte.
+        pub value_140: u8,
         /// +0x141 (FAR:2383) 5 bytes copied from DS:0286 on a new game
         /// (`screen_training`).
         pub training_141: [u8; 5],
@@ -235,23 +248,28 @@ record! {
         /// `stadium_expansion_order` 1000:0000,
         /// `stadium_construction_progress` 1000:20e1, `random_weekly_events`.
         pub stadium: [[i32; 2]; 7],
-        /// +0x196..0x1a3 not yet traced.
-        pub unknown_196: [u8; 14],
+        /// +0x196 (FAR:23d8) construction countdown in days per stadium item
+        /// (`stadium_expansion_order` 1000:0000 sets it,
+        /// `stadium_construction_daily` 1000:20e1 counts it down).
+        pub build_days: [u16; 7],
         /// +0x1a4 (FAR:23e6) season total `long`s updated by
         /// `season_main_loop` (observed values are DM-sized, i.e. income /
         /// expense totals).
         pub season_stats: [i32; 8],
         /// +0x1c4..0x1db not yet traced.
         pub unknown_1c4: [u8; 24],
-        /// +0x1dc (FAR:241e) `int`, new game: `50 - 20 * league`
-        /// (fan mood / popularity; `office_random_event`).
-        pub value_1dc: i16,
-        /// +0x1de (FAR:2420) `int` (`office_random_event`).
-        pub value_1de: i16,
-        /// +0x1e0 (FAR:2422) `int`.
-        pub value_1e0: i16,
-        /// +0x1e2 (FAR:2424) `int` (`season_end_messages`).
-        pub value_1e2: i16,
+        /// +0x1dc (FAR:241e) fans / popularity, new game: `50 - 20 * league`
+        /// (`office_random_event`); grows at month end while below 95
+        /// (unsigned compare).
+        pub fans: u16,
+        /// +0x1de (FAR:2420) monthly expense item (`office_random_event`).
+        pub extra_costs: u16,
+        /// +0x1e0 (FAR:2422) low word of the monthly base income, written by
+        /// `finance_monthly_income` 24a4:2636.
+        pub income_base: u16,
+        /// +0x1e2 (FAR:2424) `int`, `+= 4 * training_intensity` at every
+        /// month end (`season_end_messages`).
+        pub fatigue_sum: i16,
         /// +0x1e4 (FAR:2426) record `long`s; `[2]` (FAR:242e) is
         /// initialized to 99999.
         pub records: [i32; 3],
@@ -361,7 +379,8 @@ record! {
         pub skills: [u8; 3],
         /// +0x13..0x27 not yet traced.
         pub unknown_13: [u8; 21],
-        /// +0x28 (FAR:7772) market value `long` (`transfer_value_calc` 3277:25de).
+        /// +0x28 (FAR:7772) market value `long` (`transfer_value_calc` 3277:25de);
+        /// `finance_monthly_expenses` 24a4:2822 adds it as the monthly salary.
         pub market_value: i32,
         /// +0x2c..0x2f not yet traced.
         pub unknown_2c: [u8; 4],
@@ -527,16 +546,20 @@ pub struct GameState {
     pub match_history: MatchHistory,
     /// #36 DS:05fe option flags (`screen_settings` 362f:01b8).
     pub options: [u8; 15],
-    /// #37 FAR:0000 eight state bytes.
+    /// #37 FAR:0000 eight state bytes; `[2 * m]` is the main-sponsor
+    /// contract countdown in months.
     pub far_0000: [u8; 8],
-    /// #38 FAR:4b9a contract/job-offer state (`screen_manager_contract`).
+    /// #38 FAR:4b9a contract/job-offer state (`screen_manager_contract`);
+    /// `[2 * (6 * m + i)]` is the countdown in months of advertising
+    /// contract `i`.
     pub far_4b9a: [u8; 48],
     /// #39 FAR:2ec2 job-offer state.
     pub far_2ec2: [u8; 80],
     /// #40 FAR:002e 320-byte table (player development, events).
     pub far_002e: [u8; 320],
-    /// #41 DS:066c manager contracts `[m][9]` `long`s; `[m][0]` = salary,
-    /// `[m][8]` initialized to 30000.
+    /// #41 DS:066c manager contracts `[m][9]` `long`s: `[m][0..7]` monthly
+    /// contract income (`[0]` main sponsor, `[1..6]` advertising boards),
+    /// `[m][8]` a monthly cost item, initialized to 30000.
     pub manager_contracts: [[i32; 9]; 4],
     /// #42 DS:4a28 difficulty level (`5 - user level`).
     pub level: u8,
@@ -547,7 +570,8 @@ pub struct GameState {
     pub team_slots: [[u8; 10]; 3],
     /// #45 FAR:5664 3 x 10 far pointers to message strings (patched on load).
     pub message_pointers: [[u32; 10]; 3],
-    /// #46 FAR:5780 stadium construction state.
+    /// #46 FAR:5780 per-item construction-firm lock in days, shared by all
+    /// managers.
     pub construction: [u8; 7],
     /// #47 DS:063a match-day option word (`matchday_options_dialog`).
     pub match_options: u16,
@@ -558,7 +582,8 @@ pub struct GameState {
     /// #50 DS:2280 per-week competition bitmask (bits 0..2 = competitions,
     /// 9 = special week).
     pub week_competitions: [u8; 95],
-    /// #51 DS:0620 eight `int`s (`finance_weekly_processing`).
+    /// #51 DS:0620 training-camp availability counters (> 0 closed, < 0
+    /// open), stepped toward 0 daily by `finance_daily_processing`.
     pub ds_0620: [i16; 8],
     /// #52 FAR:4bce month copy at loop start.
     pub loop_month: u8,
@@ -588,7 +613,19 @@ pub struct GameState {
     pub far_2e7a: u32,
     /// Raw tail: FAR:2e94 (`long`).
     pub far_2e94: u32,
+
+    // ---- runtime globals the save does not store ----
+    /// DS:0630 base interest rate (2..7) from which
+    /// [`GameState::interest_rates`] is derived.
+    pub base_interest_rate: i16,
+    /// DS:0644 sum of each manager's daily balances in the current month.
+    pub month_balance_sum: [i32; 4],
+    /// DS:5256 set at the end of every fourth month (months 0, 4, 8).
+    pub quarter_flag: u8,
 }
+
+/// DS:0630 in the data segment image.
+const INITIAL_BASE_INTEREST_RATE: i16 = 5;
 
 /// Error converting between [`SaveGame`] and [`GameState`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -683,7 +720,11 @@ for_each_block!(block_lens);
 
 macro_rules! decode_blocks {
     ($($i:literal $f:ident : $t:ty,)*) => {
-        /// Builds the state from a decoded save game.
+        // TODO(re): the original keeps whatever the running program holds in
+        // the unsaved runtime globals when a game is loaded mid-session
+        // (finance.md §7 q.2).
+        /// Builds the state from a decoded save game. The runtime globals the
+        /// save lacks get their program-start values.
         ///
         /// Origin: BMMAIN.EXE 422b:120c (screen_load_game; block reads mirror
         /// savegame_write_man 422b:07fe)
@@ -703,6 +744,9 @@ macro_rules! decode_blocks {
                 ds_05f6: u32::from_le_bytes(save.tail[0..4].try_into().unwrap()),
                 far_2e7a: u32::from_le_bytes(save.tail[4..8].try_into().unwrap()),
                 far_2e94: u32::from_le_bytes(save.tail[8..12].try_into().unwrap()),
+                base_interest_rate: INITIAL_BASE_INTEREST_RATE,
+                month_balance_sum: [0; 4],
+                quarter_flag: 0,
             })
         }
 
@@ -727,8 +771,9 @@ macro_rules! decode_blocks {
             }
         }
 
-        /// A state with every global zeroed, as after program start
-        /// (far data and BSS are zero-initialized) and an empty message table.
+        /// A state with every saved global zeroed, as after program start
+        /// (far data and BSS are zero-initialized), an empty message table and
+        /// the runtime globals at their data-segment image values.
         pub fn zeroed() -> GameState {
             GameState {
                 signature: *savegame::SIGNATURE,
@@ -741,6 +786,9 @@ macro_rules! decode_blocks {
                 ds_05f6: 0,
                 far_2e7a: 0,
                 far_2e94: 0,
+                base_interest_rate: INITIAL_BASE_INTEREST_RATE,
+                month_balance_sum: [0; 4],
+                quarter_flag: 0,
             }
         }
     };
@@ -779,6 +827,19 @@ impl GameState {
             }
         }
         0
+    }
+
+    /// Number of occupied slots (`player_id != 0`) among the first 24 slots
+    /// of `squad` (the first 12 for the transfer pool, squad 4). The slots
+    /// need not be contiguous; slot 24 is never examined.
+    ///
+    /// Origin: BMMAIN.EXE 4091:1109 (squad_count_by_flag, mode 0)
+    pub fn squad_player_count(&self, squad: usize) -> u8 {
+        let n = if squad == 4 { 12 } else { 24 };
+        self.squads[squad][..n]
+            .iter()
+            .filter(|p| p.player_id != 0)
+            .count() as u8
     }
 
     /// Sorts the first `team_count` (DS:225e[tier]) entries of

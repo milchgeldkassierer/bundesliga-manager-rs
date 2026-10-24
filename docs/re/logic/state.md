@@ -98,21 +98,21 @@ inferred from code plus observed data, **L** = name or role guessed.
 | 34 | DS:225a | `competition_rounds: [u8;3]` | Round counter per competition (incremented by bits 0..2 of DS:2280[week]) | `screen_league_table`, `office_menu_dispatcher` | M |
 | 35 | FAR:9336 | `match_history: MatchHistory` | Head-to-head and record tables (§3.6) | 3a41:2d33, 3a41:2073 | H |
 | 36 | DS:05fe | `options: [u8;15]` | Option flags (settings screen; `+0x0e` read by `screen_fade`) | `screen_settings` 362f:01b8, `match_live_view` | L |
-| 37 | FAR:0000 | `far_0000: [u8;8]` | 8 state bytes. The xrefs are polluted by struct offsets 0..7 | 362f:2be8, 3277:04a5 | L |
-| 38 | FAR:4b9a | `far_4b9a: [u8;48]` | Contract and job-offer state | `screen_manager_contract` 362f:2be8, 362f:29a8 | L |
+| 37 | FAR:0000 | `far_0000: [u8;8]` | 8 state bytes; `[2*m]` is the main-sponsor contract countdown in months (finance.md §2.1). The xrefs are polluted by struct offsets 0..7 | 362f:2be8, 3277:04a5 | L |
+| 38 | FAR:4b9a | `far_4b9a: [u8;48]` | Contract and job-offer state; `[2*(6*m+i)]` is the countdown in months of advertising contract `i` (finance.md §2.1) | `screen_manager_contract` 362f:2be8, 362f:29a8 | L |
 | 39 | FAR:2ec2 | `far_2ec2: [u8;80]` | Job-offer state | 362f:2be8, `job_offer_no_interest` 362f:281f | L |
 | 40 | FAR:002e | `far_002e: [u8;320]` | Table used by player development and events | `player_aging_or_development` 24a4:2cb4, `random_weekly_events` | L |
-| 41 | DS:066c | `manager_contracts: [[i32;9];4]` | Per-manager contract (`long`s, stride 0x24). New game (18bc:2184, only in scenarios FAR:513c == 0x7ac or 0x7c9, only for managers from the first newly added one up to DS:07ab): `[0]` = 180 000 (0x2bf20, salary), `[1..=6]` = 45 000 each, `[8]` = 30 000; `[7]` untouched. Unused rows hold `50000, 6000 x6, 0, 5000` | `screen_manager_contract` 362f:2be8, 362f:29a8 | M |
+| 41 | DS:066c | `manager_contracts: [[i32;9];4]` | Per-manager contracts (`long`s, stride 0x24): `[0]` monthly main-sponsor income, `[1..=6]` monthly advertising-board income, `[7]` an eighth income entry, all added to the monthly income (finance.md §4.1); `[8]` a monthly cost item (§4.2). New game (18bc:2184, only in scenarios FAR:513c == 0x7ac or 0x7c9, only for managers from the first newly added one up to DS:07ab): `[0]` = 180 000 (0x2bf20), `[1..=6]` = 45 000 each, `[8]` = 30 000; `[7]` untouched. Unused rows hold `50000, 6000 x6, 0, 5000` | `screen_manager_contract` 362f:2be8, 362f:29a8 | M |
 | 42 | DS:4a28 | `level: u8` | Difficulty level `5 - user level`. Level 4 gives a starting balance of 1.9 M | `start_menu_new_or_load`, `match_simulate_minute` | H |
 | 43 | FAR:513c | `scenario: u16` | Scenario/start-year selector. 0x7ac/0x7c9 and 0x7ae/0x7cb are special-cased in the new-game setup and in `highscore_file_name`; `> 2000` changes player generation; 0x56ce in all samples | 18bc:2184, 422b:21c4 | M |
 | 44 | FAR:1d34 | `team_slots: [[u8;10];3]` | Three rows of 10 slot bytes (`team_slot_free_index` 4091:0000). MEMORY_MAP lists this as DS:1d34, but the save code uses the far segment | 1cb5:13bd | M |
 | 45 | FAR:5664 | `message_pointers: [[u32;10];3]` | Far string pointers. The loader patches them through the string table | `random_weekly_events`, `screen_load_game` | H |
-| 46 | FAR:5780 | `construction: [u8;7]` | Stadium construction state | `stadium_construction_progress` 1000:20e1 | L |
+| 46 | FAR:5780 | `construction: [u8;7]` | Per-item construction-firm lock in days, shared by all managers (finance.md §3.5) | `stadium_construction_progress` 1000:20e1 | L |
 | 47 | DS:063a | `match_options: u16` | Match-day option ("Spiele automatisch / alleine / weiter / nicht") | `matchday_options_dialog` 18bc:08f2 | M |
 | 48 | DS:07e2 | `logged_rounds: u16` | Number of logged rounds in `Manager::round_log`, capped at 0x31 | 2a58:3176, `screen_manager_history` | M |
 | 49 | **FAR:016e** | `season_week: u8` | Current week index into DS:2280. **MEMORY_MAP §2.3 says DS:016e; the save code and all xrefs use segment 5238** | 2a58:3176, `office_menu_dispatcher` | H |
 | 50 | DS:2280 | `week_competitions: [u8;95]` | Per-week competition bitmask. Bits 0..2 count DS:225a; 9 marks a special week; observed values 0, 1, 6, 7, 8, 0x10, 0x70, 0x80 | 2a58:3176, 1310:05f1 | M |
-| 51 | DS:0620 | `ds_0620: [i16;8]` | 8 `int`s (finance) | `finance_weekly_processing`, `screen_training_camp` | L |
+| 51 | DS:0620 | `ds_0620: [i16;8]` | Training-camp availability counters (> 0 closed, < 0 open), stepped toward 0 daily (finance.md §2.1) | `finance_weekly_processing`, `screen_training_camp` | L |
 | 52 | FAR:4bce | `loop_month: u8` | Month copy at loop start | 2a58:3176 | L |
 | 53 | FAR:56e2 | `far_56e2: [u8;4]` | 4 bytes | `office_menu_dispatcher`, `message_box` | L |
 | 54 | DS:05fa | `ds_05fa: [u8;4]` | `[0]` is copied from the copy-protection flag DS:05ac right before saving | 422b:07fe, 422b:120c | M |
@@ -151,16 +151,21 @@ Ghidra). MEMORY_MAP gives the offsets relative to FAR:2260 (= +0x1e); this table
 | 0x132 | 2374 | `values_132: [u8;5]` | Initialized to 0x1e. `startup_clear_state` re-sets `[2..5]` |
 | 0x137 | | `unknown_137: u8` | |
 | 0x138 | 237a | `league: u8` | 0 = Bundesliga, 1 = 2. Bundesliga, 2 = amateur (compared with `league_of_rank()>>1`, 27c2:1bb5) |
-| 0x139 | 237b | `values_139: [u8;8]` | Training/finance/AI bytes (`screen_training` reads +0x13f) |
+| 0x139 | 237b | `camp_cooldown: u8` | Days until the next training camp; `random(7,18)` after a booking, decremented daily (finance.md §2.1) |
+| 0x13a | | `values_13a: [u8;5]` | Training/AI bytes |
+| 0x13f | 2381 | `training_intensity: u8` | 0..0x22 (`screen_training`); monthly cost and `fatigue_sum` |
+| 0x140 | | `value_140: u8` | |
 | 0x141 | 2383 | `training_141: [u8;5]` | Copied from DS:0286 on a new game |
 | 0x146 | 2388 | `training_146: [u8;4]` | Copied from DS:028c |
 | 0x14a | | `unknown_14a: [u8;20]` | |
 | 0x15e | 23a0 | `stadium: [[i32;2];7]` | `[item][0]` = current value, `[item][1]` = under construction. New-game values are in the Rust doc comment |
-| 0x196 | | `unknown_196: [u8;14]` | |
+| 0x196 | 23d8 | `build_days: [u16;7]` | Construction countdown per stadium item in days (finance.md §3.2, §3.5) |
 | 0x1a4 | 23e6 | `season_stats: [i32;8]` | Season totals (`season_main_loop`). Observed values are DM-sized |
 | 0x1c4 | | `unknown_1c4: [u8;24]` | |
-| 0x1dc | 241e | `value_1dc: i16` | New game: `50 - 20*league` |
-| 0x1de..0x1e2 | 2420.. | `value_1de, value_1e0, value_1e2: i16` | |
+| 0x1dc | 241e | `fans: u16` | New game: `50 - 20*league`; grows at month end while below 95 |
+| 0x1de | 2420 | `extra_costs: u16` | Monthly expense item |
+| 0x1e0 | 2422 | `income_base: u16` | Low word of the monthly base income (24a4:2636) |
+| 0x1e2 | 2424 | `fatigue_sum: i16` | `+= 4*training_intensity` at every month end |
 | 0x1e4 | 2426 | `records: [i32;3]` | `[2]` (FAR:242e) is initialized to 99999 |
 | 0x1f0 | 2432 | `balance: i32` | Account balance in DM (`KONTOSTAND`). New game: 1 500 000 (0x16e360), or 1 900 000 (0x1cfde0) if DS:4a28 == 4 |
 | 0x1f4 | 2436 | `values_1f4: [i16;4]` | Written by 2a58:20b2 |
@@ -172,11 +177,13 @@ Ghidra). MEMORY_MAP gives the offsets relative to FAR:2260 (= +0x1e); this table
 |---|---|---|
 | 0x00 | `principal: i32` | Amount owed. The slot is free when it is 0 |
 | 0x04 | `interest_payment: i32` | Interest paid on each payment day |
-| 0x08 | `unknown_08: u8` | |
+| 0x08 | `day_taken: u8` | Day of month the loan was taken |
 | 0x09 | `payment_day: u8` | Compared with FAR:2eba |
-| 0x0a | `unknown_0a: u8` | |
+| 0x0a | `month_taken: u8` | Month (0-based) the loan was taken |
 | 0x0b | `due_month: u8` | Compared with FAR:2e8e |
-| 0x0c | `unknown_0c: [u8;4]` | |
+| 0x0c | `rate: u8` | Interest rate in % |
+| 0x0d | `unknown_0d: u8` | Never written by `credit_take` |
+| 0x0e | `year_taken: i16` | Year the loan was taken |
 | 0x10 | `due_year: i16` | Compared with FAR:a7a0 |
 
 The loan logic is in `finance_weekly_processing` (212a:0a6d, around 212a:0eee):
@@ -190,7 +197,7 @@ record is scanned), with a used slot (`principal != 0`):
   loan's due month (table DS:07b8, `char`, indexed by the month FAR:2e8e). This makes a payment day of
   e.g. 31 fall on the 30th / 28th in short months.
 * On a payment day `interest_payment` is subtracted from the current manager's `balance` (32-bit with
-  borrow). The interest is not credited to anyone.
+  borrow). The interest is not credited here; `finance_monthly_income` (24a4:2636) adds every other manager's interest to the monthly income (finance.md §4.1).
 * If additionally `due_year == year` (FAR:a7a0 as a `long`) and `due_month == month` (with FAR:2e90 ==
   0), the game shows "Ihr Kredit von der Bank wurde heute faellig", subtracts `principal` from the
   current manager's balance, adds it to manager `l`'s balance if `l != 4` (bank = 4), and clears the
@@ -308,7 +315,9 @@ xrefs/decompilations above and MEMORY_MAP.
 
 | Address | Suggested name | Meaning | Evidence |
 |---|---|---|---|
-| DS:0630 | `base_interest_rate` | `int` random walk (±1 per call, clamped 2..7) from which DS:060e is derived | 212a:000a |
+| DS:0630 | `base_interest_rate` | `int` random walk (clamped 2..7, initial 5) from which DS:060e is derived. `GameState::base_interest_rate` | 212a:000a |
+| DS:0644[4] | `month_balance_sum` | `long` sum of each manager's daily balances in the current month. `GameState::month_balance_sum` | 212a:0a6d, 24a4:2636 |
+| DS:5256 | `quarter_flag` | Set at the end of months 0, 4, 8. `GameState::quarter_flag` | 212a:0a6d |
 | DS:07a7[4] | `player_group_bounds` | Index bounds of the 4 player groups in FAR:57dd | 422b:035c |
 | DS:0286[5], DS:028c[4] | `training_defaults` | Initial values for `Manager::training_141/146` | 18bc:2184 |
 | DS:2271 | `points_per_win` | Points for a win (2 or 3). `< 3` means the 2-point display | 3a41:2d33 |
@@ -353,7 +362,7 @@ xrefs/decompilations above and MEMORY_MAP.
 
 ## 7. Open questions
 
-* `Manager` bytes 0x01f..0x03d, 0x106..0x109, 0x14a..0x15d, 0x196..0x1a3 and 0x1c4..0x1db have not been
+* `Manager` bytes 0x01f..0x03d, 0x106..0x109, 0x14a..0x15d and 0x1c4..0x1db have not been
   traced, and the meaning of most of 0x10a..0x146.
 * Which competition each of DS:07ac..07af is (inferred only from the prestige bonus order).
 * Blocks 30, 31, 36..40, 44, 46, 51..60 have only been located (users known); their meaning is not

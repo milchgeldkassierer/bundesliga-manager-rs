@@ -994,6 +994,6 @@ condition item `S+0x28` costs nothing. Ticket income is not computed here (see O
 7. `training_camp_apply`: `random(0, 20*t/30)` and `random(0, t)` with `t < 0` give a non-positive
    modulus in `random_range`; behaviour then depends on the MSC `%` (and `t == -1` → modulus 0 → divide
    error). Not observed; needs a decision for the port.
-8. `DS:066c[m][0]` is called "salary" in state.md; here it is added to the monthly **income** and cut to
-   1/10 when `FAR:0000[2m]` expires, which fits a sponsor contract better. The owner of
-   `screen_manager_contract` 362f:2be8 should settle the name.
+8. `DS:066c[m][0]` was called "salary" in state.md; here it is added to the monthly **income** and cut to
+   1/10 when `FAR:0000[2m]` expires, which fits a sponsor contract better, so state.md and the port now
+   call it main-sponsor income. The owner of `screen_manager_contract` 362f:2be8 should confirm the name.

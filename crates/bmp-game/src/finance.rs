@@ -1,0 +1,989 @@
+//! Finances: loans, the daily money processing and the monthly income and
+//! expenses of a human manager.
+//!
+//! Every function works on the manager whose turn it is
+//! ([`GameState::current_manager`], FAR:304a), like the original. Dialogs
+//! and messages the original shows in the middle of the processing are
+//! returned as [`FinanceEvent`]s in the order they appear.
+//!
+//! The screens that call into this module call `copy_protection_penalty`
+//! 16c7:09f9, which draws random numbers only while the copy protection has
+//! not been passed (DS:05ac == 0). The port assumes it was passed, so that
+//! call never touches the RNG.
+//!
+//! Full documentation with Ghidra addresses: `docs/re/logic/finance.md`.
+
+use crate::rng::{Rng, clamp_int, ldiv, lmul, lrem, lshr};
+use crate::state::{Credit, GameState, Manager};
+
+/// Days per month, DS:07b8 (no leap years).
+pub const DAYS_IN_MONTH: [i8; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/// Lender index of the bank in [`Manager::credits`]; 0..=3 are human managers.
+pub const BANK: usize = 4;
+
+/// Highest fan count that still grows at month end (exclusive).
+const FAN_GROWTH_LIMIT: u16 = 95;
+
+/// Something the original shows to the player while processing a day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FinanceEvent {
+    /// Construction of stadium item `item` (0..7, see [`Manager::stadium`])
+    /// finished (`stadium_construction_daily`: shown at once or queued as a
+    /// message, depending on the day counter).
+    ConstructionFinished {
+        /// Stadium item index.
+        item: usize,
+    },
+    /// "Ihr Kredit von <lender> wurde heute fällig." The loan was repaid.
+    LoanDue {
+        /// Lender index: a human manager, or [`BANK`].
+        lender: usize,
+    },
+}
+
+/// Which field of the loans [`credit_sum`] adds up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CreditField {
+    /// `which == 0`: the principal still owed.
+    Principal,
+    /// `which != 0`: the interest paid per payment.
+    Interest,
+}
+
+fn current_index(state: &GameState) -> usize {
+    usize::try_from(state.current_manager).expect("FAR:304a holds a manager index")
+}
+
+/// Days of `month` (FAR:2e8e; the original indexes the table with its low word).
+fn days_in_month(month: i32) -> i8 {
+    DAYS_IN_MONTH[month as u16 as usize]
+}
+
+/// Sums [`CreditField`] over the used loan slots of `manager` taken from
+/// `lender`, or from every lender when `lender` is `None` (the original's
+/// lender 99).
+///
+/// Origin: BMMAIN.EXE 212a:0f8d (credit_sum)
+pub fn credit_sum(manager: &Manager, field: CreditField, lender: Option<usize>) -> i32 {
+    manager
+        .credits
+        .iter()
+        .enumerate()
+        .filter(|&(c, _)| lender.is_none_or(|l| l == c))
+        .flat_map(|(_, slots)| slots)
+        .filter(|credit| credit.principal != 0)
+        .fold(0i32, |sum, credit| {
+            sum.wrapping_add(match field {
+                CreditField::Principal => credit.principal,
+                CreditField::Interest => credit.interest_payment,
+            })
+        })
+}
+
+/// Takes a loan of `amount` at `rate` percent from `lender` for `months`
+/// months, dated today. Returns `false` when all three slots of that lender
+/// are used (the original then shows "Schon 3 Kredite aufgenommen."). The
+/// caller moves the money.
+///
+/// The payment day is today, or the last day of the due month when that is
+/// shorter.
+///
+/// # Panics
+/// When the due month `month + months` is negative (the original reads
+/// outside the days-per-month table).
+///
+/// Origin: BMMAIN.EXE 212a:1039 (credit_take)
+pub fn credit_take(
+    state: &mut GameState,
+    amount: i32,
+    rate: i8,
+    lender: usize,
+    months: i8,
+) -> bool {
+    let m = current_index(state);
+    let (day, month, year) = (state.day_of_month, state.month, state.year);
+    let Some(credit) = state.managers[m].credits[lender]
+        .iter_mut()
+        .find(|c| c.principal == 0)
+    else {
+        return false;
+    };
+    let mut due_year = year as i16;
+    let mut due_month = (month as i8).wrapping_add(months);
+    while due_month > 11 {
+        due_year = due_year.wrapping_add(1);
+        due_month -= 12;
+    }
+    let due_days = DAYS_IN_MONTH[due_month as u8 as usize];
+    *credit = Credit {
+        principal: amount,
+        interest_payment: ldiv(lmul(i32::from(rate), amount), 100),
+        day_taken: day as u8,
+        payment_day: if i32::from(due_days) >= day {
+            day as u8
+        } else {
+            due_days as u8
+        },
+        month_taken: month as u8,
+        due_month: due_month as u8,
+        rate: rate as u8,
+        unknown_0d: credit.unknown_0d,
+        year_taken: year as i16,
+        due_year,
+    };
+    true
+}
+
+/// The six bank interest rates (3, 6, .., 18 months) derived from the base
+/// rate: start at the base and step toward the far end of 2..7 with a
+/// shrinking step, e.g. base 7 gives `7 5 3 2 2 2`, base 3 `3 5 6 7 7 7`.
+fn interest_rate_table(base: i16) -> [u8; 6] {
+    let mut rates = [0u8; 6];
+    let mut v = base;
+    let mut step = 5 - base;
+    for rate in &mut rates {
+        *rate = v as u8;
+        v = v.wrapping_add(step);
+        if step > 1 {
+            step -= 1;
+        }
+        clamp_int(&mut v, 2, 7);
+    }
+    rates
+}
+
+/// Random walk of the base interest rate (DS:0630, clamped 2..7) and
+/// recomputation of the bank rates from it. At levels above 2 the rate only
+/// rises (0..+3), otherwise it moves by -1..+1.
+///
+/// Origin: BMMAIN.EXE 212a:000a (interest_rates_update)
+pub fn interest_rates_update(state: &mut GameState, rng: &mut Rng) {
+    let hard = i16::from(state.level as i8 > 2);
+    let r = rng.random_range(0, hard + 2);
+    state.base_interest_rate = state.base_interest_rate.wrapping_add(r + hard - 1);
+    clamp_int(&mut state.base_interest_rate, 2, 7);
+    state.interest_rates = interest_rate_table(state.base_interest_rate);
+}
+
+/// Counts down the construction-firm locks (shared by all managers, so they
+/// tick once per manager and day) and the current manager's construction
+/// days; a finished item adds its pending amount to the current one.
+///
+/// Origin: BMMAIN.EXE 1000:20e1 (stadium_construction_daily)
+pub fn stadium_construction_daily(state: &mut GameState) -> Vec<FinanceEvent> {
+    let m = current_index(state);
+    let mut events = Vec::new();
+    for item in 0..7 {
+        let lock = &mut state.construction[item];
+        *lock = lock.saturating_sub(1);
+        let manager = &mut state.managers[m];
+        if !count_down(&mut manager.build_days[item]) {
+            continue;
+        }
+        let [current, pending] = &mut manager.stadium[item];
+        *current = current.wrapping_add(*pending);
+        *pending = 0;
+        events.push(FinanceEvent::ConstructionFinished { item });
+    }
+    events
+}
+
+/// Decrements a running countdown; `true` when this step reached 0.
+fn count_down<T: Copy + PartialEq + From<u8> + std::ops::Sub<Output = T>>(value: &mut T) -> bool {
+    let zero = T::from(0);
+    if *value == zero {
+        return false;
+    }
+    *value = *value - T::from(1);
+    *value == zero
+}
+
+/// Runs one day of the current manager's finances. Called once per day for
+/// every human manager, so the camp counters and the interest-rate walk run
+/// `DS:07ab` times per day.
+///
+/// Order, as in the original: stadium construction, training-camp counters
+/// (one `random(20, 70)` each, also for a counter that is already 0),
+/// `random(0, 60)` for the interest-rate walk, the balance sum, the camp
+/// cooldown, the month-end block on the last day of the month, then the
+/// loan payments.
+///
+/// Origin: BMMAIN.EXE 212a:0a6d (finance_daily_processing)
+pub fn finance_daily_processing(state: &mut GameState, rng: &mut Rng) -> Vec<FinanceEvent> {
+    let m = current_index(state);
+    let mut events = stadium_construction_daily(state);
+
+    for counter in &mut state.ds_0620 {
+        let step = i16::from(*counter < 0) - i16::from(*counter > 0);
+        *counter = counter.wrapping_add(step);
+        if *counter == 0 {
+            *counter = rng.random_range(20, 70).wrapping_mul(step);
+        }
+    }
+    if rng.random_range(0, 60) == 0 {
+        interest_rates_update(state, rng);
+    }
+
+    state.month_balance_sum[m] = state.month_balance_sum[m].wrapping_add(state.managers[m].balance);
+    let manager = &mut state.managers[m];
+    manager.camp_cooldown = manager.camp_cooldown.saturating_sub(1);
+
+    if i32::from(days_in_month(state.month)) == state.day_of_month {
+        month_end(state, rng, m);
+    }
+    pay_loans(state, m, &mut events);
+    events
+}
+
+/// Month-end part of [`finance_daily_processing`].
+fn month_end(state: &mut GameState, rng: &mut Rng, m: usize) {
+    if lrem(state.month, 4) == 0 {
+        state.quarter_flag = 1;
+    }
+    let contracts = &mut state.manager_contracts[m];
+    if count_down(&mut state.far_0000[2 * m]) {
+        contracts[0] = ldiv(contracts[0], 10);
+    }
+    for i in 0..6 {
+        if count_down(&mut state.far_4b9a[2 * (6 * m + i)]) {
+            contracts[1 + i] = ldiv(contracts[1 + i], 10);
+        }
+    }
+    let manager = &mut state.managers[m];
+    manager.fatigue_sum = manager
+        .fatigue_sum
+        .wrapping_add((u16::from(manager.training_intensity) * 4) as i16);
+
+    let income = finance_monthly_income(state);
+    let manager = &mut state.managers[m];
+    manager.balance = manager.balance.wrapping_add(income);
+    let expenses = finance_monthly_expenses(state);
+    let manager = &mut state.managers[m];
+    manager.balance = manager.balance.wrapping_sub(expenses);
+    state.month_balance_sum[m] = 0;
+
+    if manager.fans < FAN_GROWTH_LIMIT {
+        let promotion = ldiv(state.manager_contracts[m][8], 2500);
+        if promotion > i32::from(rng.random_range(0, 22)) {
+            manager.fans = manager.fans.wrapping_add(rng.random_range(1, 3) as u16);
+        }
+    }
+}
+
+/// Loan part of [`finance_daily_processing`]: pays the interest of every
+/// loan whose payment day is today and repays the loans due this month.
+///
+/// A loan also pays on the last day of a month that is shorter than its due
+/// month, whatever its payment day, so a loan whose payment day comes
+/// earlier in that month pays twice. Kept as in the original.
+fn pay_loans(state: &mut GameState, m: usize, events: &mut Vec<FinanceEvent>) {
+    let today = state.day_of_month;
+    let month_days = days_in_month(state.month);
+    for lender in 0..5 {
+        for slot in 0..3 {
+            let credit = &state.managers[m].credits[lender][slot];
+            if credit.principal == 0 {
+                continue;
+            }
+            let pay = i32::from(credit.payment_day) == today
+                || (DAYS_IN_MONTH[usize::from(credit.due_month)] > month_days
+                    && i32::from(month_days) == today);
+            if !pay {
+                continue;
+            }
+            let due = i32::from(credit.due_year) == state.year
+                && i32::from(credit.due_month) == state.month;
+            let (principal, interest) = (credit.principal, credit.interest_payment);
+            let manager = &mut state.managers[m];
+            manager.balance = manager.balance.wrapping_sub(interest);
+            if !due {
+                continue;
+            }
+            events.push(FinanceEvent::LoanDue { lender });
+            manager.balance = manager.balance.wrapping_sub(principal);
+            // The interest field is left stale, as in the original.
+            manager.credits[lender][slot].principal = 0;
+            if lender != BANK {
+                let creditor = &mut state.managers[lender];
+                creditor.balance = creditor.balance.wrapping_add(principal);
+            }
+        }
+    }
+}
+
+// TODO(re): ticket income (attendance x ticket price) is presumably booked in
+// the match area (FUN_2a58_20b2); the meaning of the base income is
+// unconfirmed (finance.md §7 q.1).
+/// The current manager's monthly income: a base income from club strength,
+/// squad size and fans (also stored in [`Manager::income_base`]), the eight
+/// contract incomes, **every** interest payment of the other human managers
+/// (to the bank and to third managers too), and interest on a positive
+/// average balance of the month. Clamped to 0. Sets
+/// [`GameState::saved_manager`] to the current manager as a side effect.
+///
+/// Ticket income is not part of it.
+///
+/// # Panics
+/// When the balance sum is positive and the day of month is 0 (R6003).
+///
+/// Origin: BMMAIN.EXE 24a4:2636 (finance_monthly_income; Ghidra
+/// finance_weekly_income)
+pub fn finance_monthly_income(state: &mut GameState) -> i32 {
+    let m = current_index(state);
+    let players = i32::from(state.squad_player_count(m));
+    let club = &state.clubs[usize::from(state.managers[m].team)];
+    let strength = club
+        .strength
+        .iter()
+        .zip(&club.base_strength)
+        .fold(0i32, |s, (&now, &base)| {
+            s + i32::from(now) + i32::from(base)
+        });
+    let strength = lmul(strength, 15);
+    let manager = &mut state.managers[m];
+    let mut income = ldiv(lmul(strength, players), 3)
+        .wrapping_add(i32::from(manager.fans / 5))
+        .wrapping_add(25);
+    manager.income_base = income as u16;
+    for &contract in &state.manager_contracts[m][..8] {
+        income = income.wrapping_add(contract);
+    }
+    state.saved_manager = state.current_manager;
+    for (other, manager) in state.active_managers().iter().enumerate() {
+        if other != m {
+            income = income.wrapping_add(credit_sum(manager, CreditField::Interest, None));
+        }
+    }
+    let balance_sum = state.month_balance_sum[m];
+    if balance_sum > 0 {
+        income = income.wrapping_add(ldiv(ldiv(balance_sum, state.day_of_month), 75));
+    }
+    income.max(0)
+}
+
+/// The current manager's monthly expenses: a fixed 150 000, the salaries
+/// (market values) of the own squad and of the pool players the manager
+/// owns, stadium running costs by league, the extra cost item, training
+/// intensity, the cost contract item, the own loan interest, 10 % of a
+/// negative average balance and a wealth charge above 2 Mio. DM (not in the
+/// amateur league). Clamped to 0.
+///
+/// # Panics
+/// When the balance sum is negative and the day of month is 0 (R6003).
+///
+/// Origin: BMMAIN.EXE 24a4:2822 (finance_monthly_expenses; Ghidra
+/// finance_weekly_expenses)
+pub fn finance_monthly_expenses(state: &GameState) -> i32 {
+    let m = current_index(state);
+    let manager = &state.managers[m];
+    let mut expenses: i32 = 150_000;
+    let own = usize::from(state.squad_player_count(m));
+    for player in &state.squads[m][..own] {
+        expenses = expenses.wrapping_add(player.market_value);
+    }
+    let pool = usize::from(state.squad_player_count(4));
+    for player in &state.squads[4][..pool] {
+        if usize::from(state.players[usize::from(player.player_id)].owner_manager) == m {
+            expenses = expenses.wrapping_add(player.market_value);
+        }
+    }
+
+    let item = |i: usize| manager.stadium[i][0];
+    let mut stadium = lmul(item(6), 3000)
+        .wrapping_add(lmul(item(3).wrapping_add(item(4)), 1375))
+        .wrapping_add(lmul(3 - i32::from(manager.league), 43750))
+        .wrapping_add(item(0));
+    stadium = lmul(stadium, 2).wrapping_add(item(1));
+    stadium = lmul(stadium, 2).wrapping_add(item(2));
+    expenses = expenses.wrapping_add(stadium);
+
+    expenses = expenses.wrapping_add(i32::from(manager.extra_costs));
+    let training = lshr(lmul(i32::from(manager.training_intensity) + 1, 10_000), 4);
+    expenses = expenses.wrapping_add(training.wrapping_add(state.manager_contracts[m][8]));
+    expenses = expenses.wrapping_add(credit_sum(manager, CreditField::Interest, None));
+
+    let balance_sum = state.month_balance_sum[m];
+    if balance_sum < 0 {
+        expenses = expenses.wrapping_add(ldiv(ldiv(balance_sum, state.day_of_month), -10));
+    }
+    if manager.league != 2 && manager.balance > 2_000_000 {
+        let mut charge = lmul(ldiv(manager.balance - 2_000_000, 500_000), 30_000) + 20_000;
+        if manager.balance >= 4_000_000 {
+            charge = ldiv(lmul(charge, 3), 2);
+        }
+        expenses = expenses.wrapping_add(charge);
+    }
+    expenses.max(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::Layout;
+    use bmp_formats::savegame::SaveGame;
+
+    /// One active manager (index 0), dated `day`.`month + 1`.`year`.
+    fn state_on(day: i32, month: i32, year: i32) -> GameState {
+        let mut s = GameState::zeroed();
+        s.manager_count = 1;
+        s.day_of_month = day;
+        s.month = month;
+        s.year = year;
+        s
+    }
+
+    fn loan(
+        principal: i32,
+        interest: i32,
+        payment_day: u8,
+        due_month: u8,
+        due_year: i16,
+    ) -> Credit {
+        Credit {
+            principal,
+            interest_payment: interest,
+            payment_day,
+            due_month,
+            due_year,
+            ..Credit::zeroed()
+        }
+    }
+
+    /// A generator whose first `random(0, 60)` draw skips the interest-rate walk.
+    fn rng_without_rate_walk() -> Rng {
+        (0..=u16::MAX)
+            .map(Rng::new)
+            .find(|&r| {
+                let mut r = r;
+                r.random_range(0, 60) != 0
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn credit_sum_filters_lender_and_free_slots() {
+        let mut m = GameState::zeroed().managers[0].clone();
+        m.credits[1][0] = loan(1000, 70, 1, 0, 0);
+        m.credits[1][2] = loan(500, 15, 1, 0, 0);
+        m.credits[BANK][1] = loan(4000, 200, 1, 0, 0);
+        m.credits[2][0] = loan(0, 999, 1, 0, 0); // free slot with stale interest
+        assert_eq!(credit_sum(&m, CreditField::Principal, Some(1)), 1500);
+        assert_eq!(credit_sum(&m, CreditField::Interest, Some(1)), 85);
+        assert_eq!(credit_sum(&m, CreditField::Principal, None), 5500);
+        assert_eq!(credit_sum(&m, CreditField::Interest, None), 285);
+        assert_eq!(credit_sum(&m, CreditField::Interest, Some(2)), 0);
+    }
+
+    #[test]
+    fn credit_take_dates_and_interest() {
+        // 15 Nov 1966 + 3 months: due February 1967, payment day 15.
+        let mut s = state_on(15, 10, 1966);
+        assert!(credit_take(&mut s, 100_000, 7, BANK, 3));
+        let c = &s.managers[0].credits[BANK][0];
+        assert_eq!(
+            (c.principal, c.interest_payment, c.rate),
+            (100_000, 7000, 7)
+        );
+        assert_eq!((c.day_taken, c.month_taken, c.year_taken), (15, 10, 1966));
+        assert_eq!((c.payment_day, c.due_month, c.due_year), (15, 1, 1967));
+
+        // 31 Jan + 1 month: February is shorter, so the payment day is 28.
+        let mut s = state_on(31, 0, 1966);
+        assert!(credit_take(&mut s, 333, 3, 1, 1));
+        let c = &s.managers[0].credits[1][0];
+        assert_eq!((c.payment_day, c.due_month, c.due_year), (28, 1, 1966));
+        assert_eq!(c.interest_payment, 9); // 999 / 100 truncates
+
+        // Interest truncates toward zero; 24 months from December cross two years.
+        let mut s = state_on(1, 11, 1966);
+        assert!(credit_take(&mut s, -333, 3, 2, 24));
+        let c = &s.managers[0].credits[2][0];
+        assert_eq!(c.interest_payment, -9);
+        assert_eq!((c.due_month, c.due_year), (11, 1968));
+    }
+
+    #[test]
+    fn credit_take_refuses_a_fourth_loan_per_lender() {
+        let mut s = state_on(1, 0, 1966);
+        for amount in [1000, 2000, 3000] {
+            assert!(credit_take(&mut s, amount, 5, BANK, 3));
+        }
+        let before = s.clone();
+        assert!(!credit_take(&mut s, 4000, 5, BANK, 3));
+        assert_eq!(s, before);
+        assert!(credit_take(&mut s, 4000, 5, 0, 3));
+        // A repaid slot is reused first.
+        s.managers[0].credits[BANK][1].principal = 0;
+        assert!(credit_take(&mut s, 5000, 5, BANK, 3));
+        assert_eq!(s.managers[0].credits[BANK][1].principal, 5000);
+    }
+
+    #[test]
+    fn interest_rate_table_examples() {
+        assert_eq!(interest_rate_table(7), [7, 5, 3, 2, 2, 2]);
+        assert_eq!(interest_rate_table(5), [5; 6]);
+        assert_eq!(interest_rate_table(3), [3, 5, 6, 7, 7, 7]);
+        assert_eq!(interest_rate_table(2), [2, 5, 7, 7, 7, 7]);
+    }
+
+    #[test]
+    fn interest_rates_update_walks_and_clamps() {
+        for (level, base, hard) in [(0u8, 2i16, 0i16), (2, 7, 0), (3, 6, 1), (5, 7, 1)] {
+            for seed in 0..20 {
+                let mut s = GameState::zeroed();
+                s.level = level;
+                s.base_interest_rate = base;
+                let mut rng = Rng::new(seed);
+                let mut want = rng;
+                let r = want.random_range(0, hard + 2);
+                interest_rates_update(&mut s, &mut rng);
+                assert_eq!(rng, want, "one draw");
+                assert_eq!(s.base_interest_rate, (base + r + hard - 1).clamp(2, 7));
+                assert_eq!(s.interest_rates, interest_rate_table(s.base_interest_rate));
+            }
+        }
+    }
+
+    #[test]
+    fn construction_finishes_items_and_ticks_locks() {
+        let mut s = state_on(10, 0, 1966);
+        s.construction = [3, 0, 1, 0, 0, 0, 0];
+        let m = &mut s.managers[0];
+        m.build_days = [1, 2, 0, 0, 0, 0, 0];
+        m.stadium[0] = [1000, 500];
+        m.stadium[1] = [2000, 700];
+        m.stadium[2] = [0, 300]; // pending without a countdown never finishes
+
+        let events = stadium_construction_daily(&mut s);
+        assert_eq!(events, [FinanceEvent::ConstructionFinished { item: 0 }]);
+        assert_eq!(s.construction, [2, 0, 0, 0, 0, 0, 0]);
+        let m = &s.managers[0];
+        assert_eq!(m.build_days, [0, 1, 0, 0, 0, 0, 0]);
+        assert_eq!(m.stadium[0], [1500, 0]);
+        assert_eq!(m.stadium[1], [2000, 700]);
+
+        let events = stadium_construction_daily(&mut s);
+        assert_eq!(events, [FinanceEvent::ConstructionFinished { item: 1 }]);
+        assert_eq!(s.managers[0].stadium[1], [2700, 0]);
+        assert_eq!(s.managers[0].stadium[2], [0, 300]);
+    }
+
+    #[test]
+    fn loans_pay_on_payment_day_and_last_day_of_shorter_months() {
+        // Payment day 15, due in January (31 days) 1967.
+        let paid = |day: i32, month: i32| {
+            let mut s = state_on(day, month, 1966);
+            s.managers[0].balance = 10_000;
+            s.managers[0].credits[BANK][0] = loan(50_000, 300, 15, 0, 1967);
+            let mut events = Vec::new();
+            pay_loans(&mut s, 0, &mut events);
+            assert!(events.is_empty());
+            10_000 - s.managers[0].balance
+        };
+        assert_eq!(paid(15, 3), 300);
+        assert_eq!(paid(29, 3), 0);
+        assert_eq!(paid(30, 3), 300); // second payment in April
+        assert_eq!(paid(28, 1), 300); // end of February
+        assert_eq!(paid(31, 4), 0); // May is as long as January
+    }
+
+    #[test]
+    fn due_loans_are_repaid_to_the_lender() {
+        let mut s = state_on(15, 0, 1967);
+        s.manager_count = 3;
+        s.managers[0].balance = 100_000;
+        s.managers[2].balance = 1000;
+        s.managers[0].credits[2][1] = loan(40_000, 400, 15, 0, 1967);
+        s.managers[0].credits[BANK][0] = loan(20_000, 100, 15, 0, 1967);
+        s.managers[0].credits[BANK][2] = loan(30_000, 50, 15, 0, 1968); // next year
+        let mut events = Vec::new();
+        pay_loans(&mut s, 0, &mut events);
+        assert_eq!(
+            events,
+            [
+                FinanceEvent::LoanDue { lender: 2 },
+                FinanceEvent::LoanDue { lender: BANK }
+            ]
+        );
+        assert_eq!(
+            s.managers[0].balance,
+            100_000 - 400 - 40_000 - 100 - 20_000 - 50
+        );
+        assert_eq!(s.managers[2].balance, 41_000);
+        let c = &s.managers[0].credits;
+        assert_eq!((c[2][1].principal, c[2][1].interest_payment), (0, 400));
+        assert_eq!(c[BANK][0].principal, 0);
+        assert_eq!(c[BANK][2].principal, 30_000);
+    }
+
+    #[test]
+    fn monthly_income_by_hand() {
+        let mut s = state_on(30, 3, 1966);
+        s.manager_count = 3;
+        s.current_manager = 1;
+        s.saved_manager = 0;
+        s.managers[1].team = 3;
+        s.clubs[3].strength = [10, 20, 30];
+        s.clubs[3].base_strength = [5, 5, 5];
+        for slot in [0, 1, 5, 24] {
+            s.squads[1][slot].player_id = 9; // slot 24 is never counted
+        }
+        s.managers[1].fans = 47;
+        s.manager_contracts[1] = [1000, 100, 100, 100, 100, 100, 100, 7, 999_999];
+        // Interest paid by the other managers, whoever the lender is.
+        s.managers[0].credits[BANK][0] = loan(10_000, 300, 1, 0, 0);
+        s.managers[2].credits[0][0] = loan(10_000, 50, 1, 0, 0);
+        s.managers[2].credits[0][1] = loan(0, 999, 1, 0, 0);
+        s.managers[1].credits[BANK][0] = loan(10_000, 4000, 1, 0, 0); // own: not income
+        s.managers[3].credits[BANK][0] = loan(10_000, 5000, 1, 0, 0); // inactive slot
+        s.month_balance_sum[1] = 225_000;
+
+        // (75 * 15) * 3 / 3 + 47 / 5 + 25 = 1159
+        let base = 1159;
+        let want = base + 1607 + 350 + 225_000 / 30 / 75;
+        assert_eq!(finance_monthly_income(&mut s), want);
+        assert_eq!(s.managers[1].income_base, base as u16);
+        assert_eq!(s.saved_manager, 1);
+
+        s.month_balance_sum[1] = 224_999; // 7499 / 75 = 99
+        assert_eq!(finance_monthly_income(&mut s), want - 1);
+        s.month_balance_sum[1] = -1_000_000; // a negative sum is no income
+        assert_eq!(finance_monthly_income(&mut s), want - 100);
+
+        s.manager_contracts[1][0] = -1_000_000;
+        assert_eq!(finance_monthly_income(&mut s), 0);
+        assert_eq!(s.managers[1].income_base, base as u16);
+    }
+
+    #[test]
+    fn monthly_expenses_by_hand() {
+        let mut s = state_on(31, 0, 1966);
+        // Two occupied slots, but the scan walks slots 0..2: the empty slot 1
+        // counts, the player in slot 2 does not.
+        s.squads[0][0].player_id = 1;
+        s.squads[0][0].market_value = 20_000;
+        s.squads[0][1].market_value = 7;
+        s.squads[0][2].player_id = 2;
+        s.squads[0][2].market_value = 30_000;
+        // Pool players are paid by the manager who owns them.
+        s.squads[4][0].player_id = 5;
+        s.squads[4][0].market_value = 1000;
+        s.squads[4][1].player_id = 6;
+        s.squads[4][1].market_value = 2000;
+        s.players[5].owner_manager = 0;
+        s.players[6].owner_manager = 1;
+        let m = &mut s.managers[0];
+        m.league = 1;
+        m.stadium = [
+            [10_000, 99],
+            [20_000, 99],
+            [5000, 99],
+            [2, 1],
+            [1, 1],
+            [5, 1],
+            [3, 1],
+        ];
+        m.extra_costs = 1234;
+        m.training_intensity = 34;
+        m.balance = 1_000_000;
+        m.credits[BANK][0] = loan(10_000, 700, 1, 0, 0);
+        s.manager_contracts[0][8] = 5000;
+        s.month_balance_sum[0] = -310_000;
+
+        // Stadium: ((3*3000 + 3*1375 + 2*43750 + 10000) * 2 + 20000) * 2 + 5000.
+        let stadium = 487_500;
+        let training = (35 * 10_000) >> 4;
+        let want = 150_000 + 20_007 + 1000 + stadium + 1234 + training + 5000 + 700 + 1000;
+        assert_eq!(finance_monthly_expenses(&s), want);
+
+        s.manager_contracts[0][8] = -10_000_000;
+        assert_eq!(finance_monthly_expenses(&s), 0);
+    }
+
+    #[test]
+    fn monthly_expenses_wealth_charge() {
+        let charge = |balance: i32, league: u8| {
+            let mut s = state_on(31, 0, 1966);
+            s.managers[0].league = league;
+            let base = finance_monthly_expenses(&s);
+            s.managers[0].balance = balance;
+            finance_monthly_expenses(&s) - base
+        };
+        assert_eq!(charge(2_000_000, 0), 0);
+        assert_eq!(charge(2_000_001, 0), 20_000);
+        assert_eq!(charge(2_499_999, 1), 20_000);
+        assert_eq!(charge(2_500_000, 1), 50_000);
+        assert_eq!(charge(3_999_999, 0), 110_000);
+        assert_eq!(charge(4_000_000, 0), 210_000);
+        assert_eq!(charge(9_000_000, 2), 0);
+    }
+
+    #[test]
+    fn daily_processing_draws_in_original_order() {
+        let mut s = state_on(10, 0, 1966);
+        s.ds_0620 = [-1, 1, 0, 5, -5, 2, -2, 70];
+        s.managers[0].balance = 1234;
+        s.managers[0].camp_cooldown = 3;
+        s.month_balance_sum[0] = 10;
+        let mut rng = rng_without_rate_walk();
+        let mut want = rng;
+        let a = want.random_range(20, 70);
+        let b = want.random_range(20, 70);
+        want.random_range(20, 70); // counter already 0: drawn, times 0
+        want.random_range(0, 60);
+
+        let events = finance_daily_processing(&mut s, &mut rng);
+        assert!(events.is_empty());
+        assert_eq!(rng, want);
+        assert_eq!(s.ds_0620, [a, -b, 0, 4, -4, 1, -1, 69]);
+        assert_eq!(s.month_balance_sum[0], 1244);
+        assert_eq!(s.managers[0].camp_cooldown, 2);
+        assert_eq!(s.interest_rates, [0; 6]);
+    }
+
+    #[test]
+    fn daily_processing_runs_the_rate_walk_after_the_counters() {
+        let mut s = state_on(10, 0, 1966);
+        s.ds_0620 = [0; 8];
+        let counter_draws = |rng: &mut Rng| {
+            for _ in 0..8 {
+                rng.random_range(20, 70);
+            }
+        };
+        let mut rng = (0..=u16::MAX)
+            .map(Rng::new)
+            .find(|r| {
+                let mut r = *r;
+                counter_draws(&mut r);
+                r.random_range(0, 60) == 0
+            })
+            .unwrap();
+        let mut want = rng;
+        counter_draws(&mut want);
+        want.random_range(0, 60);
+        let mut walked = s.clone();
+        interest_rates_update(&mut walked, &mut want);
+
+        finance_daily_processing(&mut s, &mut rng);
+        assert_eq!(rng, want);
+        assert_eq!(s.base_interest_rate, walked.base_interest_rate);
+        assert_eq!(s.interest_rates, walked.interest_rates);
+        assert_ne!(s.interest_rates, [0; 6]);
+    }
+
+    /// January 31: month-end state shared by the month-end tests.
+    fn month_end_state() -> GameState {
+        let mut s = state_on(31, 0, 1966);
+        s.ds_0620 = [10; 8]; // no counter reaches 0: no draws
+        s.managers[0].team = 1;
+        s.managers[0].fans = 50;
+        s.managers[0].training_intensity = 10;
+        s.managers[0].fatigue_sum = 7;
+        s.manager_contracts[0] = [50_000, 6000, 6000, 6000, 6000, 6000, 6000, 0, 50_000];
+        s.far_0000[0] = 1;
+        s.far_4b9a[0] = 3;
+        s.far_4b9a[2] = 1;
+        s
+    }
+
+    #[test]
+    fn month_end_books_income_then_expenses() {
+        let mut s = month_end_state();
+        s.managers[0].balance = 1_990_000;
+        s.managers[0].credits[BANK][0] = loan(10_000, 100, 31, 5, 1966);
+        let mut rng = rng_without_rate_walk();
+
+        // The month-end block sees today's balance in the sum and the
+        // shortened contracts; expenses see the balance after the income.
+        let mut want = s.clone();
+        want.month_balance_sum[0] = 1_990_000;
+        want.manager_contracts[0][0] = 5000;
+        want.manager_contracts[0][2] = 600;
+        let income = finance_monthly_income(&mut want);
+        want.managers[0].balance += income;
+        let expenses = finance_monthly_expenses(&want);
+        assert!(expenses > finance_monthly_expenses(&month_end_state()) + 20_000);
+
+        let mut draws = rng;
+        draws.random_range(0, 60);
+        let promotion_draw = draws.random_range(0, 22);
+        let grow = if 20 > i32::from(promotion_draw) {
+            draws.random_range(1, 3) as u16
+        } else {
+            0
+        };
+
+        finance_daily_processing(&mut s, &mut rng);
+        assert_eq!(rng, draws);
+        let m = &s.managers[0];
+        assert_eq!(m.balance, 1_990_000 + income - expenses - 100);
+        assert_eq!(m.income_base, want.managers[0].income_base);
+        assert_eq!(m.fatigue_sum, 47);
+        assert_eq!(m.fans, 50 + grow);
+        assert_eq!(s.month_balance_sum[0], 0);
+        assert_eq!(s.quarter_flag, 1);
+        assert_eq!(s.far_0000[0], 0);
+        assert_eq!(&s.far_4b9a[..4], &[2, 0, 0, 0]);
+        assert_eq!(
+            s.manager_contracts[0],
+            [5000, 6000, 600, 6000, 6000, 6000, 6000, 0, 50_000]
+        );
+    }
+
+    #[test]
+    fn month_end_fans_draw_only_below_95() {
+        for (fans, month, quarter) in [(95u16, 1, 0u8), (u16::MAX, 4, 1)] {
+            let mut s = month_end_state();
+            s.month = month;
+            s.day_of_month = i32::from(DAYS_IN_MONTH[month as usize]);
+            s.managers[0].fans = fans;
+            let mut rng = rng_without_rate_walk();
+            let mut want = rng;
+            want.random_range(0, 60);
+            finance_daily_processing(&mut s, &mut rng);
+            assert_eq!(rng, want);
+            assert_eq!(s.managers[0].fans, fans);
+            assert_eq!(s.quarter_flag, quarter);
+        }
+    }
+
+    #[test]
+    fn month_end_works_on_the_current_manager_only() {
+        // A seed that skips the rate walk and whose promotion draw `d` lets
+        // a divisor other than 2500 flip the result at the 2500 * (d + 1)
+        // boundary.
+        let (rng, d) = (0..=u16::MAX)
+            .map(Rng::new)
+            .find_map(|r| {
+                let mut draws = r;
+                (draws.random_range(0, 60) != 0)
+                    .then(|| draws.random_range(0, 22))
+                    .filter(|d| (5..=20).contains(d))
+                    .map(|d| (r, i32::from(d)))
+            })
+            .unwrap();
+
+        for (promotion, grows) in [(2500 * (d + 1), true), (2500 * (d + 1) - 1, false)] {
+            let mut s = month_end_state();
+            s.manager_count = 3;
+            s.current_manager = 2;
+            s.managers[2] = s.managers[0].clone();
+            s.manager_contracts[0][8] = 0;
+            s.manager_contracts[2] = [80_000, 7000, 7000, 7000, 7000, 7000, 7000, 0, promotion];
+            s.far_0000[4] = 1;
+            s.far_4b9a[2 * (6 * 2)] = 3;
+            s.far_4b9a[2 * (6 * 2 + 1)] = 1;
+            let before = s.clone();
+
+            let mut rng = rng;
+            let mut want = rng;
+            want.random_range(0, 60);
+            want.random_range(0, 22);
+            let growth = if grows {
+                want.random_range(1, 3) as u16
+            } else {
+                0
+            };
+
+            finance_daily_processing(&mut s, &mut rng);
+            assert_eq!(rng, want, "{promotion}");
+            assert_eq!(s.managers[2].fans, 50 + growth, "{promotion}");
+            assert_eq!(s.managers[2].fatigue_sum, 47);
+            assert_eq!(s.far_0000[4], 0);
+            assert_eq!(&s.far_4b9a[24..28], &[2, 0, 0, 0]);
+            assert_eq!(
+                s.manager_contracts[2],
+                [8000, 7000, 700, 7000, 7000, 7000, 7000, 0, promotion]
+            );
+
+            assert_eq!(s.managers[0], before.managers[0]);
+            assert_eq!(s.managers[1], before.managers[1]);
+            assert_eq!(&s.far_0000[..4], &before.far_0000[..4]);
+            assert_eq!(&s.far_4b9a[..24], &before.far_4b9a[..24]);
+            assert_eq!(&s.manager_contracts[..2], &before.manager_contracts[..2]);
+        }
+    }
+
+    /// `None` only when `BMP_DATA` is unset; a missing save fails the test.
+    fn load(name: &str) -> Option<GameState> {
+        let path = bmp_formats::data_dir()?.join(name);
+        let data = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        Some(GameState::from_savegame(&SaveGame::parse(&data).unwrap()).unwrap())
+    }
+
+    const SAVES: [&str; 6] = [
+        "07072019.MAN",
+        "2020-JUN.MAN",
+        "2021-AUG.MAN",
+        "AUTOSAVE.MAN",
+        "BMP/AUTOSAVE.MAN",
+        "BMP/MICHEL1.MAN",
+    ];
+
+    #[test]
+    fn real_saves_hold_loans_and_rates_this_module_produces() {
+        for name in SAVES {
+            let Some(s) = load(name) else { continue };
+            let initial = [7, 6, 5, 4, 3, 2];
+            assert!(
+                s.interest_rates == initial
+                    || (2..=7).any(|b| interest_rate_table(b) == s.interest_rates),
+                "{name}: {:?}",
+                s.interest_rates
+            );
+            for (m, manager) in s.active_managers().iter().enumerate() {
+                for (lender, slots) in manager.credits.iter().enumerate() {
+                    for c in slots.iter().filter(|c| c.principal != 0) {
+                        let months = (i32::from(c.due_year) * 12 + i32::from(c.due_month))
+                            - (i32::from(c.year_taken) * 12 + i32::from(c.month_taken));
+                        let mut t = state_on(
+                            i32::from(c.day_taken),
+                            i32::from(c.month_taken),
+                            i32::from(c.year_taken),
+                        );
+                        t.current_manager = m as i8;
+                        assert!(credit_take(
+                            &mut t,
+                            c.principal,
+                            c.rate as i8,
+                            lender,
+                            months as i8
+                        ));
+                        assert_eq!(&t.managers[m].credits[lender][0], c, "{name}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn real_save_income_base_matches() {
+        // Saved right after the statistics screen recomputed the income.
+        let Some(mut s) = load("2021-AUG.MAN") else {
+            return;
+        };
+        let saved = s.managers[0].income_base;
+        finance_monthly_income(&mut s);
+        assert_eq!(s.managers[0].income_base, saved);
+        assert_eq!(saved, 32592);
+    }
+
+    #[test]
+    fn real_saves_three_days_of_camp_counters() {
+        // The same game three days apart (21 and 24 January 1965).
+        let (Some(mut s), Some(later)) = (load("BMP/AUTOSAVE.MAN"), load("BMP/MICHEL1.MAN")) else {
+            return;
+        };
+        let mut rng = Rng::default();
+        for day in 22..=24 {
+            s.day_of_month = day;
+            finance_daily_processing(&mut s, &mut rng);
+        }
+        // Counter 2 hit 0 on the first day and was re-drawn; the rest only step.
+        for i in (0..8).filter(|&i| i != 2) {
+            assert_eq!(s.ds_0620[i], later.ds_0620[i], "counter {i}");
+        }
+        assert!(later.ds_0620[2] > 0 && s.ds_0620[2] > 0);
+    }
+}
