@@ -8,3 +8,4 @@ File names: `YYYY-MM-DD_NN_<source>_<screen>.png`, where `<source>` is `original
 | 2026-10-24 | `01_original_dosbox_software2000_logo` | Reference: publisher logo, mode 13h 320x200 |
 | 2026-10-24 | `02_original_dosbox_title` | Reference: title screen, 320x240 (mode X), PIC/22.CP |
 | 2026-10-24 | `03_original_dosbox_club_select` | Reference: club/manager selection after clicking the title, 320x240 |
+| 2026-10-24 | `04_original_dosbox_manager_name_entry` | Reference: club carousel rotates; manager name typed into slot 1 |
