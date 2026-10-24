@@ -223,7 +223,9 @@ pub fn streak_text(
 /// club's popularity, at least 0.
 ///
 /// # Panics
-/// When the popularity `M(m)[0x10a]` is 0 (R6003 in the original).
+/// When the popularity `M(m)[0x10a]` is 0 (R6003 in the original). The game
+/// never writes 0 and `GameState::from_savegame` refuses a save with 0
+/// (`state.md` §1.1).
 ///
 /// Origin: BMMAIN.EXE 24a4:2b15 (finance_weekly_balance_per_round)
 pub fn finance_needed_attendance(state: &mut GameState) -> i32 {

@@ -896,6 +896,15 @@ pub enum StateError {
         /// player or flattened squad record for a per-record field.
         index: usize,
     },
+    /// Entry `index` of the saved field `field` holds a value the game never
+    /// writes and the port would divide by zero, overflow or find no picture
+    /// file for (`state.md` §1.1).
+    SavedValue {
+        /// The field, named after its row of the value table in `state.md` §1.1.
+        field: &'static str,
+        /// Entry of the field; 0 for a scalar, the manager for a per-manager field.
+        index: usize,
+    },
 }
 
 /// Size levels of the [`Manager::stadium`] items 3 and 4 (floodlight,
@@ -914,6 +923,17 @@ pub const OFFERS_PER_KIND: usize = 10;
 /// Smallest [`Player::position_value`] that is no position:
 /// [`Player::position_band`] has to be 0 (GK) ..= 3 (ATT).
 const POSITION_CODE_LIMIT: u8 = POSITION_BAND_WIDTH * POSITION_BANDS;
+
+/// Highest [`GameState::day_counter`] the game reaches: the season-end loop
+/// counts on to day 364 (28 July of the next year) and one more before it
+/// resets the counter to 0. `calendar_compute_date` 1310:1190 maps 0..=365
+/// to a real date.
+pub const DAY_COUNTER_MAX: i32 = 0x16d;
+
+/// Crest codes (`Club::crest & 0x7f`) with a picture `PIC\<code + 0x50>.VGA`
+/// in the shipped data: `PIC\80.VGA` ..= `PIC\147.VGA`. MANA.DAT holds the
+/// codes 0..=63.
+pub const CREST_CODES: u8 = 0x44;
 
 /// Calls `$m!(index, field, Type)` for every save block in save order.
 macro_rules! for_each_block {
@@ -1003,8 +1023,10 @@ macro_rules! decode_blocks {
         /// save lacks get their program-start values. Unlike the original it
         /// rejects a save with a player whose position code would hang the
         /// lineup logic ([`StateError::PositionCode`]), a squad record past
-        /// the player table ([`StateError::SquadPlayerId`]) or another saved
-        /// index past its table ([`StateError::SavedIndex`]), `state.md` §1.1.
+        /// the player table ([`StateError::SquadPlayerId`]), another saved
+        /// index past its table ([`StateError::SavedIndex`]) or a value the
+        /// port would divide by zero, overflow or find no picture for
+        /// ([`StateError::SavedValue`]), `state.md` §1.1.
         ///
         /// Origin: BMMAIN.EXE 422b:120c (screen_load_game; block reads mirror
         /// savegame_write_man 422b:07fe)
@@ -1031,6 +1053,7 @@ macro_rules! decode_blocks {
             state.check_position_codes()?;
             state.check_squad_records()?;
             state.check_saved_indices()?;
+            state.check_saved_values()?;
             Ok(state)
         }
 
@@ -1284,6 +1307,37 @@ impl GameState {
                 p,
                 usize::from(player.team) < clubs || player.team == 0xff,
             )?;
+        }
+        Ok(())
+    }
+
+    /// The load-time guard of [`GameState::from_savegame`] for the saved
+    /// values that are no table index but would still stop the port: the
+    /// first one outside every value the game writes.
+    // DEVIATION: the original loads such a save and then aborts or misbehaves:
+    // a ticket price `Manager::value_10a` of 0 divides by zero in
+    // `finance_weekly_balance_per_round` 24a4:2b15 (R6003), a day counter past
+    // the season overflows or gives day 0 of a month in `calendar_compute_date`
+    // 1310:1190, and a crest code without a picture file ends the program in
+    // `screen_load_game` (`fatal_error_exit` 2). The port would panic there
+    // (`state.md` §1.1).
+    fn check_saved_values(&self) -> Result<(), StateError> {
+        let check = |field: &'static str, index: usize, ok: bool| {
+            if ok {
+                Ok(())
+            } else {
+                Err(StateError::SavedValue { field, index })
+            }
+        };
+        check(
+            "day_counter",
+            0,
+            (0..=DAY_COUNTER_MAX).contains(&self.day_counter),
+        )?;
+        for (m, man) in self.active_managers().iter().enumerate() {
+            check("active managers.value_10a", m, man.value_10a != 0)?;
+            let crest = self.clubs.get(usize::from(man.team)).map_or(0, |c| c.crest);
+            check("active managers' club crest", m, crest & 0x7f < CREST_CODES)?;
         }
         Ok(())
     }
@@ -1958,6 +2012,8 @@ pub(crate) mod tests {
         };
         for (field, index, patch) in cases {
             let mut s = GameState::zeroed();
+            // A ticket price the game writes (`check_saved_values`).
+            s.managers.iter_mut().for_each(|m| m.value_10a = 10);
             patch(&mut s, false);
             assert!(reload(&mut s).is_ok(), "{field} {index}");
             patch(&mut s, true);
@@ -1967,6 +2023,72 @@ pub(crate) mod tests {
                 "{field} {index}"
             );
         }
+    }
+
+    /// One change per guarded value: the extremes the game writes load, the
+    /// values past them are rejected naming the field and entry.
+    #[test]
+    fn saved_value_outside_game_range_is_rejected() {
+        type Patch = fn(&mut GameState);
+        let ok: [Patch; 6] = [
+            |s| s.day_counter = 0,
+            |s| s.day_counter = DAY_COUNTER_MAX,
+            |s| s.managers[3].value_10a = 1,
+            |s| s.managers[3].value_10a = 0xff,
+            |s| s.clubs[63].crest = CREST_CODES - 1,
+            // Bit 7 is a runtime flag, not part of the code.
+            |s| s.clubs[63].crest = 0x80 | (CREST_CODES - 1),
+        ];
+        let bad: [(&str, usize, Patch); 8] = [
+            ("day_counter", 0, |s| s.day_counter = -1),
+            // calendar_compute_date: day 0 of a month.
+            ("day_counter", 0, |s| s.day_counter = -0xd2),
+            ("day_counter", 0, |s| s.day_counter = DAY_COUNTER_MAX + 1),
+            // calendar_compute_date: `day += 0xd2` overflows.
+            ("day_counter", 0, |s| s.day_counter = i32::MAX - 0x10),
+            ("day_counter", 0, |s| s.day_counter = i32::MAX),
+            ("active managers.value_10a", 3, |s| {
+                s.managers[3].value_10a = 0
+            }),
+            ("active managers' club crest", 3, |s| {
+                s.clubs[63].crest = CREST_CODES
+            }),
+            ("active managers' club crest", 3, |s| {
+                s.clubs[63].crest = 0xff
+            }),
+        ];
+        let base = || {
+            let mut s = GameState::zeroed();
+            s.manager_count = 4;
+            s.messages = vec![Vec::new(); 4];
+            for (m, man) in s.managers.iter_mut().enumerate() {
+                man.team = 60 + m as u8;
+                man.value_10a = 10;
+            }
+            s
+        };
+        assert!(reload(&base()).is_ok());
+        for (i, patch) in ok.iter().enumerate() {
+            let mut s = base();
+            patch(&mut s);
+            assert!(reload(&s).is_ok(), "case {i}");
+        }
+        for (field, index, patch) in bad {
+            let mut s = base();
+            patch(&mut s);
+            assert_eq!(
+                reload(&s),
+                Err(StateError::SavedValue { field, index }),
+                "{field} {index}"
+            );
+        }
+        // Only the active managers count: an empty slot keeps 0.
+        let mut s = base();
+        s.manager_count = 3;
+        s.messages.truncate(3);
+        s.managers[3].value_10a = 0;
+        s.clubs[63].crest = 0x7f;
+        assert!(reload(&s).is_ok());
     }
 
     /// Number of used entries of `league_teams[tier]`: the longest prefix

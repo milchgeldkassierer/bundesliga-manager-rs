@@ -23,7 +23,7 @@ symbols, where the function is still called `FUN_xxxx_xxxx`.
 |---|---|---|
 | `trait Layout` (`LEN`, `read`, `write`, `zeroed`, `from_bytes`, `to_bytes`) | – | Fixed little-endian layout. It is implemented for `u8 i8 u16 i16 u32 i32`, for arrays of any `Layout`, and for every record. MSC tables are packed, so there is no padding |
 | `record!` macro | – | Declares a struct whose fields lie back to back. `LEN` is the sum of the field sizes |
-| `GameState::from_savegame(&SaveGame)` | 422b:120c `screen_load_game` | Decodes every block into its typed field. Header, string table and tail are kept. Refuses a save with a value the port would hang on or index a fixed table with (`StateError::PositionCode`, `SquadPlayerId`, `SavedIndex`, §1.1) |
+| `GameState::from_savegame(&SaveGame)` | 422b:120c `screen_load_game` | Decodes every block into its typed field. Header, string table and tail are kept. Refuses a save with a value the port would hang on or index a fixed table with (`StateError::PositionCode`, `SquadPlayerId`, `SavedIndex`, `SavedValue`, §1.1) |
 | `GameState::to_savegame()` | 422b:07fe `screen_save_game` / `savegame_write_man` | Inverse of `from_savegame`. `SaveGame::to_bytes` then recomputes the cipher and checksums |
 | `GameState::zeroed()` | – | All blocks zero, empty message table, V2 header. Not the program-start state |
 | `GameState::program_start()` | DGROUP image (segment 5cb3) | `zeroed()` plus the initialised DGROUP blocks: #0, #5, #8, #24, #34, #36, #41, #42, #47, #50, #51, #54, #57..#59 (every far block starts zero) |
@@ -47,6 +47,9 @@ The tests check that:
   load;
 * for every guarded field of §1.1 the last game-written value (or sentinel) loads and the next one is
   rejected with `StateError::SavedIndex`;
+* for every guarded value of §1.1 the game-written extremes load and the values past them (a day counter
+  of -1, -0xd2, 366 and near `i32::MAX`, a ticket price of 0, a crest code of 0x44 or 0x7f) are rejected
+  with `StateError::SavedValue`;
 * `manager_index_of_team` behaves as described;
 * `sort_league_table` applies the four keys in order (synthetic test), and re-sorting the full
   (view 1) table of every real save is a no-op;
@@ -128,9 +131,18 @@ office turn of a season played on from every shipped save (checked once when the
 | `Manager::round_log[..][3]` stage `& 7` | `UI[121 + stage]` (`ui_stage_text`, stage texts then competition names) | stage 1..7; 7 reads `UI[128]` = "Pokal der Landesmeister" | no: every value 0..=7 resolves inside the string table, as in the original |
 | `league_teams` duplicates | `cups.rs` qualifier table | a permutation | no: not a range; each id is in range |
 
-Not table indices, so not part of this guard: `day_counter` (debug overflow, or a day of month 0 that
-divides by zero), `Manager::value_10a` = 0 (division in `finance_needed_attendance`) and a crest code
-without a `PIC` picture file.
+**Other saved values** (`StateError::SavedValue { field, index }`, #131). Three saved values are no
+table index but still stop the original, and would make the port panic. `check_saved_values` refuses
+them the same way (`// DEVIATION:`), with the same bounds rule: every value the game writes loads.
+
+| Field | Original's behaviour (port panic site) | Game writes | Guarded |
+|---|---|---|---|
+| `day_counter` | `calendar_compute_date` 1310:1190 adds 0xd2: a value near `i32::MAX` overflows (a panic in a debug build, a negative date in the original), a value of -0xd2 or less gives day 0 of a month (or a negative one), which the monthly balance interest in `finance.rs` divides by (`ldiv`, R6003 in the original) | 0 (`SEASON_START_DAY`) up to 365 (`DAY_COUNTER_MAX`: the season-end loop runs to 28 July of the next year and counts once more before the reset) | yes, `0..=0x16d` |
+| `Manager::value_10a` (ticket price, "popularity"), active managers | `finance_weekly_balance_per_round` 24a4:2b15 divides by it: R6003 (integer divide by 0) in the original, a panic in `finance_needed_attendance` (`stats_screens.rs`) | 10..=18 from `newgame.rs` (`(one_year + 8) * 2 - tier * 3`), 5..=25 from the stadium ticket spinner; `record_position_history` writes a table position only for a round counter of 0, which the game never has (rounds start at 1) | yes, `!= 0` |
+| `Club::crest & 0x7f` of the active managers' clubs | `screen_load_game` 422b:120c loads `PIC\<code + 0x50>.VGA` for the office crests: no file ends the program (`fatal_error_exit` 2), the port's `expect` in `load_game.rs` | 0..=63 from MANA.DAT (`crest_index`); the shipped `PIC` files cover 0..=0x43 (`PIC\80.VGA`..`PIC\147.VGA`, `CREST_CODES`) | yes, `< 0x44` |
+
+Other crest readers need no guard: the live match loads a missing picture through `if let Ok` and
+skips it, and the start menu draws crests from MANA.DAT, not from a save.
 
 ## 2. The 61 save blocks
 

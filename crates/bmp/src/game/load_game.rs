@@ -466,7 +466,9 @@ pub enum LoadError {
     /// A player's position code would hang the lineup logic
     /// ([`StateError::PositionCode`]), or a squad record or another saved
     /// index is past its table ([`StateError::SquadPlayerId`],
-    /// [`StateError::SavedIndex`]); the original loads such a save.
+    /// [`StateError::SavedIndex`]), or a saved value would divide by zero,
+    /// overflow or name a missing crest picture ([`StateError::SavedValue`]);
+    /// the original loads such a save.
     Corrupt,
 }
 
@@ -510,7 +512,8 @@ pub fn read_save(saves: &mut SaveSession, path: &Path) -> Result<GameState, Load
     let result = GameState::from_savegame(&save).map_err(|e| match e {
         StateError::PositionCode { .. }
         | StateError::SquadPlayerId { .. }
-        | StateError::SavedIndex { .. } => LoadError::Corrupt,
+        | StateError::SavedIndex { .. }
+        | StateError::SavedValue { .. } => LoadError::Corrupt,
         StateError::BlockSize { .. } | StateError::BlockCount => LoadError::Disk,
     });
     // DEVIATION: the original has no corrupt-save refusal (it loads the save and
@@ -638,6 +641,7 @@ pub fn screen_load_game(
         let code = state.clubs.get(team).map_or(0, |c| c.crest) & 0x7f;
         let spr = host
             .load_picture(u16::from(code) + 0x50)
+            // `GameState::from_savegame` refuses a crest code without a picture.
             .expect("crest picture (fatal_error_exit 2 in the original)");
         host.g
             .blit_bitmap(spr, 0, 0, screen_crest, 0x29 * m as i16, 0, 0x28, 0x26);
@@ -708,6 +712,7 @@ pub(crate) fn find_case_insensitive(path: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bmp_game::state::{CREST_CODES, DAY_COUNTER_MAX};
 
     #[test]
     fn save_id_history_rejects_repeats_and_keeps_fifty() {
@@ -1020,6 +1025,34 @@ mod tests {
         assert!(!still_there, "MACH SCHON! deletes the file");
     }
 
+    /// Gives the club of manager 0 crest code [`CREST_CODES`], the first
+    /// without a `PIC` picture file.
+    fn corrupt_crest(state: &mut GameState) {
+        let team = usize::from(state.managers[0].team);
+        state.clubs[team].crest = CREST_CODES;
+    }
+
+    /// The saved values that are no index (`state.md` §1.1): a ticket price of
+    /// 0, a day counter that overflows or gives day 0 of a month, a crest code
+    /// without a picture.
+    #[test]
+    fn save_with_an_out_of_range_value_is_corrupt() {
+        type Corrupt = fn(&mut GameState);
+        let cases: [(&str, Corrupt); 5] = [
+            ("popularity", |s| s.managers[0].value_10a = 0),
+            ("day-max", |s| s.day_counter = i32::MAX - 0x10),
+            ("day-zero", |s| s.day_counter = -0xd2),
+            ("day-past", |s| s.day_counter = DAY_COUNTER_MAX + 1),
+            ("crest", corrupt_crest),
+        ];
+        for (tag, corrupt) in cases {
+            let Some(result) = read_corrupt_save(tag, corrupt) else {
+                return;
+            };
+            assert_eq!(result, Err(LoadError::Corrupt), "{tag}");
+        }
+    }
+
     #[test]
     fn save_with_an_out_of_range_position_code_is_corrupt() {
         let Some(result) = read_corrupt_save("position", corrupt_position_code) else {
@@ -1068,6 +1101,20 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn loading_a_corrupt_save_shows_the_message_and_loads_nothing() {
+        corrupt_save_end_to_end("position", corrupt_position_code);
+    }
+
+    /// The crest code of the loaded managers' clubs is drawn right after the
+    /// load: a code without a picture is refused before that `expect`.
+    #[cfg(unix)]
+    #[test]
+    fn loading_a_save_with_a_missing_crest_shows_the_message() {
+        corrupt_save_end_to_end("crest", corrupt_crest);
+    }
+
+    /// The body of the end-to-end corrupt-save tests, in a directory named after `tag`.
+    #[cfg(unix)]
+    fn corrupt_save_end_to_end(tag: &str, corrupt: fn(&mut GameState)) {
         use crate::host::{Host, parse_script};
         use bmp_game::rng::Rng;
 
@@ -1075,8 +1122,9 @@ mod tests {
             return;
         };
         // A game directory holding the original data (linked) plus the corrupt save.
-        let dir = std::env::temp_dir().join(format!("bmp-corrupt-load-{}", std::process::id()));
-        if write_corrupt_save(&dir, corrupt_position_code).is_none() {
+        let dir =
+            std::env::temp_dir().join(format!("bmp-corrupt-load-{tag}-{}", std::process::id()));
+        if write_corrupt_save(&dir, corrupt).is_none() {
             return;
         }
         for e in std::fs::read_dir(&data).unwrap().flatten() {
