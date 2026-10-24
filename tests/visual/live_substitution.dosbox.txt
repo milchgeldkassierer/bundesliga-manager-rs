@@ -1,0 +1,63 @@
+# DOSBox side of the live_substitution scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN, switches on the newspaper and the half-time and full-time fixtures of
+# the 2. Bundesliga, ends the turn with a click on the calendar sheet and plays the match
+# day: a click on the own club's crest in the score panel during FC Homburg's chance opens
+# the lineup screen, the substitute Sassen comes on, the live view goes on; the space key
+# during a later chance opens the settings screen (the pause), then the half-time fixtures,
+# the second half, the full-time fixtures, the table, the newspaper and the next office.
+# aim-seed: 55768
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+click 291 173 240
+wait 3
+click 161 132 240
+wait 5
+click 245 108 240
+wait 1
+click 187 43 240
+wait 1
+click 187 62 240
+wait 1
+shot s00-settings
+click 293 213 240
+wait 5
+shot s01-office
+click 280 75 240
+wait 2.4
+click 120 50 240
+wait 5
+shot s02-lineup
+click 100 86 240
+wait 0.5
+shot s03-substituted
+click 293 196 240
+wait 1.5
+shot s04-live-after
+wait 3
+key space
+wait 3
+shot s05-paused
+click 293 213 240
+wait 25
+shot s06-half-time
+click 293 213 240
+wait 50
+shot s07-full-time
+click 293 213 240
+wait 4
+shot s08-table
+click 293 213 240
+wait 4
+shot s09-newspaper
+click 160 120 240
+wait 8
+shot s10-office

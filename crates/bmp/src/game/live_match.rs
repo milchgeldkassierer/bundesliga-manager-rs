@@ -22,7 +22,7 @@ use crate::gfx::{
     BitmapId, Gfx, ui_draw_frame, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow,
     ui_fill_rect,
 };
-use crate::host::{Host, Run};
+use crate::host::{Host, LEFT_DOWN, Run};
 
 /// `DS:0632` / `DS:063c`: the origins of the four score panels.
 const PANEL_X: [i16; 4] = [0, 0xa1, 0, 0xa1];
@@ -87,6 +87,11 @@ pub struct LiveView {
     counters: [[u8; 6]; 4],
     /// `FAR:5350`: the home club of each score panel.
     slots: [u8; 4],
+    /// `FAR:4c6c + 2 k`: the home and away club of score panel `k` (0xff: no panel), written
+    /// by `match_draw_live_screen` and read by the panel click.
+    panel_teams: [[u8; 2]; 4],
+    /// The cup mask of the running period (`match_live_period`'s `cmask`).
+    cup_mask: u8,
     /// `FAR:2f22`: the half of the time bar (0 first, 1 second).
     half: u8,
     /// `FAR:2f18`: the direction of the ball marker.
@@ -375,11 +380,13 @@ fn match_draw_live_screen(
     host.screen_fade(0)?;
     host.g.rastport_clear(&host.rp, 0);
     let mut badge: u8 = 0;
+    live.panel_teams = [[0xff; 2]; 4];
     for i in 0..rt.live_matches.len().min(4) {
         let (x, y) = (PANEL_X[i], PANEL_Y[i]);
         blit(host, live.panel, 0, 0, x + 3, y, 0x9b, 0x72);
         let (h, a) = live_pairing(state, rt, i, cup_mode);
         live.slots[i] = h;
+        live.panel_teams[i] = [h, a];
         for (team, cx, nx0, nx1) in [
             (h, x + 0x16, x + 5, x + 0x4b),
             (a, x + 0x65, x + 0x55, x + 0x99),
@@ -491,6 +498,7 @@ pub fn period_start(
         live.half = 1;
     }
     ui.live.closed = false;
+    ui.live.cup_mask = cup_mask;
     ui.live.shown = rt.live_match_shown != 0;
     if !ui.live.shown {
         ui.host.screen_fade(1)?;
@@ -532,6 +540,119 @@ pub fn period_minute(
     }
     ui.live.minute = minute;
     Ok(())
+}
+
+/// The input poll of `minute`: the mouse event and a key are read (in every minute, shown
+/// live or not). The space key or a left click with the pointer at (0, 0) opens the settings
+/// screen over the office background ("Einstellungen", where the copy protection may draw
+/// from `rng`); the live screen is drawn again afterwards and the engine skips the minute.
+/// Returns whether the minute was paused.
+///
+/// Origin: BMMAIN.EXE 1310:2303 (match_live_period, 1310:2550..25ae)
+pub fn match_pause_poll(
+    ui: &mut ScreenSeason<'_>,
+    state: &mut GameState,
+    rt: &mut Runtime,
+    rng: &mut Rng,
+) -> Run<bool> {
+    let button = ui.host.input_poll_mouse()?;
+    let key = ui.host.read_key_nowait();
+    if key != b' ' && !(ui.host.mouse_xy() == (0, 0) && button == LEFT_DOWN) {
+        return Ok(false);
+    }
+    office_show_cached_background(ui.host)?;
+    ui.lend(rng, rt, |ui| {
+        super::disk::screen_settings(ui.host, ui.session, state)
+    })?;
+    let cup_mode = ui.live.cup_mask != 0;
+    match_draw_live_screen(ui, state, rt, cup_mode)?;
+    ui.host.screen_fade(1)?;
+    Ok(true)
+}
+
+/// The manager whose lineup a left click at (`mx`, `my`) opens while pairing `home` vs
+/// `away` is played, or `None`. Score panel `k` (scanned while its home club is not 0xff;
+/// panel 0 is always tested) has its origin at (`DS:0632[k]`, `DS:063c[k]`); the click has to
+/// lie strictly inside the crest row `y + 0x22 .. y + 0x49` and in the home half
+/// `x + 0x22 .. x + 0x4c` or the away half `x + 0x63 .. x + 0x8f`. The home club's manager is
+/// taken unless the click lies right of `x + 0x63` or the home club has none; then the away
+/// club's manager. He has to manage `home` or `away`.
+///
+/// Origin: BMMAIN.EXE 1310:3314 (match_handle_panel_click, the hit test)
+pub(crate) fn panel_click_manager(
+    state: &GameState,
+    panel_teams: &[[u8; 2]; 4],
+    mx: i16,
+    my: i16,
+    home: u8,
+    away: u8,
+) -> Option<u8> {
+    for (k, &[ph, pa]) in panel_teams.iter().enumerate() {
+        if k > 0 && ph == 0xff {
+            break;
+        }
+        let (x, y) = (PANEL_X[k], PANEL_Y[k]);
+        // mouse_state[0] (y) is tested against DS:063c, mouse_state[1] (x) against DS:0632.
+        let row = y + 0x22 < my && my < y + 0x49;
+        let half = (x + 0x22 < mx && mx < x + 0x4c) || (x + 0x63 < mx && mx < x + 0x8f);
+        if !(row && half) {
+            continue;
+        }
+        let mut mh = state.manager_index_of_team(ph, 0xff);
+        let ma = state.manager_index_of_team(0xff, pa) & 0x7f;
+        if mh == 0 && ma == 0 {
+            continue;
+        }
+        if mx > x + 0x63 {
+            mh = 0;
+        }
+        if mh == 0 {
+            mh = ma;
+        }
+        let m = mh.wrapping_sub(1);
+        if mh != 0
+            && state
+                .managers
+                .get(usize::from(m))
+                .is_some_and(|r| r.team == home || r.team == away)
+        {
+            return Some(m);
+        }
+    }
+    None
+}
+
+/// A left click on a live score panel in a minute of a period (the engine calls this for
+/// every pairing of a minute before its last): the panel's manager whose club plays `home`
+/// vs `away` gets his lineup screen (2a58:1f75, with the match's cup mask as its
+/// competition), after the button was released. Returns the manager; the engine re-plans
+/// the rest of his match (`match_reschedule_chances`). The click is the minute's mouse event
+/// (`FAR:2ea2`) as the events of earlier pairings left it; the lineup screen ends with no
+/// event pending, so one click opens at most one screen.
+///
+/// Origin: BMMAIN.EXE 1310:3314 (match_handle_panel_click)
+#[allow(clippy::too_many_arguments)]
+pub fn match_handle_panel_click(
+    ui: &mut ScreenSeason<'_>,
+    state: &mut GameState,
+    rt: &mut Runtime,
+    rng: &mut Rng,
+    cup_mask: u8,
+    home: u8,
+    away: u8,
+) -> (Option<u8>, Run<()>) {
+    if ui.host.button != LEFT_DOWN {
+        return (None, Ok(()));
+    }
+    let (mx, my) = ui.host.mouse_xy();
+    let Some(m) = panel_click_manager(state, &ui.live.panel_teams, mx, my, home, away) else {
+        return (None, Ok(()));
+    };
+    let r = ui
+        .host
+        .input_wait_release()
+        .and_then(|()| match_substitution_screen(ui, state, rt, rng, m, cup_mask));
+    (Some(m), r)
 }
 
 /// The end of a period: the crowd stops and the screen is cleared; then per played tier the
@@ -1088,6 +1209,70 @@ pub fn screen_title_winner(
 mod tests {
     use super::*;
     use bmp_game::news::news_record_match_event;
+
+    /// Two managers: 0 manages club 7 (home of panel 0), 1 manages club 12 (away of panel 1).
+    fn panel_state() -> (GameState, [[u8; 2]; 4]) {
+        let mut s = GameState::zeroed();
+        s.manager_count = 2;
+        s.managers[0].team = 7;
+        s.managers[1].team = 12;
+        (s, [[7, 8], [11, 12], [0xff; 2], [0xff; 2]])
+    }
+
+    #[test]
+    fn panel_hit_boxes_are_the_crest_halves_of_each_panel() {
+        let (s, teams) = panel_state();
+        // Panel 0 at (0, 0): home half x 0x23..=0x4b, crest row y 0x23..=0x48.
+        assert_eq!(panel_click_manager(&s, &teams, 0x23, 0x23, 7, 8), Some(0));
+        assert_eq!(panel_click_manager(&s, &teams, 0x4b, 0x48, 7, 8), Some(0));
+        // The bounds are exclusive.
+        assert_eq!(panel_click_manager(&s, &teams, 0x22, 0x30, 7, 8), None);
+        assert_eq!(panel_click_manager(&s, &teams, 0x4c, 0x30, 7, 8), None);
+        assert_eq!(panel_click_manager(&s, &teams, 0x30, 0x22, 7, 8), None);
+        assert_eq!(panel_click_manager(&s, &teams, 0x30, 0x49, 7, 8), None);
+        // Between the halves and right of the away half nothing happens.
+        assert_eq!(panel_click_manager(&s, &teams, 0x50, 0x30, 7, 8), None);
+        assert_eq!(panel_click_manager(&s, &teams, 0x8f, 0x30, 7, 8), None);
+        // Panel 1 at (0xa1, 0): its away half belongs to manager 1 (club 12).
+        assert_eq!(
+            panel_click_manager(&s, &teams, 0xa1 + 0x70, 0x30, 11, 12),
+            Some(1)
+        );
+        // Its home half: club 11 has no manager, so the away manager is taken.
+        assert_eq!(
+            panel_click_manager(&s, &teams, 0xa1 + 0x30, 0x30, 11, 12),
+            Some(1)
+        );
+        // Panel 2 (y 0x73) is not tested: the scan stops at its 0xff.
+        assert_eq!(
+            panel_click_manager(&s, &teams, 0x30, 0x73 + 0x30, 7, 8),
+            None
+        );
+    }
+
+    #[test]
+    fn panel_click_away_half_takes_the_away_manager() {
+        let (mut s, mut teams) = panel_state();
+        // Both clubs of panel 0 human: manager 0 at home (7), manager 1 away (12).
+        teams[0] = [7, 12];
+        s.managers[1].team = 12;
+        assert_eq!(panel_click_manager(&s, &teams, 0x30, 0x30, 7, 12), Some(0));
+        assert_eq!(panel_click_manager(&s, &teams, 0x70, 0x30, 7, 12), Some(1));
+        // An away-half click on a panel whose away club has no manager finds nobody.
+        teams[0] = [7, 8];
+        assert_eq!(panel_click_manager(&s, &teams, 0x70, 0x30, 7, 8), None);
+    }
+
+    #[test]
+    fn panel_click_needs_the_manager_in_the_pairing_being_played() {
+        let (s, teams) = panel_state();
+        // The click on panel 0 is only taken while manager 0's pairing (club 7) is played.
+        assert_eq!(panel_click_manager(&s, &teams, 0x30, 0x30, 3, 4), None);
+        assert_eq!(panel_click_manager(&s, &teams, 0x30, 0x30, 4, 7), Some(0));
+        // Panel 0 is tested even when no panel is registered (the original's do-while).
+        let none = [[0xff; 2]; 4];
+        assert_eq!(panel_click_manager(&s, &none, 0x30, 0x30, 7, 8), None);
+    }
 
     #[test]
     fn event_panels_of_the_first_two_rows_lie_in_the_lower_half() {

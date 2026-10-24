@@ -1478,8 +1478,33 @@ pub trait SeasonUi {
     fn period_minute(&mut self, _state: &GameState, _rt: &Runtime, _to: u8, _minute: u8) {}
 
     /// [`MatchHooks::pause_requested`]: the settings key or the pause click.
-    fn pause_requested(&mut self, _state: &mut GameState, _rt: &mut Runtime, _minute: u8) -> bool {
+    fn pause_requested(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _rng: &mut Rng,
+        _minute: u8,
+    ) -> bool {
         false
+    }
+
+    /// [`MatchHooks::match_handle_panel_click`]: a left click on a live score panel opens the
+    /// lineup screen of the panel's manager (2a58:1f75); returns that manager, whose match
+    /// the engine then re-plans.
+    #[allow(clippy::too_many_arguments)]
+    fn match_handle_panel_click(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _rng: &mut Rng,
+        _cup_mask: u8,
+        _home: u8,
+        _away: u8,
+        _slot: u8,
+        _comp: u8,
+        _minute: u8,
+    ) -> Option<u8> {
+        None
     }
 
     /// Display: [`MatchHooks::period_end`].
@@ -1586,8 +1611,30 @@ impl<U: SeasonUi + ?Sized> MatchHooks for SeasonHooks<'_, U> {
         self.0.ticker_event_end(state, rt, &event);
     }
 
-    fn pause_requested(&mut self, state: &mut GameState, rt: &mut Runtime, minute: u8) -> bool {
-        self.0.pause_requested(state, rt, minute)
+    fn pause_requested(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        rng: &mut Rng,
+        minute: u8,
+    ) -> bool {
+        self.0.pause_requested(state, rt, rng, minute)
+    }
+
+    fn match_handle_panel_click(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        rng: &mut Rng,
+        cup_mask: u8,
+        home: u8,
+        away: u8,
+        slot: u8,
+        comp: u8,
+        minute: u8,
+    ) -> Option<u8> {
+        self.0
+            .match_handle_panel_click(state, rt, rng, cup_mask, home, away, slot, comp, minute)
     }
 
     fn period_start(
@@ -2704,6 +2751,22 @@ mod tests {
     }
 
     #[test]
+    fn season_hooks_forward_the_pause_and_the_panel_click() {
+        let state = GameState::zeroed();
+        let mut ui = Headless::new(&state);
+        ui.pause_at = Some(7);
+        ui.panel_answer = Some(2);
+        let (mut s, mut rt, mut rng) = (state.clone(), Runtime::default(), Rng::new(1));
+        let hooks = &mut SeasonHooks(&mut ui);
+        assert!(!hooks.pause_requested(&mut s, &mut rt, &mut rng, 6));
+        assert!(hooks.pause_requested(&mut s, &mut rt, &mut rng, 7));
+        let m = hooks.match_handle_panel_click(&mut s, &mut rt, &mut rng, 2, 9, 11, 4, 12, 30);
+        assert_eq!(m, Some(2));
+        assert_eq!(ui.pause_polls, [6, 7]);
+        assert_eq!(ui.panel_clicks, [[2, 9, 11, 4, 12, 30]]);
+    }
+
+    #[test]
     fn fixture_index_dates() {
         let mut s = GameState::zeroed();
         s.start_year = 1965;
@@ -2740,6 +2803,12 @@ mod tests {
         game_over: bool,
         /// The office turn (1-based) in which a manager is added, as sub icon 5/5 does.
         add_manager_at: u32,
+        /// The minutes of every pause poll; a pause is answered in `pause_at`.
+        pause_polls: Vec<u8>,
+        pause_at: Option<u8>,
+        /// Every panel click call (cup mask, home, away, slot, comp, minute) and its answer.
+        panel_clicks: Vec<[u8; 6]>,
+        panel_answer: Option<u8>,
     }
 
     #[derive(Debug, PartialEq, Eq)]
@@ -2771,6 +2840,10 @@ mod tests {
                 winter_passes: 0,
                 game_over: false,
                 add_manager_at: 0,
+                pause_polls: Vec::new(),
+                pause_at: None,
+                panel_clicks: Vec::new(),
+                panel_answer: None,
             }
         }
     }
@@ -2841,6 +2914,32 @@ mod tests {
         }
         fn auto_play(&self) -> bool {
             self.auto_play
+        }
+        fn pause_requested(
+            &mut self,
+            _: &mut GameState,
+            _: &mut Runtime,
+            _: &mut Rng,
+            minute: u8,
+        ) -> bool {
+            self.pause_polls.push(minute);
+            self.pause_at == Some(minute)
+        }
+        fn match_handle_panel_click(
+            &mut self,
+            _: &mut GameState,
+            _: &mut Runtime,
+            _: &mut Rng,
+            cup_mask: u8,
+            home: u8,
+            away: u8,
+            slot: u8,
+            comp: u8,
+            minute: u8,
+        ) -> Option<u8> {
+            self.panel_clicks
+                .push([cup_mask, home, away, slot, comp, minute]);
+            self.panel_answer
         }
         fn goal_scene(
             &mut self,

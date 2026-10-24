@@ -788,14 +788,21 @@ Otherwise it calls `FUN_2a58_042f(arg, 0xff)`. Then it calls `match_draw_time_ba
 ### 1310:3314 `match_handle_panel_click`
 
 `u8 far (u8 cmask, u8 h, u8 a, u8 p, u8 c, u8 mi, u8 from, u8 to)`. It handles a left click on a live
-score panel (`k < 5`, until `FAR:4c6c[2k] == 0xff`; panel origin `x = DS:063c[k]`, `y = DS:0632[k]`,
-mouse `(x, y)` = `FAR:6dc0->[0..1]`). Hit boxes: `x+0x22 < mx < x+0x49`, and either the home half
-`y+0x22 < my < y+0x4c` or the away half `y+0x63 < my < y+0x8f`.
+score panel (`k = 0..4`, a do-while: panel 0 is always tested, the scan goes on while
+`FAR:4c6c[2k] != 0xff`). `FAR:4c6c + 2k` holds the home and away club of panel `k`; it is written by
+`match_draw_live_screen` 2a58:042f (all five reset to 0xff, then one pair per drawn panel). The panel
+origin is `x = DS:0632[k]` (0, 0xa1, 0, 0xa1, 0x28) and `y = DS:063c[k]` (0, 0, 0x73, 0x73, 0); the
+mouse is read once at entry, `my = FAR:6dc0->[0]`, `mx = FAR:6dc0->[1]` (1310:332e..3338, the same
+layout as in the squad screen). Hit boxes (strict): the crest row `y+0x22 < my < y+0x49`, and either the
+home half `x+0x22 < mx < x+0x4c` or the away half `x+0x63 < mx < x+0x8f`. The function always returns
+0. It does not stop after a hit (the panels are disjoint, so no second panel can match the same
+point), and the substitution screen ends with `input_wait_release`, so `FAR:2ea2` is 0 for the later
+pairings of the minute.
 
 ```c
 mh = manager_index_of_team(FAR:4c6c[2k], 0xff); ma = manager_index_of_team(0xff, FAR:4c6d[2k]) & 0x7f;
 if (mh || ma) {
-    if (my > y + 99) mh = 0;          /* lower half → away manager */
+    if (mx > x + 0x63) mh = 0;        /* right (away) half → away manager */
     if (mh == 0) mh = ma;
     if (mh && (mgr(mh-1).team == h || mgr(mh-1).team == a)) {
         input_wait_release();
@@ -1149,7 +1156,7 @@ literals `DS:5383` " !", `DS:538b` " (", `DS:538e` ")".
 | DS:0607 | u8 | opt_goal_scenes | 36 |
 | DS:0608 / 0609 / 060a | u8 | opt_show_dfb / opt_show_euro / opt_show_rescheduled | 36 |
 | DS:060c | u8 | fade_mode | 36 |
-| DS:0632[i], 063c[i] | i16[5] | panel_y / panel_x | — |
+| DS:0632[i], 063c[i] | i16[5] | panel_x / panel_y | — |
 | DS:063a | i16 | match_speed_option | 47 |
 | DS:0664[m] | u8 | manager_match_state (0x0b on match day, -1 per red card) | 41 |
 | DS:07ab | u8 | manager_count | 7 |
@@ -1231,8 +1238,10 @@ literals `DS:5383` " !", `DS:538b` " (", `DS:538e` ")".
    (RNG consumed and goal-minute tables filled). In the minute loop, cup days with `cup_mask > 1`
    process cups 1..3 regardless of the mask. Confirm with a trace that this matches gameplay; both
    readings are from the disassembly.
-4. Pausing (space, or a click at `FAR:6dc0 == (0,0)` with `FAR:2ea2 == 1`) skips the whole minute,
-   including its chances. The meaning of the `(0,0)` test (the mouse struct layout) is unconfirmed.
+4. Pausing (space, or a left click with the pointer at `(0, 0)` — both words of `FAR:6dc0` are 0)
+   opens the settings screen and skips the whole minute, including its chances. Confirmed by the
+   `live_substitution` visual scenario: the half-time and full-time results of the original match the
+   port only when the space key acts in the same minute, and pausing in another minute changes them.
 5. `matchday_play_rescheduled` clears only 19 of the 20 temporary result bytes and stores the
    temporary results in round `DS:225a[0]` of tier 0. Check against a save that has rescheduled games.
 6. `FAR:21d8[2*mi]` for `mi >= 0x81` (an away human club matched via the second argument) would write

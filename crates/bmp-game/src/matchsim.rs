@@ -451,9 +451,19 @@ pub trait MatchHooks {
         cup_mask: u8,
     );
 
-    /// The settings key or the pause click in `minute`: the original opens the settings
-    /// screen and skips the whole minute.
-    fn pause_requested(&mut self, _state: &mut GameState, _rt: &mut Runtime, _minute: u8) -> bool {
+    /// The input poll of `minute` (`input_poll_mouse`, `dos_direct_console_io`): the space
+    /// key or a left click with the pointer at (0, 0) opens the settings screen (whose copy
+    /// protection draws from `rng`), and the whole minute is skipped. Called for every
+    /// minute, shown live or not.
+    ///
+    /// Origin: BMMAIN.EXE 1310:2303 (match_live_period, 1310:2550..25ae)
+    fn pause_requested(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _rng: &mut Rng,
+        _minute: u8,
+    ) -> bool {
         false
     }
 
@@ -981,8 +991,8 @@ pub fn match_live_period<H: MatchHooks + ?Sized>(
 
     for minute in from..=to {
         hooks.period_minute(state, rt, to, minute);
-        // TODO(re): match.md §7 open question 4 — a pause skips the whole minute.
-        if hooks.pause_requested(state, rt, minute) {
+        // A pause skips the whole minute (match.md §7 item 4, confirmed by `live_substitution`).
+        if hooks.pause_requested(state, rt, rng, minute) {
             continue;
         }
         // TODO(#32): the pending message dialog (FAR:4bd8) of a right click.
@@ -1760,7 +1770,13 @@ mod tests {
             self.calls.push(Call::Newspaper(cup_mask));
         }
 
-        fn pause_requested(&mut self, _: &mut GameState, _: &mut Runtime, minute: u8) -> bool {
+        fn pause_requested(
+            &mut self,
+            _: &mut GameState,
+            _: &mut Runtime,
+            _: &mut Rng,
+            minute: u8,
+        ) -> bool {
             self.minutes.push(minute);
             self.pause_every_minute
         }

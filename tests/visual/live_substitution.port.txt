@@ -1,0 +1,109 @@
+# Port side of the live_substitution scenario (bmp run --script syntax, milliseconds):
+# load 07072019.MAN, switch on the newspaper and the half-time and full-time fixtures of the
+# 2. Bundesliga in the settings (as in matchday), end the turn with a click on the calendar
+# sheet and play the match day with a voluntary substitution and a pause: during the event
+# panel of FC Homburg's chance in the first half the crest of the own club (Bayer 05
+# Uerdingen, the right half of the top-left score panel) is clicked, which opens the lineup
+# screen in the next minute (match_handle_panel_click 1310:3314 -> 2a58:1f75); the save
+# fields only nine starters, so no one may go off ("Nicht weniger als 10 Spieler einsetzen
+# !"), and the substitute Sassen (14, MIT) comes on as the tenth man, which uses one of the
+# two outfield substitutions; the rest of the half is re-planned (match_reschedule_chances). During a later event panel the space key is pressed: the
+# next minute opens the settings screen and is skipped. Then the half-time fixtures, the
+# second half, the full-time fixtures, the table, the newspaper and the next office turn.
+# The click and the key are latched while an event panel is shown (the ticker events do not
+# poll the input), so both act in the minute after that event although the DOSBox timing is
+# not exact; the DOSBox run is about a second ahead of the port in the live view, so the space
+# key fell into the event panel after the one it was aimed at, and the port's wait is tuned
+# to the same panel (an earlier or later pause skips another minute and changes the half-time
+# results). Seed 55768 is the one of matchday; the capture aimed at it (aim-seed) and every
+# frame up to the lineup screen matches exactly. All frames match exactly except the mouse
+# pointer of the result screens (s06..s09, 114 pixels): in the reference run the pointer stayed
+# at (293, 196) when the settings were left with a click at (293, 213) (the move reached the
+# original while its pointer handler was busy, probably a timing race of the capture; the click
+# itself landed on the same buttons).
+# seed: 55768
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 161 132
+wait 100
+click 161 132
+wait 1000
+move 245 108
+wait 100
+click 245 108
+wait 300
+move 187 43
+wait 100
+click 187 43
+wait 300
+move 187 62
+wait 100
+click 187 62
+wait 300
+shot s00-settings
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot s01-office
+move 280 75
+wait 100
+click 280 75
+wait 2900
+move 120 50
+wait 100
+click 120 50
+wait 5000
+shot s02-lineup
+move 100 86
+wait 100
+click 100 86
+wait 500
+shot s03-substituted
+move 293 196
+wait 100
+click 293 196
+wait 3000
+shot s04-live-after
+wait 6000
+key space
+wait 3000
+shot s05-paused
+move 293 213
+wait 100
+click 293 213
+wait 30000
+shot s06-half-time
+move 293 213
+wait 100
+click 293 213
+wait 60000
+shot s07-full-time
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot s08-table
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot s09-newspaper
+move 160 120
+wait 100
+click 160 120
+wait 2000
+shot s10-office
+quit

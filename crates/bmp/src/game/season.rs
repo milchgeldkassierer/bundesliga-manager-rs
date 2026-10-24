@@ -413,6 +413,48 @@ impl SeasonUi for ScreenSeason<'_> {
         }
     }
 
+    fn pause_requested(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        rng: &mut Rng,
+        _minute: u8,
+    ) -> bool {
+        self.sync_format();
+        if self.quitting() {
+            return false;
+        }
+        match super::live_match::match_pause_poll(self, state, rt, rng) {
+            Ok(paused) => paused,
+            Err(q) => {
+                self.quit = Some(q);
+                false
+            }
+        }
+    }
+
+    fn match_handle_panel_click(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        rng: &mut Rng,
+        cup_mask: u8,
+        home: u8,
+        away: u8,
+        _slot: u8,
+        _comp: u8,
+        _minute: u8,
+    ) -> Option<u8> {
+        self.sync_format();
+        if self.quitting() {
+            return None;
+        }
+        let (m, r) =
+            super::live_match::match_handle_panel_click(self, state, rt, rng, cup_mask, home, away);
+        self.keep(r);
+        m
+    }
+
     fn period_end(
         &mut self,
         state: &mut GameState,
