@@ -278,10 +278,18 @@ every manager's `position_history` is updated (§3.1). The whole function only r
 
 | Off | Field | Meaning |
 |---|---|---|
+| 0x09 | `status: u8` | Bits 0-1 availability (0 available, 1 suspended, 2 injured, 3 unavailable); bits 6-7 transfer flags |
 | 0x0a | `lineup_position: u8` | Lineup position. 0 = not in the lineup, 1..11 = starting eleven (each used once), 12..15 = bench. `squad_count_by_flag(squad, mode)` 4091:1109 scans 24 slots (12 for squad 4): mode 0 counts `player_id != 0`, mode 1 counts `1 <= v < 12`, mode 2 counts `v >= 12` |
-| 0x0d | `suspended: u8` | Suspension flag |
+| 0x0b | `contract_years: u8` | Contract length in seasons |
+| 0x0c | `loan: u8` | Loan marker; `0x63` (`LOAN_PRICE_MODE`) selects price mode 3 of `transfer_value_calc` |
+| 0x0d | `suspended: u8` | Remaining suspension games |
+| 0x0e | `tendency: u8` | Tendency 35..65 (`player_init_random_attrs` 3277:000a) |
 | 0x0f | `player_id: u8` | Index into `players`. 0 = empty; the slots are zeroed in 422b:035c |
 | 0x10 | `skills: [u8;3]` | Random on a new game, mirrored into `Player::skills` |
+| 0x13 | `exhaustion: u8` | Exhaustion, `random_range(80,120)` on insert |
+| 0x14 | `traits: u8` | Bit field from `player_init_random_attrs` (bits 0-3, 4-5, 7) |
+| 0x19 | `board_col: i8` | Tactics-board column 0..7, -1 (`BOARD_UNPLACED`) = not placed |
+| 0x1a | `board_row: i8` | Tactics-board row 0..7 (0 = attack, 7 = goal) |
 | 0x28 | `market_value: i32` | Market value (`transfer_value_calc` 3277:25de) |
 | 0x30 | `message_ptr: u32` | Far pointer to a message. The loader patches it through the string table |
 

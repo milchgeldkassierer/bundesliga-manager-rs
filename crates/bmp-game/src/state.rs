@@ -142,6 +142,12 @@ pub const PLAYER_COUNT: usize = 151;
 pub const SQUAD_SIZE: usize = 25;
 /// Number of squads in FAR:774a (4 human squads + transfer pool).
 pub const SQUAD_COUNT: usize = 5;
+/// Value of [`SquadPlayer::board_col`] for a player without a tactics-board
+/// spot (0xff in the original).
+pub const BOARD_UNPLACED: i8 = -1;
+/// Value of [`SquadPlayer::loan`] that selects price mode 3 of
+/// `transfer_value_calc` 3277:25de (`'c'`).
+pub const LOAN_PRICE_MODE: u8 = 0x63;
 
 record! {
     /// One loan (`Kredit`), 0x12 bytes, inside [`Manager::credits`].
@@ -361,24 +367,43 @@ record! {
     /// Squad slot, 0x34 bytes at FAR:774a + (s * 25 + i) * 0x34 (save block 18).
     /// Squads 0..3 belong to the human managers, squad 4 is the transfer pool.
     pub struct SquadPlayer {
-        /// +0x00..0x09 not yet traced.
-        pub unknown_00: [u8; 10],
+        /// +0x00..0x08 cards, goals and appearance counters (`squad.md` §1.2).
+        pub unknown_00: [u8; 9],
+        /// +0x09 (FAR:7753) status bits: bits 0-1 availability (0 available,
+        /// 1 suspended, 2 injured, 3 unavailable), bits 6-7 transfer flags.
+        pub status: u8,
         /// +0x0a (FAR:7754) lineup position: 0 = not in the lineup,
         /// 1..=11 = starting eleven, 12.. = bench. `squad_count_by_flag`
         /// 4091:1109 mode 1 counts `1 <= v < 12`, mode 2 counts `v >= 12`.
         pub lineup_position: u8,
-        /// +0x0b..0x0c not yet traced.
-        pub unknown_0b: [u8; 2],
-        /// +0x0d (FAR:7757) suspension flag.
+        /// +0x0b (FAR:7755) contract length in seasons.
+        pub contract_years: u8,
+        /// +0x0c (FAR:7756) loan marker; [`LOAN_PRICE_MODE`] selects value
+        /// mode 3 of `transfer_value_calc` 3277:25de.
+        pub loan: u8,
+        /// +0x0d (FAR:7757) remaining suspension games.
         pub suspended: u8,
-        /// +0x0e not yet traced.
-        pub unknown_0e: u8,
+        /// +0x0e (FAR:7758) tendency, 35..=65 (`player_init_random_attrs`
+        /// 3277:000a).
+        pub tendency: u8,
         /// +0x0f (FAR:7759) index into [`GameState::players`], 0 = empty slot.
         pub player_id: u8,
         /// +0x10 (FAR:775a) three skill values (random on a new game).
         pub skills: [u8; 3],
-        /// +0x13..0x27 not yet traced.
-        pub unknown_13: [u8; 21],
+        /// +0x13 (FAR:775d) exhaustion, 80..=120 when the player joins.
+        pub exhaustion: u8,
+        /// +0x14 (FAR:775e) bit field from `player_init_random_attrs`
+        /// 3277:000a: bits 0-3, bits 4-5 and bit 7.
+        pub traits: u8,
+        /// +0x15..0x18 not traced by the squad port.
+        pub unknown_15: [u8; 4],
+        /// +0x19 (FAR:7763) tactics-board column 0..=7, [`BOARD_UNPLACED`] =
+        /// not placed.
+        pub board_col: i8,
+        /// +0x1a (FAR:7764) tactics-board row 0..=7 (0 = attack, 7 = goal).
+        pub board_row: i8,
+        /// +0x1b..0x27 not yet traced.
+        pub unknown_1b: [u8; 13],
         /// +0x28 (FAR:7772) market value `long` (`transfer_value_calc` 3277:25de);
         /// `finance_monthly_expenses` 24a4:2822 adds it as the monthly salary.
         pub market_value: i32,
@@ -981,6 +1006,25 @@ mod tests {
         assert_eq!(SquadPlayer::LEN, 0x34);
         assert_eq!(TeamTable::LEN, 0x36);
         assert_eq!(MatchHistory::LEN, 0x1394);
+    }
+
+    #[test]
+    fn squad_player_named_offsets() {
+        let bytes: Vec<u8> = (0..0x34).collect();
+        let p = SquadPlayer::from_bytes(&bytes).unwrap();
+        assert_eq!(p.status, 0x09);
+        assert_eq!(p.lineup_position, 0x0a);
+        assert_eq!(p.contract_years, 0x0b);
+        assert_eq!(p.loan, 0x0c);
+        assert_eq!(p.suspended, 0x0d);
+        assert_eq!(p.tendency, 0x0e);
+        assert_eq!(p.player_id, 0x0f);
+        assert_eq!(p.exhaustion, 0x13);
+        assert_eq!(p.traits, 0x14);
+        assert_eq!(p.board_col, 0x19);
+        assert_eq!(p.board_row, 0x1a);
+        assert_eq!(p.market_value, 0x2b2a_2928);
+        assert_eq!(p.to_bytes(), bytes);
     }
 
     #[test]

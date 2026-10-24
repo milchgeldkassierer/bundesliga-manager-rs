@@ -203,13 +203,20 @@ owned players), `1310:1c22` (foot suffix), `transfer_value_calc` 3277:25de,
 
 ## 3. Game logic (bit-exact)
 
+Port status: §3 is ported as `bmp_game::squad` (`crates/bmp-game/src/squad.rs`), together with
+`squad_count_by_flag` 4091:1109 (mode 0 only, as `squad_count_listed`), `count_players_of_owner` 212a:00b4, `player_init_random_attrs`
+3277:000a and `event_helper_25d5` 1cb5:25d5 (`squad_fix_position_mismatch`, season.md §4.4).
+`transfer_value_calc` is passed in by the caller. Deliberate deviations: `auto_lineup` skips the slot-13
+write when `bench_best` was never assigned (§3.1), and `squad_remove_player` does not call
+`message_find_owner` (the message table is not modelled yet).
+
 ### 3.1 `auto_lineup` 2ecd:3360
 
 Callers: `start_menu_new_or_load` 18bc:2184 (18bc:392f), `season_main_loop` (2a58:3229, 2a58:3717),
 `office_menu_dispatcher` (18bc:1186), `random_weekly_events` 1cb5:13bd (1cb5:1a3c, 1c1a, 25c8),
 1cb5:2b88 (2bf0), `board_handle_input` (formation change), `screen_transfer_market` 3277:04a5
 (084a, 19a4). Callees: `auto_lineup_pick_best`, `far_memcpy_bytes`, `event_helper_25d5`,
-`lineup_renumber_starters(0)`. **No RNG** (unless `event_helper_25d5` uses it; that function is outside this area).
+`lineup_renumber_starters(0)`. **No RNG** (`event_helper_25d5` is `squad_fix_position_mismatch`, season.md §4.4, which uses none).
 
 ```c
 void auto_lineup(void) {
@@ -326,8 +333,10 @@ Notes:
 * Records 24 are never considered.
 * When a goalkeeper is the only remaining player for an outfield search, the first one gets value -1
   (never chosen because `best_val` starts at 0) and later ones get value 1.
-* The loop cannot hang. If `any` is set, some position has a candidate, and the outfield-to-GK case ends
-  through `gk_seen`.
+* The loop cannot hang as long as every position code is below 100: if `any` is set, some position has a
+  candidate, and the outfield-to-GK case ends through `gk_seen`. An available player with a code of 100
+  or more sets `any` but never matches `pos`, so the original loops forever; the game never generates
+  such a code.
 
 ### 3.3 `squad_insert_player` 2ecd:37d8
 
@@ -665,11 +674,12 @@ player not owned by group 4, the value is recomputed with `FAR:304a` temporarily
 ## 6. Open questions
 
 1. The weekly squad update (form, fitness, injuries, aging, contract countdown) that the task attributes
-   to 2ecd:3360 is not in segment 2ecd. Candidates: `event_helper_25d5` 1cb5:25d5 (called at the end of
-   auto_lineup), `random_weekly_events` 1cb5:13bd, `manager_ai_weekly` 1f9d:0002, the season end
-   (2a58:4597).
-2. `auto_lineup` writes through an uninitialized `bench_best` in some cases (§3.1). The intended port
-   behaviour has to be decided.
+   to 2ecd:3360 is not in segment 2ecd. Candidates: `random_weekly_events` 1cb5:13bd, `manager_ai_weekly`
+   1f9d:0002, the season end (2a58:4597). Ruled out: `event_helper_25d5` 1cb5:25d5 (called at the end of
+   auto_lineup) is `squad_fix_position_mismatch`, season.md §4.4.
+2. `auto_lineup` writes through an uninitialized `bench_best` in some cases (§3.1). Decided in the port:
+   the slot-13 write is skipped when `bench_best` was never assigned (see the port status at §3);
+   `TODO(re)` in `squad.rs`.
 3. Mouse event code 3 (add a substitute) against MEMORY_MAP's "2 = right".
 4. Exact meanings of squad +0x14 (bit field), +0x18 (offer state) and the player fields +0x22/+0x23
    belong to the transfer and match areas.
