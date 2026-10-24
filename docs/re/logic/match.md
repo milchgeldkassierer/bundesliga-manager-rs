@@ -1057,7 +1057,7 @@ Return value: the y position of the event panel (used by `match_event_redraw`).
 For every human manager `m` whose club plays:
 
 * **Forfeit:** if `mgr(m).+0x13d == 'd'` (fewer than 8 fit players, set by
-  `squad_recalc_team_strength`) and not (`FAR:2e8e == 5 && FAR:2eba < 10`), it calls
+  `squad_recalc_team_strength`) and not (`FAR:2e8e == 5 && FAR:2eba >= 10`), it calls
   `match_forfeit_penalty` 2a58:2051 ("Ihr Spiel wird mit 0:2 gewertet. Sie zahlen 200.000 DM Strafe")
   and returns 1 (home club) or 2 (away club).
 * Otherwise it sets `FAR:1d14[m] = 1`. The home side gets the attendance (`match_attendance_estimate`,
