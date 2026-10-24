@@ -7,9 +7,11 @@
 //! scrolling identical for both buffers. [`crate::gfx::Gfx`] writes both on every VRAM
 //! write; reads (hit tests, `get_pixel`, screenshots) stay on the logical planes.
 //!
-//! Bitmaps in memory have no display side: a blit from memory writes doubled blocks and a
-//! blit to memory keeps only the logical pixel, so a round trip through memory (the pointer
-//! background, for one) flattens a block to its doubled logical pixel.
+//! While the layer is on, a bitmap in memory gets a display side of one block per pixel as
+//! soon as a block other than its doubled pixel is written into it, so a round trip through
+//! memory (the pointer background, for one) keeps the blocks. Text draws its 2x glyphs
+//! through such a side (`docs/mod2026/fonts/README.md`). A transparent blit is transparent
+//! per display pixel: display pixels 0 of the source keep the destination's.
 
 use crate::video::{self, MAX_HEIGHT, WIDTH};
 
@@ -44,6 +46,11 @@ impl Display {
         self.blocks[index(plane, off)] = block;
     }
 
+    /// Writes the non-zero display pixels of `block` (a transparent write).
+    pub fn merge(&mut self, plane: usize, off: u16, block: Block) {
+        merge(&mut self.blocks[index(plane, off)], block);
+    }
+
     /// Applies a raster operation to every display pixel of a block.
     pub fn update(&mut self, plane: usize, off: u16, op: impl Fn(u8) -> u8) {
         for v in &mut self.blocks[index(plane, off)] {
@@ -52,7 +59,17 @@ impl Display {
     }
 }
 
+/// Writes the non-zero display pixels of `src` into `dst`.
+pub fn merge(dst: &mut Block, src: Block) {
+    for (d, s) in dst.iter_mut().zip(src) {
+        if s != 0 {
+            *d = s;
+        }
+    }
+}
+
 /// A presented display frame: `height` rows of [`DISPLAY_W`] indexed pixels and the DAC.
+#[derive(Clone)]
 pub struct DisplayFrame {
     pub height: usize,
     pub pixels: Vec<u8>,
@@ -228,7 +245,7 @@ mod tests {
         g.vga_restore_rect_from_page(320, 240, 0, 0, 20, 20, 3);
         assert_eq!(g.display().unwrap().block(p, off), detail);
         g.blit_bitmap(rp.bitmap, 9, 5, rp.bitmap, 9, 50, 1, 1);
-        assert_eq!(g.display().unwrap().block(p, 50 * 80 + 2), [0; 4]);
+        assert_eq!(g.display().unwrap().block(p, 50 * 80 + 2), detail);
         g.blit_rect(rp.bitmap, 9, 5, rp.bitmap, 13, 60, 1, 1);
         assert_eq!(g.display().unwrap().block(p, 60 * 80 + 3), detail);
     }
@@ -240,9 +257,23 @@ mod tests {
         dir
     }
 
-    /// Runs `tests/visual/<name>.port.txt` like `tools/visual-check.sh` on Mod 2026 data
-    /// with the display layer on; returns the per-screenshot checks.
-    fn run_scenario(data: &Path, name: &str) -> Vec<(String, bool)> {
+    /// The data and display layer a scenario runs with.
+    #[derive(Clone, Copy, PartialEq, Debug)]
+    enum Setup {
+        /// Mod 2026 data built from `BMP_DATA`, with the display layer but without the 2x
+        /// fonts.
+        ModData,
+        /// A copy of the original data, whose game is the frozen v1.0.0, with the display
+        /// layer as the SDL host switches it on ([`Host::enable_display_layer`]).
+        OriginalWithHiresFonts,
+        /// Mod 2026 data built from `BMP_DATA`, with the display layer as the SDL host
+        /// switches it on ([`Host::enable_display_layer`]): what a player of the mod sees.
+        ModDataWithHiresFonts,
+    }
+
+    /// Runs `tests/visual/<name>.port.txt` like `tools/visual-check.sh` with the display
+    /// layer on; returns the logical and the display frame of every screenshot.
+    fn scenario_shots(data: &Path, name: &str, setup: Setup) -> Vec<(String, Vga, DisplayFrame)> {
         let path = format!(
             "{}/../../tests/visual/{name}.port.txt",
             env!("CARGO_MANIFEST_DIR")
@@ -255,13 +286,24 @@ mod tests {
         };
         let seed = |key: &str| header(key).map(|v| v.parse::<i32>().unwrap());
         let teamed = header("command").as_deref() == Some("teamed");
-        let mod_data = temp_dir(&format!("{name}-data"));
-        let shots = temp_dir(&format!("{name}-shots"));
-        bmp_game::mod2026::build(data, &mod_data).unwrap();
+        // Tests running in parallel may run the same scenario with another setup.
+        let run_data = temp_dir(&format!("{name}-{setup:?}-data"));
+        let shots = temp_dir(&format!("{name}-{setup:?}-shots"));
+        match setup {
+            Setup::ModData | Setup::ModDataWithHiresFonts => {
+                bmp_game::mod2026::build(data, &run_data).unwrap()
+            }
+            Setup::OriginalWithHiresFonts => bmp_game::mod2026::copy_tree(data, &run_data).unwrap(),
+        }
         std::fs::create_dir_all(&shots).unwrap();
         let steps = parse_script(&text).unwrap();
-        let mut host = Host::with_script(&mod_data, steps, &shots, !teamed).unwrap();
-        host.g.display_on();
+        let mut host = Host::with_script(&run_data, steps, &shots, !teamed).unwrap();
+        match setup {
+            Setup::ModData => host.g.display_on(),
+            Setup::OriginalWithHiresFonts | Setup::ModDataWithHiresFonts => {
+                host.enable_display_layer()
+            }
+        }
         if teamed {
             let _ = crate::teamed::run(&mut host).unwrap();
         } else if crate::intro::run(&mut host).unwrap() != Err(Quit) {
@@ -269,9 +311,18 @@ mod tests {
             let time2 = seed("seed2").or(Some(time));
             let _ = crate::game::run(&mut host, time, time2).unwrap();
         }
-        let _ = std::fs::remove_dir_all(&mod_data);
+        let _ = std::fs::remove_dir_all(&run_data);
         let _ = std::fs::remove_dir_all(&shots);
-        host.display_checks
+        host.display_shots
+    }
+
+    /// [`scenario_shots`] on Mod 2026 data; whether each screenshot's display is the
+    /// doubled logical frame.
+    fn run_scenario(data: &Path, name: &str) -> Vec<(String, bool)> {
+        scenario_shots(data, name, Setup::ModData)
+            .into_iter()
+            .map(|(shot, vga, frame)| (shot, is_doubled(&vga, &frame)))
+            .collect()
     }
 
     /// Needs `BMP_DATA`.
@@ -294,5 +345,117 @@ mod tests {
                 assert!(doubled, "{name}/{shot}: display is not the doubled frame");
             }
         }
+    }
+
+    /// The display pixels of `frame` that differ from the doubled logical frame `vga`, as
+    /// `(palette index, true)` per differing display pixel and `(0, false)` elsewhere.
+    fn delta(vga: &Vga, frame: &DisplayFrame) -> Vec<(u8, bool)> {
+        (0..DISPLAY_W * frame.height)
+            .map(|i| {
+                let (x, y) = (i % DISPLAY_W, i / DISPLAY_W);
+                let v = frame.pixels[i];
+                if v == vga.pixels[(y / 2) * WIDTH + x / 2] {
+                    (0, false)
+                } else {
+                    (v, true)
+                }
+            })
+            .collect()
+    }
+
+    fn write_delta(path: &Path, height: usize, delta: &[(u8, bool)]) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut enc = png::Encoder::new(file, DISPLAY_W as u32, height as u32);
+        enc.set_color(png::ColorType::GrayscaleAlpha);
+        enc.set_depth(png::BitDepth::Eight);
+        let data: Vec<u8> = delta
+            .iter()
+            .flat_map(|&(v, differs)| [v, if differs { 0xff } else { 0 }])
+            .collect();
+        let mut writer = enc.write_header().unwrap();
+        writer.write_image_data(&data).unwrap();
+        writer.finish().unwrap();
+    }
+
+    /// The golden delta: its width, height and [`delta`] pixels.
+    fn read_delta(path: &Path) -> (u32, u32, Vec<(u8, bool)>) {
+        let file = std::fs::File::open(path)
+            .unwrap_or_else(|e| panic!("{}: {e}; see tests/display/README.md", path.display()));
+        let mut reader = png::Decoder::new(file).read_info().unwrap();
+        let mut data = vec![0; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut data).unwrap();
+        assert_eq!(
+            (info.color_type, info.bit_depth),
+            (png::ColorType::GrayscaleAlpha, png::BitDepth::Eight)
+        );
+        let delta = data[..info.buffer_size()]
+            .chunks(2)
+            .map(|p| (p[0], p[1] != 0))
+            .collect();
+        (info.width, info.height, delta)
+    }
+
+    /// The newspaper of the match-day scenario with `setup` is exactly the doubled logical
+    /// frame plus the 2x detail of `tests/display/<golden>` (`tests/display/README.md`).
+    /// `BMP_DISPLAY_GOLDEN_WRITE=1` rewrites the golden first.
+    fn check_newspaper_golden(data: &Path, setup: Setup, golden: &str) {
+        let golden = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/display")
+            .join(golden);
+        let (_, vga, frame) = scenario_shots(data, "matchday", setup)
+            .into_iter()
+            .find(|(shot, ..)| shot == "m08-newspaper")
+            .expect("no m08-newspaper shot");
+        assert_eq!(frame.height, 2 * vga.height());
+        assert!(frame.dac == vga.dac);
+        let got = delta(&vga, &frame);
+        assert!(got.iter().any(|&(_, differs)| differs), "no 2x detail");
+        if std::env::var_os("BMP_DISPLAY_GOLDEN_WRITE").is_some() {
+            write_delta(&golden, frame.height, &got);
+        }
+        let (w, h, want) = read_delta(&golden);
+        assert_eq!((w as usize, h as usize), (DISPLAY_W, frame.height));
+        let wrong: Vec<usize> = (0..got.len()).filter(|&i| got[i] != want[i]).collect();
+        assert!(
+            wrong.is_empty(),
+            "{} display pixels differ from the golden, first at {:?}",
+            wrong.len(),
+            wrong
+                .iter()
+                .take(5)
+                .map(|&i| (i % DISPLAY_W, i / DISPLAY_W))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// MOD2026: the newspaper with the 2x fonts on the original data, whose newspaper text
+    /// is v1.0.0's, so that changes to the mod's game do not change this golden. Needs
+    /// `BMP_DATA`.
+    #[test]
+    fn newspaper_display_matches_the_golden_frame() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        check_newspaper_golden(
+            &data,
+            Setup::OriginalWithHiresFonts,
+            "matchday-m08-newspaper.png",
+        );
+    }
+
+    /// MOD2026: the newspaper with the 2x fonts on Mod 2026 data, as a player of the mod
+    /// sees it. Its text comes from the mod's game, so a change to the mod's league,
+    /// clubs or squads that changes this newspaper needs a regenerated golden. Needs
+    /// `BMP_DATA`.
+    #[test]
+    fn mod_newspaper_display_matches_the_golden_frame() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        check_newspaper_golden(
+            &data,
+            Setup::ModDataWithHiresFonts,
+            "matchday-m08-newspaper-mod.png",
+        );
     }
 }

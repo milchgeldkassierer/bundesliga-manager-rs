@@ -21,7 +21,7 @@
 use bmp_formats::font::{EURO, Font, FontSet, Glyph, map_char};
 use bmp_formats::vga::VgaImage;
 
-use crate::display::{Block, Display, DisplayFrame};
+use crate::display::{self, Block, Display, DisplayFrame};
 use crate::video::{Mode, Vga, WIDTH};
 
 /// Screen width in pixels.
@@ -94,6 +94,10 @@ pub struct Bitmap {
     pub storage: Storage,
     /// Origin added by the TEAMED wrappers (`+8`, `+0A`); always `(0, 0)` in BMMAIN.
     pub origin: (i16, i16),
+    /// MOD2026: the display side of a memory bitmap, one block per pixel; only bitmaps
+    /// that received a block other than their doubled pixel while the display layer is
+    /// on have one.
+    blocks: Option<Vec<Block>>,
 }
 
 impl Bitmap {
@@ -105,6 +109,7 @@ impl Bitmap {
             height,
             storage: Storage::Mem(vec![0; len]),
             origin: (0, 0),
+            blocks: None,
         }
     }
 
@@ -115,6 +120,7 @@ impl Bitmap {
             height: img.height as i16,
             storage: Storage::Mem(img.pixels.clone()),
             origin: (0, 0),
+            blocks: None,
         }
     }
 
@@ -125,6 +131,7 @@ impl Bitmap {
             height,
             storage: Storage::Vram(offset),
             origin: (0, 0),
+            blocks: None,
         }
     }
 
@@ -252,6 +259,10 @@ pub struct Gfx {
     /// MOD2026: the euro glyph of each font, installed only with the mod flag
     /// ([`Gfx::set_euro_glyphs`]); `None` everywhere is v1.0.0.
     pub euro: [Option<Glyph>; 4],
+    /// MOD2026: the 2x glyphs of each font for the display layer by glyph index, `None`
+    /// for a glyph whose cell is not exactly twice the installed one
+    /// ([`Gfx::set_hires_fonts`]); empty everywhere is v1.0.0.
+    hires: [Vec<Option<Glyph>>; 4],
     /// BIOS tick counter `0040:006C` (advanced by the host at 18.2 Hz).
     pub bios_ticks: u32,
     /// `CS:0038/003A`: timer deadline.
@@ -265,8 +276,27 @@ impl Default for Gfx {
     }
 }
 
-/// Font height, descent and per-character `(width, set-bit mask)` expansions.
-type ExpandedText = (u16, u16, Vec<(u8, Vec<u8>)>);
+/// Font height, descent and per-character `(width, pixels, 2x display blocks)`
+/// expansions; the blocks only with the display layer on and a 2x glyph.
+type ExpandedText = (u16, u16, Vec<(u8, Vec<u8>, Option<Vec<Block>>)>);
+
+/// MOD2026: the 2x glyph `big` of a `w x h` glyph as one display block per 1x pixel,
+/// row by row, set pixels in `fg` and clear ones in `bg`.
+fn hires_blocks(big: &Glyph, w: usize, h: usize, fg: u8, bg: u8) -> Vec<Block> {
+    let mut blocks = Vec::with_capacity(w * h);
+    for row in 0..h {
+        for col in 0..w {
+            blocks.push(std::array::from_fn(|k| {
+                if big.pixel(2 * col + k % 2, 2 * row + k / 2) {
+                    fg
+                } else {
+                    bg
+                }
+            }));
+        }
+    }
+    blocks
+}
 
 /// Result of clipping a blit: `(sx, sy, dx, dy, w, h)`.
 type Clip = (i16, i16, i16, i16, i16, i16);
@@ -427,6 +457,7 @@ impl Gfx {
             },
             fonts: [None, None, None, None],
             euro: [None, None, None, None],
+            hires: Default::default(),
             bios_ticks: 0,
             deadline: 0,
             bitmaps: Vec::new(),
@@ -437,6 +468,7 @@ impl Gfx {
             height: 11,
             storage: Storage::Mem(DEFAULT_POINTER.to_vec()),
             origin: (0, 0),
+            blocks: None,
         });
         let bg = g.alloc(Bitmap::new_mem(11, 11));
         g.pointer.screen = screen;
@@ -462,13 +494,55 @@ impl Gfx {
         }
     }
 
-    /// The glyph of byte `c` in font `font`: [`map_char`]'s, or the euro glyph for [`EURO`]
-    /// when the mod installed one.
-    fn glyph<'a>(&'a self, font: u16, f: &'a Font, c: u8) -> &'a Glyph {
+    /// MOD2026: gives the installed glyph fonts their 2x glyphs for the display layer
+    /// (`docs/mod2026/fonts/README.md`). A glyph of another `BMMAIN.EXE` whose cell does
+    /// not match its 2x glyph keeps being drawn doubled.
+    pub fn set_hires_fonts(&mut self) {
+        use bmp_formats::font::FontId;
+        for id in FontId::ALL {
+            let Some(font) = &self.fonts[id as usize] else {
+                continue;
+            };
+            let h = (font.height & 0xff) as usize;
+            let glyphs = bmp_formats::hires_font::glyphs(id)
+                .into_iter()
+                .zip(&font.glyphs)
+                .map(|(big, g)| {
+                    let fits = big.width as usize == 2 * g.width as usize
+                        && big.bits.len() == 2 * h * big.row_bytes();
+                    fits.then_some(big)
+                })
+                .collect();
+            self.hires[id as usize] = glyphs;
+        }
+    }
+
+    /// The font slot byte `c` in font `font` draws: [`map_char`]'s, or `None` for
+    /// [`EURO`] when the mod installed a euro glyph.
+    fn glyph_slot(&self, font: u16, c: u8) -> Option<usize> {
         // MOD2026: the euro code has its own glyph only with the mod flag.
         match self.euro.get(font as usize) {
-            Some(Some(g)) if c == EURO => g,
-            _ => &f.glyphs[map_char(c) as usize],
+            Some(Some(_)) if c == EURO => None,
+            _ => Some(map_char(c) as usize),
+        }
+    }
+
+    /// MOD2026: the 2x glyph of byte `c` in font `font`, if it has one. The mod's euro
+    /// glyph has none yet and is drawn doubled.
+    fn hires_glyph(&self, font: u16, c: u8) -> Option<&Glyph> {
+        self.hires
+            .get(font as usize)?
+            .get(self.glyph_slot(font, c)?)?
+            .as_ref()
+    }
+
+    /// The glyph of byte `c` in font `font` (see [`Gfx::glyph_slot`]).
+    fn glyph<'a>(&'a self, font: u16, f: &'a Font, c: u8) -> &'a Glyph {
+        match self.glyph_slot(font, c) {
+            Some(i) => &f.glyphs[i],
+            None => self.euro[font as usize]
+                .as_ref()
+                .expect("installed euro glyph"),
         }
     }
 
@@ -516,11 +590,50 @@ impl Gfx {
         }
     }
 
-    fn mem_set(&mut self, id: BitmapId, idx: usize, val: u8) {
-        if let Storage::Mem(v) = &mut self.bitmap_mut(id).storage
-            && let Some(p) = v.get_mut(idx)
+    /// MOD2026: the display block of pixel `idx` of a memory bitmap, `None` without a
+    /// display side.
+    fn mem_block(&self, id: BitmapId, idx: usize) -> Option<Block> {
+        self.bitmap(id).blocks.as_ref()?.get(idx).copied()
+    }
+
+    /// The display side of a memory bitmap, created from its pixels doubled.
+    fn mem_side(&mut self, id: BitmapId) -> &mut Vec<Block> {
+        let bm = self.bitmap_mut(id);
+        let pixels = match &bm.storage {
+            Storage::Mem(v) => v,
+            Storage::Vram(_) => &Vec::new(),
+        };
+        bm.blocks
+            .get_or_insert_with(|| pixels.iter().map(|&v| [v; 4]).collect())
+    }
+
+    /// Writes pixel `idx` of a memory bitmap with its display block (MOD2026: the block
+    /// goes to the display side).
+    fn mem_put(&mut self, id: BitmapId, idx: usize, v: u8, block: Block) {
+        let Storage::Mem(px) = &mut self.bitmap_mut(id).storage else {
+            return;
+        };
+        let Some(p) = px.get_mut(idx) else {
+            return;
+        };
+        *p = v;
+        let has_side = self.mem_block(id, idx).is_some();
+        if self.display.is_some() && (has_side || block != [v; 4]) {
+            self.mem_side(id)[idx] = block;
+        }
+    }
+
+    /// Read-modify-write of pixel `idx` of a memory bitmap; a display side gets `op` on
+    /// each of its pixels, like [`Display::update`].
+    fn mem_update(&mut self, id: BitmapId, idx: usize, op: impl Fn(u8) -> u8) {
+        let bm = self.bitmap_mut(id);
+        if let Storage::Mem(px) = &mut bm.storage
+            && let Some(p) = px.get_mut(idx)
         {
-            *p = val;
+            *p = op(*p);
+            if let Some(side) = &mut bm.blocks {
+                side[idx] = side[idx].map(&op);
+            }
         }
     }
 
@@ -1021,6 +1134,7 @@ impl Gfx {
             height: 11,
             storage: Storage::Mem(DEFAULT_POINTER.to_vec()),
             origin: (0, 0),
+            blocks: None,
         });
         let bg = self.alloc(Bitmap::new_mem(11, 11));
         self.pointer.image = image;
@@ -1084,13 +1198,12 @@ impl Gfx {
                     let s = (sy + r) as usize * sw as usize + (sx + c) as usize;
                     let d = (dy + r) as usize * dw as usize + (dx + c) as usize;
                     let v = self.mem_get(src, s);
-                    if !transparent || v != 0 {
-                        self.mem_set(dst, d, v);
-                    }
+                    let block = self.mem_block(src, s);
+                    self.mem_blit_put(dst, d, v, block, transparent);
                 }
             }
         } else {
-            // Each pixel with the display block of a VRAM source.
+            // Each pixel with its display block (MOD2026), `None` for a doubled one.
             let mut buf: Vec<(u8, Option<Block>)> = Vec::with_capacity(w as usize * h as usize);
             for r in 0..h {
                 for c in 0..w {
@@ -1101,10 +1214,10 @@ impl Gfx {
                             let off = vram_off(base.wrapping_add(page), sy, r, x, self.row_mask);
                             (self.vram_read(plane, off), self.display_block(plane, off))
                         }
-                        None => (
-                            self.mem_get(src, (sy + r) as usize * sw as usize + (sx + c) as usize),
-                            None,
-                        ),
+                        None => {
+                            let i = (sy + r) as usize * sw as usize + (sx + c) as usize;
+                            (self.mem_get(src, i), self.mem_block(src, i))
+                        }
                     };
                     buf.push(px);
                 }
@@ -1112,18 +1225,15 @@ impl Gfx {
             for r in 0..h {
                 for c in 0..w {
                     let (v, block) = buf[r as usize * w as usize + c as usize];
-                    if transparent && v == 0 {
-                        continue;
-                    }
                     match dv {
                         Some(base) => {
                             let x = dx + c;
                             let off = vram_off(base.wrapping_add(page), dy, r, x, self.row_mask);
-                            self.vram_put(x as usize & 3, off, v, block.unwrap_or([v; 4]));
+                            self.vram_blit_put(x as usize & 3, off, v, block, transparent);
                         }
                         None => {
                             let d = (dy + r) as usize * dw as usize + (dx + c) as usize;
-                            self.mem_set(dst, d, v);
+                            self.mem_blit_put(dst, d, v, block, transparent);
                         }
                     }
                 }
@@ -1132,6 +1242,53 @@ impl Gfx {
         if redraw {
             self.mouse_pointer_draw();
         }
+    }
+
+    /// One destination pixel of a VRAM blit. Transparent: a source 0 keeps the logical
+    /// pixel, and (MOD2026) the display keeps every display pixel the block has as 0.
+    fn vram_blit_put(
+        &mut self,
+        plane: usize,
+        off: u16,
+        v: u8,
+        block: Option<Block>,
+        transparent: bool,
+    ) {
+        let block = block.unwrap_or([v; 4]);
+        if !transparent {
+            self.vram_put(plane, off, v, block);
+            return;
+        }
+        if v != 0 {
+            self.planes[plane & 3][off as usize] = v;
+        }
+        if let Some(display) = &mut self.display {
+            display.merge(plane, off, block);
+        }
+    }
+
+    /// One destination pixel of a blit into a memory bitmap, like [`Gfx::vram_blit_put`].
+    fn mem_blit_put(
+        &mut self,
+        id: BitmapId,
+        idx: usize,
+        v: u8,
+        block: Option<Block>,
+        transparent: bool,
+    ) {
+        let block = block.unwrap_or([v; 4]);
+        if !transparent {
+            self.mem_put(id, idx, v, block);
+            return;
+        }
+        if block == [0; 4] {
+            return;
+        }
+        let old = self.mem_get(id, idx);
+        let new = if v != 0 { v } else { old };
+        let mut merged = self.mem_block(id, idx).unwrap_or([old; 4]);
+        display::merge(&mut merged, block);
+        self.mem_put(id, idx, new, merged);
     }
 
     /// Opaque clipped rectangle copy.
@@ -1318,16 +1475,14 @@ impl Gfx {
         match v {
             None => {
                 let idx = (y as u16).wrapping_mul(w as u16).wrapping_add(x as u16) as usize;
-                let old = self.mem_get(bm, idx);
-                self.mem_set(bm, idx, op(old));
+                self.mem_update(bm, idx, op);
             }
             Some(_) => {
                 if self.pointer.state != POINTER_HIDDEN && self.rect_hits_mouse_pointer(x, y, 1, 1)
                 {
                     let i = self.pointer_buf_index(x, y);
                     let bg = self.pointer.background;
-                    let old = self.mem_get(bg, i);
-                    self.mem_set(bg, i, op(old));
+                    self.mem_update(bg, i, &op);
                     if self.mem_get(self.pointer.image, i) != 0 {
                         return;
                     }
@@ -1471,8 +1626,7 @@ impl Gfx {
                 for r in 0..h {
                     for c in 0..w {
                         let idx = (y + r) as usize * bw as usize + (x + c) as usize;
-                        let o = self.mem_get(bm, idx);
-                        self.mem_set(bm, idx, op(o));
+                        self.mem_update(bm, idx, &op);
                     }
                 }
             }
@@ -1519,9 +1673,14 @@ impl Gfx {
         match v {
             None => {
                 let n = (w as u16).wrapping_mul(h as u16) as usize;
-                if let Storage::Mem(d) = &mut self.bitmap_mut(bm).storage {
+                let bitmap = self.bitmap_mut(bm);
+                if let Storage::Mem(d) = &mut bitmap.storage {
                     let n = n.min(d.len());
                     d[..n].fill(color);
+                }
+                if let Some(side) = &mut bitmap.blocks {
+                    let n = n.min(side.len());
+                    side[..n].fill([color; 4]);
                 }
             }
             Some(_) => {
@@ -1558,6 +1717,10 @@ impl Gfx {
     /// into lazy-hide state for the duration and redrawn at the end if it was removed.
     /// Returns the final pen x (the original returns nothing).
     ///
+    /// MOD2026: with the display layer on, a glyph with a 2x glyph
+    /// ([`Gfx::set_hires_fonts`]) gives its buffer the 2x glyph as display side, so the
+    /// display shows the 2x glyph and the logical frame stays the same.
+    ///
     /// Origin: BMMAIN.EXE 45ac:2d83 (draw_text)
     #[allow(clippy::too_many_arguments)]
     pub fn draw_text(
@@ -1577,6 +1740,7 @@ impl Gfx {
             lazy = true;
             self.pointer.state = POINTER_LAZY;
         }
+        let bgc = if mode == 0 { 0 } else { bg };
         let glyph_data: Option<ExpandedText> = self
             .fonts
             .get(font as usize)
@@ -1587,22 +1751,28 @@ impl Gfx {
                     .map(|&c| {
                         let g = self.glyph(font, f, c);
                         let w = g.width as usize;
-                        let mut px = Vec::with_capacity(w * f.height as usize);
-                        for row in 0..(f.height & 0xff) as usize {
+                        let h = (f.height & 0xff) as usize;
+                        let mut px = Vec::with_capacity(w * h);
+                        for row in 0..h {
                             for col in 0..w {
                                 px.push(if g.pixel(col, row) { 1 } else { 0 });
                             }
                         }
-                        (g.width, px)
+                        // MOD2026: the 2x glyph.
+                        let hires = self
+                            .display
+                            .as_ref()
+                            .and_then(|_| self.hires_glyph(font, c))
+                            .map(|big| hires_blocks(big, w, h, fg, bgc));
+                        (g.width, px, hires)
                     })
                     .collect();
                 (f.height, f.descent, gl)
             });
         if let Some((height, descent, glyphs)) = glyph_data {
             let top = y.wrapping_sub(height.wrapping_sub(descent).wrapping_sub(1) as i16);
-            let bgc = if mode == 0 { 0 } else { bg };
             let gh = (height & 0xff) as i16;
-            for (width, bits) in glyphs {
+            for (width, bits, hires) in glyphs {
                 if x >= bw {
                     break;
                 }
@@ -1622,7 +1792,11 @@ impl Gfx {
                     height: gh,
                     storage: Storage::Mem(buf),
                     origin: (0, 0),
+                    blocks: None,
                 });
+                if let Some(blocks) = hires {
+                    *self.mem_side(tmp) = blocks;
+                }
                 self.blit_rect_impl(tmp, 0, 0, bm, x, top, gw, gh, mode == 0);
                 self.free(tmp);
                 x = x.wrapping_add(gw);
@@ -2562,6 +2736,7 @@ mod tests {
             height: 1,
             storage: Storage::Mem(vec![9]),
             origin: (0, 0),
+            blocks: None,
         });
         g.blit_bitmap(src, 0, 0, view, 1, 0, 1, 1);
         assert_eq!(g.page_pixel(0, 3, 75), 9);
@@ -2578,12 +2753,14 @@ mod tests {
             height: 2,
             storage: Storage::Mem(vec![1, 0, 3, 4, 5, 0]),
             origin: (0, 0),
+            blocks: None,
         });
         let dst = g.alloc(Bitmap {
             width: 4,
             height: 3,
             storage: Storage::Mem(vec![9; 12]),
             origin: (0, 0),
+            blocks: None,
         });
         g.blit_rect_transparent(src, 0, 0, dst, -1, 1, 3, 2);
         let Storage::Mem(d) = &g.bitmap(dst).storage else {
@@ -3037,6 +3214,230 @@ mod tests {
                     fb[y as usize * 320 + x as usize],
                     "{x},{y}"
                 );
+            }
+        }
+    }
+
+    /// MOD2026: a screen with the fonts, the display layer on and, when `hires`, the 2x
+    /// fonts installed. `None` without `BMP_DATA`.
+    fn gfx_with_fonts(display: bool, hires: bool) -> Option<(Gfx, RastPort, FontSet)> {
+        let set = FontSet::load(&bmp_formats::data_dir()?).expect("fonts");
+        let (mut g, rp) = gfx_with_screen();
+        g.set_fonts(&set);
+        if display {
+            g.display_on();
+        }
+        if hires {
+            g.set_hires_fonts();
+        }
+        Some((g, rp, set))
+    }
+
+    fn page0_block(g: &Gfx, x: i16, y: i16) -> Block {
+        g.display()
+            .unwrap()
+            .block(x as usize & 3, page_offset(0, x, y))
+    }
+
+    fn page0_frame(g: &Gfx) -> Vec<u8> {
+        (0..240)
+            .flat_map(|y| (0..320).map(move |x| (x, y)))
+            .map(|(x, y)| screen_px(g, x, y))
+            .collect()
+    }
+
+    /// The expected display block of 1x pixel `(col, row)` of a glyph with 2x glyph `big`.
+    fn want_block(big: &Glyph, col: usize, row: usize, set: u8, clear: u8) -> Block {
+        std::array::from_fn(|k| {
+            if big.pixel(2 * col + k % 2, 2 * row + k / 2) {
+                set
+            } else {
+                clear
+            }
+        })
+    }
+
+    const HIRES_SAMPLE: &str = "Bundesliga Manager 1993: ÄÖÜ äöü ß 0123456789";
+
+    /// MOD2026: the 2x fonts change neither the pen, nor the text width, nor any logical
+    /// pixel (needs `BMP_DATA`).
+    #[test]
+    fn hires_text_keeps_the_logical_frame_and_widths() {
+        let text = bmp_formats::font::encode_cp437(HIRES_SAMPLE);
+        for id in bmp_formats::font::FontId::ALL {
+            let font = id as u16;
+            for mode in [0, 1] {
+                let draw = |display: bool| {
+                    let (mut g, rp, set) = gfx_with_fonts(display, display)?;
+                    g.fill_rect(rp.bitmap, 0, 0, 320, 240, 7);
+                    let x = g.draw_text(rp.bitmap, 3, 40, font, 15, 4, mode, &text);
+                    let width = g.text_width(font, &text);
+                    assert_eq!(width, set.get(id).text_length(&text), "{}", id.name());
+                    Some((x, width, page0_frame(&g)))
+                };
+                let Some(plain) = draw(false) else { return };
+                assert!(draw(true) == Some(plain), "{} mode {mode}", id.name());
+            }
+        }
+    }
+
+    /// MOD2026: opaque text puts the 2x glyph into the display, set pixels in the
+    /// foreground and clear ones in the background colour (needs `BMP_DATA`).
+    #[test]
+    fn opaque_text_draws_the_2x_glyph() {
+        for id in bmp_formats::font::FontId::ALL {
+            let Some((mut g, rp, set)) = gfx_with_fonts(true, true) else {
+                return;
+            };
+            let f = set.get(id);
+            let big = &bmp_formats::hires_font::glyphs(id)[map_char(b'A') as usize];
+            let top = 30 - (f.height - f.descent - 1) as i16;
+            g.draw_text(rp.bitmap, 10, 30, id as u16, 15, 4, 1, b"A");
+            for row in 0..f.height as usize {
+                for col in 0..f.glyphs[map_char(b'A') as usize].width as usize {
+                    let (x, y) = (10 + col as i16, top + row as i16);
+                    assert_eq!(
+                        page0_block(&g, x, y),
+                        want_block(big, col, row, 15, 4),
+                        "{} {col},{row}",
+                        id.name()
+                    );
+                }
+            }
+        }
+    }
+
+    /// MOD2026: transparent text sets only the display pixels of its 2x glyph, including
+    /// those of 1x pixels it leaves clear in the logical frame (needs `BMP_DATA`).
+    #[test]
+    fn transparent_text_keeps_the_background_between_2x_pixels() {
+        let mut grown = 0;
+        for id in bmp_formats::font::FontId::ALL {
+            let Some((mut g, rp, set)) = gfx_with_fonts(true, true) else {
+                return;
+            };
+            let f = set.get(id);
+            g.fill_rect(rp.bitmap, 0, 0, 320, 240, 7);
+            let text = b"AVWO";
+            g.draw_text(rp.bitmap, 10, 30, id as u16, 15, 0, 0, text);
+            let top = 30 - (f.height - f.descent - 1) as i16;
+            let mut x = 10;
+            for &c in text {
+                let orig = &f.glyphs[map_char(c) as usize];
+                let big = &bmp_formats::hires_font::glyphs(id)[map_char(c) as usize];
+                for row in 0..f.height as usize {
+                    for col in 0..orig.width as usize {
+                        let (px, py) = (x + col as i16, top + row as i16);
+                        let logical = if orig.pixel(col, row) { 15 } else { 7 };
+                        assert_eq!(screen_px(&g, px, py), logical);
+                        let want = want_block(big, col, row, 15, 7);
+                        assert_eq!(page0_block(&g, px, py), want, "{} {px},{py}", id.name());
+                        grown += usize::from(logical == 7 && want != [7; 4]);
+                    }
+                }
+                x += orig.width as i16;
+            }
+        }
+        if bmp_formats::data_dir().is_some() {
+            assert!(grown > 0, "no 2x pixel outside the 1x glyph was checked");
+        }
+    }
+
+    /// MOD2026: the pointer saves and restores the display blocks under it, so passing
+    /// over text keeps its 2x detail (needs `BMP_DATA`).
+    #[test]
+    fn pointer_round_trip_keeps_text_detail() {
+        let Some((mut g, rp, _)) = gfx_with_fonts(true, true) else {
+            return;
+        };
+        g.fill_rect(rp.bitmap, 0, 0, 320, 240, 7);
+        g.draw_text(rp.bitmap, 20, 50, 3, 15, 0, 0, b"BUNDESLIGA");
+        let area = |g: &Gfx| -> Vec<Block> {
+            (30..60)
+                .flat_map(|y| (15..140).map(move |x| (x, y)))
+                .map(|(x, y)| page0_block(g, x, y))
+                .collect()
+        };
+        let before = area(&g);
+        assert!(before.iter().any(|b| b.iter().any(|&p| p != b[0])));
+        assert!(g.mouse_open(true, true));
+        g.mouse_event_handler(1, 2 * 30, 40);
+        g.mouse_pointer_show();
+        for x in (30..130).step_by(7) {
+            g.mouse_event_handler(1, 2 * x, 42);
+        }
+        g.mouse_event_handler(1, 2 * 250, 200);
+        g.mouse_pointer_hide(0);
+        assert!(area(&g) == before);
+    }
+
+    /// MOD2026: text clipped at the screen edges draws like without the 2x fonts
+    /// (needs `BMP_DATA`).
+    #[test]
+    fn clipped_text_with_hires_glyphs() {
+        for (x, y) in [(-3, 20), (300, 120), (100, 238), (-30, 3)] {
+            for mode in [0, 1] {
+                let draw = |on: bool| {
+                    let (mut g, rp, _) = gfx_with_fonts(on, on)?;
+                    let x = g.draw_text(rp.bitmap, x, y, 3, 15, 4, mode, b"CLIPPED TEXT");
+                    Some((x, page0_frame(&g)))
+                };
+                let Some(plain) = draw(false) else { return };
+                assert!(draw(true) == Some(plain), "{x},{y} mode {mode}");
+            }
+        }
+    }
+
+    /// MOD2026: a glyph clipped at the left edge shows the 2x glyph of its visible
+    /// columns (needs `BMP_DATA`).
+    #[test]
+    fn left_clipped_text_keeps_its_2x_glyph() {
+        let mut checked = 0;
+        for id in bmp_formats::font::FontId::ALL {
+            let Some((mut g, rp, set)) = gfx_with_fonts(true, true) else {
+                return;
+            };
+            let f = set.get(id);
+            let w = f.glyphs[map_char(b'W') as usize].width as usize;
+            let big = &bmp_formats::hires_font::glyphs(id)[map_char(b'W') as usize];
+            let top = 30 - (f.height - f.descent - 1) as i16;
+            g.draw_text(rp.bitmap, -2, 30, id as u16, 15, 4, 1, b"W");
+            for row in 0..f.height as usize {
+                for col in 2..w {
+                    let (x, y) = (col as i16 - 2, top + row as i16);
+                    assert_eq!(
+                        page0_block(&g, x, y),
+                        want_block(big, col, row, 15, 4),
+                        "{} {col},{row}",
+                        id.name()
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        if bmp_formats::data_dir().is_some() {
+            assert!(checked > 0, "no visible column checked");
+        }
+    }
+
+    /// MOD2026: the euro sign has no 2x glyph yet; it is drawn as its 1x glyph doubled
+    /// (#205; needs `BMP_DATA`).
+    #[test]
+    fn euro_has_no_hires_glyph_yet() {
+        let Some((mut g, rp, set)) = gfx_with_fonts(true, true) else {
+            return;
+        };
+        g.set_euro_glyphs();
+        for id in bmp_formats::font::FontId::ALL {
+            let f = set.get(id);
+            let euro = bmp_formats::font::euro_glyph(id);
+            let top = 100 - (f.height - f.descent - 1) as i16;
+            g.draw_text(rp.bitmap, 10, 100, id as u16, 15, 4, 1, &[EURO]);
+            for row in 0..f.height as i16 {
+                for col in 0..euro.width as i16 {
+                    let v = screen_px(&g, 10 + col, top + row);
+                    assert_eq!(page0_block(&g, 10 + col, top + row), [v; 4]);
+                }
             }
         }
     }

@@ -7,6 +7,7 @@ pub mod cmf;
 pub mod cp;
 pub mod exepack;
 pub mod font;
+pub mod hires_font;
 pub mod iff;
 pub mod mana;
 pub mod pal;

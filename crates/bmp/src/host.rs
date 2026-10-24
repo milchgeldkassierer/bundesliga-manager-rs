@@ -191,10 +191,10 @@ pub struct Host {
     /// MOD2026: the data directory holds Mod 2026 data, read once at start-up; switches
     /// the 2x display layer on in a window.
     pub mod2026: bool,
-    /// Test support: per screenshot of the script, whether the 2x display showed the
-    /// logical frame doubled (only recorded while the layer is on).
+    /// Test support: per screenshot of the script, the logical frame and the 2x display
+    /// frame (only recorded while the layer is on).
     #[cfg(test)]
-    pub(crate) display_checks: Vec<(String, bool)>,
+    pub(crate) display_shots: Vec<(String, Vga, DisplayFrame)>,
 }
 
 /// MOD2026: whether the 2x display layer is used: only with Mod 2026 data, in a window
@@ -250,12 +250,18 @@ impl Host {
             fatal: None,
             mod2026,
             #[cfg(test)]
-            display_checks: Vec::new(),
+            display_shots: Vec::new(),
         };
         if display_layer_on(host.mod2026, window, lowres) {
-            host.g.display_on();
+            host.enable_display_layer();
         }
         Ok(host)
+    }
+
+    /// MOD2026: switches the 2x display layer on, with the 2x fonts that belong to it.
+    pub(crate) fn enable_display_layer(&mut self) {
+        self.g.display_on();
+        self.g.set_hires_fonts();
     }
 
     /// A window; `sound` = the sound flag `DS:018c`. Without an audio device
@@ -479,8 +485,6 @@ impl Host {
                         {
                             let mut frame = DisplayFrame::new();
                             if self.g.to_display(&mut frame) {
-                                let doubled = crate::display::is_doubled(&self.vga, &frame);
-                                self.display_checks.push((name.clone(), doubled));
                                 // Evidence aid: the 2x frame as a PNG to
                                 // `$BMP_DISPLAY_SHOTS_OUT` when that is set.
                                 if let Some(dir) = std::env::var_os("BMP_DISPLAY_SHOTS_OUT") {
@@ -493,6 +497,8 @@ impl Host {
                                     )
                                     .map_err(|_| Quit)?;
                                 }
+                                self.display_shots
+                                    .push((name.clone(), self.vga.clone(), frame));
                             }
                         }
                     }

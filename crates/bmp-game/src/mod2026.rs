@@ -192,7 +192,7 @@ fn resolve(path: &Path) -> io::Result<PathBuf> {
 }
 
 /// Copies every file below `from` to the same relative path below `to`, in sorted order.
-fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
+pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
     fs::create_dir_all(to)?;
     let mut entries = fs::read_dir(from)?.collect::<io::Result<Vec<_>>>()?;
     entries.sort_by_key(|e| e.file_name());

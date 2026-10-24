@@ -34,6 +34,7 @@ impl Mode {
 }
 
 /// Indexed framebuffer with a 6-bit-per-channel VGA DAC palette.
+#[derive(Clone)]
 pub struct Vga {
     pub mode: Mode,
     pub pixels: Vec<u8>,
