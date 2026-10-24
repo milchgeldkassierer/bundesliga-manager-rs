@@ -5,7 +5,6 @@ use bmp_game::rng::{format_long_thousands, spinner_round_bound};
 use super::GAME_OPTION_A;
 use crate::gfx::{Gfx, ui_draw_line, ui_draw_text_centered_shadow, ui_fill_rect};
 use crate::host::{Host, LEFT_DOWN, LEFT_UP, RIGHT_DOWN, Run};
-
 /// Most text buttons that can be registered (`DS:07b3` stops counting at 10; the
 /// 11th registration overwrites slot 10).
 const ICON_SLOTS: usize = 11;
@@ -204,12 +203,121 @@ pub fn ui_value_spinner(
     Ok(if v == v0 { -1 } else { v })
 }
 
-/// Four-line message box with an "OKAY" button.
+/// `DS:2698`: the label of the [`dialog_okay`] button.
+const OKAY: &[u8] = b"OKAY";
+
+/// Draws the bevelled dialog panel with a saved background and returns its
+/// button slot. The background bitmap comes from `vga_load_picture`, which
+/// resets the field width `DS:079c` to 1.
+fn dialog_panel(host: &mut Host, x: i16, w: i16) -> u8 {
+    host.number_pad = 1;
+    host.ui
+        .draw_button(&mut host.g, &mut host.rp, x, 0x6e, w, 0x41, true, 0x10)
+        .0
+}
+
+/// Four-line message box with an "OKAY" button: waits for a left click on
+/// the button, then restores the background. Always returns `true`.
 ///
-/// TODO(#15): the box itself (4091:0e3a) is not ported; like the original it
-/// returns 1.
-pub fn dialog_okay(_host: &mut Host, _l1: &[u8], _l2: &[u8], _l3: &[u8], _l4: &[u8]) -> Run<bool> {
+/// TODO(#15): the original also leaves at once while automatic play
+/// (`DS:05d4`) is on; the callers do not pass that flag yet.
+///
+/// Origin: BMMAIN.EXE 4091:0e3a (dialog_okay)
+pub fn dialog_okay(host: &mut Host, l1: &[u8], l2: &[u8], l3: &[u8], l4: &[u8]) -> Run<bool> {
+    let slot = dialog_panel(host, 0x3c, 0xb9);
+    host.set_font(1);
+    for (k, line) in [l1, l2, l3, l4].into_iter().enumerate() {
+        let y = 0x7b + 10 * k as i16;
+        ui_draw_text_centered_shadow(&mut host.g, &mut host.rp, line, 0x3c, 0xf5, y, 0x0a, 0xff);
+    }
+    let mut buttons = TextButtons::default();
+    buttons.register(host, 0xb2, 0xa0, OKAY, 0x1a);
+    let saved = host.mouse_xy();
+    host.g.mouse_set_position(0xbf, 0xa5);
+    host.screen_fade(1)?;
+    loop {
+        host.input_poll_mouse()?;
+        let (mx, my) = host.mouse_xy();
+        if host.button == LEFT_DOWN && buttons.hit(mx, my) != 0 {
+            break;
+        }
+    }
+    host.g.mouse_set_position(saved.0, saved.1);
+    host.ui.redraw_buttons(&mut host.g, &mut host.rp, slot, 0);
     Ok(true)
+}
+
+/// Question box: `title` (the addressed manager's name, or `"An Alle:"`,
+/// `DS:269c`, for all managers) over
+/// three lines and the buttons `left` and `right`. Returns 1 for `left`, 0
+/// for `right`, and -1 when automatic play (`auto_play`, `DS:05d4`) ends it
+/// without a choice. The pointer starts on `right` and is put back
+/// afterwards.
+///
+/// Origin: BMMAIN.EXE 4091:146c (dialog_two_choice)
+#[allow(clippy::too_many_arguments)]
+pub fn dialog_two_choice(
+    host: &mut Host,
+    auto_play: bool,
+    title: &[u8],
+    l1: &[u8],
+    l2: &[u8],
+    l3: &[u8],
+    left: &[u8],
+    right: &[u8],
+) -> Run<i8> {
+    let slot = dialog_panel(host, 0x4b, 0x9b);
+    host.set_font(1);
+    let (g, rp) = (&mut host.g, &mut host.rp);
+    ui_draw_text_centered_shadow(g, rp, title, 0x4f, 0xe6, 0x77, 0x0b, 0xff);
+    ui_draw_line(g, rp, 0x4d, 0x79, 0xe4, 0x79, 0x0b);
+    host.set_font(2);
+    for (k, line) in [l1, l2, l3].into_iter().enumerate() {
+        let y = 0x83 + 8 * k as i16;
+        ui_draw_text_centered_shadow(&mut host.g, &mut host.rp, line, 0x4f, 0xe6, y, 0x0a, 0xff);
+    }
+    ui_draw_line(&mut host.g, &mut host.rp, 0x4d, 0x9b, 0xe4, 0x9b, 0x0b);
+    // Drawn as text buttons, but unregistered again (`DS:07b3 -= 2`): the
+    // hit test below is by coordinates.
+    let mut buttons = TextButtons::default();
+    buttons.register(host, 0x59, 0xa0, left, 0x11);
+    buttons.register(host, 0x9f, 0xa0, right, 1);
+    let saved = host.mouse_xy();
+    host.g.mouse_set_position(0xb9, 0xa5);
+    let mut res: i8 = 0;
+    loop {
+        host.input_poll_mouse()?;
+        if host.button == LEFT_DOWN {
+            let (mx, my) = host.mouse_xy();
+            for k in 0..2i16 {
+                if k * 0x46 + 0x59 < mx && mx < k * 0x46 + 0x92 && 0x9f < my && my < 0xac {
+                    res = 2 - k as i8;
+                }
+            }
+        }
+        if res != 0 || auto_play {
+            break;
+        }
+    }
+    host.g.mouse_set_position(saved.0, saved.1);
+    host.ui.redraw_buttons(&mut host.g, &mut host.rp, slot, 0);
+    Ok(res - 1)
+}
+
+/// Waits until the mouse buttons are released, then for a left click (or
+/// automatic play).
+///
+/// TODO(re): the original also requires `FAR:3046 == 1` (one pending mouse
+/// event), which the port does not model.
+///
+/// Origin: BMMAIN.EXE 176b:0d0a (input_wait_click)
+pub fn input_wait_click(host: &mut Host, auto_play: bool) -> Run<()> {
+    host.input_wait_release()?;
+    if auto_play {
+        return Ok(());
+    }
+    while host.input_poll_mouse()? != LEFT_DOWN {}
+    Ok(())
 }
 
 /// Erases the 3x5 cursor block or a typed character: filled with `bg`, or for

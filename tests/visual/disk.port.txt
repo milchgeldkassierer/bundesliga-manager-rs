@@ -1,0 +1,113 @@
+# Port side of the disk scenario (bmp run --script syntax, milliseconds):
+# load 07072019.MAN and open the screens of the office "Disk/Optionen" submenu:
+# settings (one toggle), high scores, the quit question (cancelled), the overwrite
+# question for an existing save (cancelled), saving as TEST.MAN, then a second save
+# attempt and a click on the calendar sheet, both blocked after a save (DS:05ad).
+# The updated HIGH.00 must equal the original's byte for byte.
+# TODO(#23, #24): also compare TEST.MAN. The port's save path reproduces every
+# shipped save byte for byte (disk.rs tests), but the original runs the weekly
+# finance step and the club-strength drift when a game is resumed, so its
+# TEST.MAN differs in the club strengths, the training-camp counters and the
+# header (the drift's random draws come before the save's).
+# seed: 49505
+# compare-file: HIGH.00
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+move 291 173
+wait 100
+click 291 173
+wait 500
+shot d00-submenu
+move 161 132
+wait 100
+click 161 132
+wait 1000
+shot d01-settings
+move 132 40
+wait 100
+click 132 40
+wait 500
+shot d02-toggle
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot d03-back
+move 107 216
+wait 100
+click 107 216
+wait 1000
+shot d04-highscore
+move 160 120
+wait 100
+click 160 120
+wait 1000
+shot d05-after-high
+move 291 216
+wait 100
+rclick 291 216
+wait 500
+shot d06-quit
+move 187 166
+wait 100
+click 187 166
+wait 500
+shot d07-quit-cancel
+move 107 174
+wait 100
+click 107 174
+wait 1000
+move 100 178
+wait 100
+click 100 178
+wait 250
+type 07072019
+wait 250
+key enter
+wait 1000
+shot d08-exists
+move 187 166
+wait 100
+click 187 166
+wait 1000
+shot d09-exists-cancel
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 174
+wait 100
+click 107 174
+wait 1000
+shot d10-save-selector
+move 100 178
+wait 100
+click 100 178
+wait 250
+type test
+wait 250
+shot d11-typed
+key enter
+wait 1000
+shot d12-saved
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 174
+wait 100
+click 107 174
+wait 1000
+shot d13-save-blocked
+move 280 75
+wait 100
+click 280 75
+wait 1000
+shot d14-turn-blocked

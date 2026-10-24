@@ -49,7 +49,7 @@ impl SaveSession {
         s
     }
 
-    fn path(&self, data: &Path) -> PathBuf {
+    pub(crate) fn path(&self, data: &Path) -> PathBuf {
         self.dir.iter().fold(data.to_path_buf(), |p, c| p.join(c))
     }
 
@@ -101,15 +101,23 @@ impl SaveSession {
         }
     }
 
+    /// Appends a save id to the history (`FAR:a6d8`, `DS:05ae`), dropping the
+    /// oldest one when 50 are stored.
+    ///
+    /// Origin: BMMAIN.EXE 422b:07fe (screen_save_game, 422b:0a1c..0a79)
+    pub fn record_id(&mut self, id: u32) {
+        if self.loaded_ids.len() >= SAVE_ID_HISTORY {
+            self.loaded_ids.remove(0);
+        }
+        self.loaded_ids.push(id);
+    }
+
     /// Remembers a loaded save id; false when it was loaded before in this session.
     fn remember_id(&mut self, id: u32) -> bool {
         if self.loaded_ids.contains(&id) {
             return false;
         }
-        if self.loaded_ids.len() >= SAVE_ID_HISTORY {
-            self.loaded_ids.remove(0);
-        }
-        self.loaded_ids.push(id);
+        self.record_id(id);
         true
     }
 }
@@ -514,7 +522,7 @@ pub fn screen_load_game(
 }
 
 /// The host file whose name matches `path`'s file name ignoring case (DOS names).
-fn find_case_insensitive(path: &Path) -> Option<PathBuf> {
+pub(crate) fn find_case_insensitive(path: &Path) -> Option<PathBuf> {
     let dir = path.parent()?;
     let want = path.file_name()?.to_string_lossy().to_string();
     std::fs::read_dir(dir).ok()?.flatten().find_map(|e| {

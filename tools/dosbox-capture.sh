@@ -5,13 +5,16 @@
 # Usage: tools/dosbox-capture.sh <out_dir> <script>
 #   <script> is a file of lines: "wait <seconds>" | "key <xdotool key>" | "type <text>" | "shot <name>"
 #   | "click <x> <y> [<mode height 200|240>] [<button>]" (game coordinates, scaled to the window)
-# The game runs from a scratch copy ($BMP_DOS_DIR, default ~/Apps/bmp-dos/game) so real saves stay untouched.
+#   | "fetch <file>" (copy a file the game wrote, e.g. a save, from the game directory to <out_dir>)
+# The game runs from a fresh temporary copy of $BMP_DOS_DIR (default ~/Apps/bmp-dos/game), so
+# neither real saves nor the files a scenario writes (saves, high scores) persist between runs.
 set -euo pipefail
 OUT=$(realpath -m "$1"); SCRIPT=$(realpath "$2")
 DOSBOX=${DOSBOX:-$(ls -d "$HOME"/Apps/dosbox-staging*/ | head -1)dosbox}
 GAME=${BMP_DOS_DIR:-$HOME/Apps/bmp-dos/game}
 DISP=${CAPTURE_DISPLAY:-:77}
 WORK=$(mktemp -d); mkdir -p "$OUT" "$WORK/cap"
+cp -r "$GAME" "$WORK/game"; GAME="$WORK/game"
 cat > "$WORK/dosbox.conf" <<CONF
 [sdl]
 output = texture
@@ -65,6 +68,7 @@ while read -r cmd arg; do
       # Wait until DOSBox has finished writing the file (size stable).
       prev=-1; for _ in $(seq 30); do cur=$(stat -c %s "$WORK/cap/$newest" 2>/dev/null || echo 0); [ "$cur" -gt 0 ] && [ "$cur" = "$prev" ] && break; prev=$cur; sleep 0.2; done
       [ -n "$newest" ] && cp "$WORK/cap/$newest" "$OUT/$arg.png" && echo "captured $arg" ;;
+    fetch) cp "$GAME/$arg" "$OUT/$arg" && echo "fetched $arg" ;;
     ''|'#'*) ;;
   esac
 done < "$SCRIPT"

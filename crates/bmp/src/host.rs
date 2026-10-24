@@ -364,6 +364,12 @@ impl Host {
         }
     }
 
+    /// Reads a pending key without waiting (`dos_direct_console_io`, INT 21h
+    /// AH=06h DL=FFh); 0 when none is pending.
+    pub fn read_key_nowait(&mut self) -> u8 {
+        self.keys.pop_front().unwrap_or(0)
+    }
+
     // ----- timer ----------------------------------------------------------------------
 
     /// `delay_ticks(n)` followed by the busy wait its callers do.

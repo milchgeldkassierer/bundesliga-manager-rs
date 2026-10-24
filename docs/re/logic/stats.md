@@ -1027,6 +1027,14 @@ with the injury name `UI[53+type]` (via `text_to_upper_de`) or the status texts 
   * `'g'`: balance `+= 200000`.
   * `'p'`: `DS:05f5 = 1`.
 * Exit with button 2 (frees the picture).
+* Header line (font 2, colour 3 at (0x10, 0x17)): `"V2.0 - ENDE: "` + the scenario year
+  (`FAR:513c < 2000`) or `UI[416] " NIE."`, then `" (LEVEL "` + `5 - DS:4a28` + `")"`. There
+  is no title. The rows are centred with colour 0x1d, shadow 0; lines at y 0x11 (colour 1),
+  0x62 and 0xb4 (colour 0x1d, the current colour). The slider background is a 0x64 x 0x13 cut
+  of the toggle picture at (0xbe, 0x9b).
+* Cheat keys are read with DOS function 06 on every loop pass and discarded unless the pixel
+  under the pointer has colour 0x0b; an accepted cheat flashes a frame (0,0)-(0x13f,0xff) in
+  colour 1 while the keyboard buffer is drained.
 
 ### 4.2 `screen_statistics` 362f:0af7 and helpers
 
@@ -1308,12 +1316,40 @@ Speichern"` / `LBL[107] "Spielstand Laden"`; the file format and the block seque
 savegame.md.
 
 * Save `void screen_save_game(char far *fixed_name)`: callers `fatal_error_exit` (name
-  `"ERROR.MAN"`), `office_menu_dispatcher` (autosave `"autosave.man"` at DS:0278 when
-  `DS:05ad == 0`; menu "save"). With a fixed name the selector is skipped. If the file exists,
-  the question box `LBL[208..210] "FILE EXISTIERT" / "BEREITS." / "]BERSCHREIBEN ?"` with
-  `LBL[218] "ACH BITTE !"` / `LBL[219] "BLO~ NICHT !"` is shown. Then the save id
-  (`random_range(0, 0x8fff)` twice), pad byte and key (`random_range(0, 255)` twice) as in
-  savegame.md, followed by the blocks. A write error calls `disk_error_dialog`.
+  `"ERROR.MAN"`; not for exit code 99, the quit question), `office_menu_dispatcher` 18bc:0b84
+  (autosave `"autosave.man"` at DS:026b when the request DS:5256 is set) and 18bc:1bb2 (menu
+  "save", empty name DS:0278, only while `DS:05ad == 0`). Port: `crates/bmp/src/game/disk.rs`.
+
+  ```c
+  DS:9440 = 0;
+  if (*fixed_name == 0) {
+      copy_protection_penalty(LBL[106]);                       // one random_range when not passed
+      font 3; title = upper(LBL[106]) centred x 0..0x140, y 0x14, colour 0x0b, shadow 0;
+      file_selector(0, 0, name, 0);  if (!name[0]) return;
+      path = FAR:4af6 (cwd) + (cwd[3] ? "\" : "") + name;
+      if (file_open(path, 0)) {                                // exists
+          file_close();
+          if (!dialog_two_choice(FAR:304a, LBL[208], LBL[209], LBL[210], LBL[218], LBL[219]))
+              return;                                          // "BLO~ NICHT !" (-1 continues)
+      }
+      strcpy(FAR:54a2, name);                                  // offered again by the selector
+  } else path = fixed_name;
+  if (!(fd = file_open(path, 1))) { disk_error_dialog(); DS:9440 = 0; return; }
+  write(signature DS:93e0, strlen); write(">V2\0", 4);
+  lo = random_range(0, 0x8fff); hi = random_range(0, 0x8fff); // 0..0x6fff each (span wraps)
+  id = (long)lo + ((long)hi << 16) + 1;
+  if (DS:05ae < 50) FAR:a6d8[DS:05ae++] = id;                 // the session's save-id history:
+  else { shift FAR:a6dc.. down by 4; FAR:a79c = id; }          //   this save cannot be loaded again
+  write(&id, 4);
+  FAR:57cf = FAR:56dc = random_range(0, 255) + 0x78;          // cipher key
+  pad = random_range(0, 255); write(&pad, 1); write(&FAR:57cf, 1);
+  blocks (DS:05fa[0] = DS:05ac right before block 54), strings, tail as in savegame.md;
+  file_close(fd);
+  if (*fixed_name == 0 && DS:224e/2250 == DS:2252/2254) DS:05ad = 1;   // both options are 1
+  ```
+  `DS:05ad` then blocks the menu save and ending the turn by a click (flow.md §6.6). A save the
+  port writes loads in the original (checked in DOSBox). The port's save path reproduces all six
+  shipped saves byte for byte from the RNG state before their header draws.
 * Load `void screen_load_game(...)`: callers `start_menu_new_or_load` 18bc:2184 and
   `office_menu_dispatcher`. Signature mismatch: `LBL[285..288] "Kein" / "Bundesliga Manager
   Prof." / "Spielstand." / "!!!"`; wrong version: `UI[18..19] "Spielstand aus" / "falscher
@@ -1430,6 +1466,13 @@ input_wait_click();
 
 Consequences for a port:
 
+* `mark` is the local `[bp-0x70]`, which the insertion's sort also uses as its outer counter: after
+  an insertion it is 19, so mode 1 then shows no preview row and, in the one-year variants, row 18
+  (`i + 1 == 19`) would be highlighted. In the normal game every entry whose `+0x36` equals
+  `DS:0668` is highlighted; `DS:0668` is 0 in the data image (writer not traced), so after loading a
+  game all entries are drawn in colour 3. Verified in DOSBox with `07072019.MAN`: the candidate
+  replaces OLIVER / BAYER 05 UERDINGEN (score 131 -> 96) and mode 2 writes `HIGH.00` with exactly
+  that change.
 * `HIGH.XY` is written (`highscore_load_save(1)`) from exactly two call sites
   (xrefs to 422b:21c4: 2a58:41b6 load, 2a58:432a save, 422b:23de load, 422b:24e4 save):
   1. `highscore_screen(2)` at 422b:24e4, after a successful insertion: called by

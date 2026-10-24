@@ -12,7 +12,12 @@ use bmp_game::state::{GameState, Manager, RESCHEDULED_GAMES_DAY};
 use super::contract::screen_manager_contract;
 use super::credits::screen_credits;
 use super::cup_screens::screen_cup_matches;
+use super::disk::{
+    HIGHSCORES_DISABLED, HighscoreMode, highscore_screen, quit_game_confirm, screen_save_game,
+    screen_settings,
+};
 use super::league::has_rescheduled_match_today;
+use super::load_game::screen_load_game;
 use super::season::calendar_compute_date;
 use super::squad_screen::screen_squad_lineup;
 use super::stadium::screen_stadium;
@@ -25,7 +30,7 @@ use super::{
     office_show_cached_background,
 };
 use crate::gfx::{BitmapId, Gfx, Ui, ui_draw_line, ui_draw_text_centered_shadow};
-use crate::host::{Host, LEFT_DOWN, Quit, RIGHT_DOWN, Run};
+use crate::host::{Host, LEFT_DOWN, RIGHT_DOWN, Run};
 
 /// Pictures of the office (`office_load_bitmaps`).
 pub struct OfficeBitmaps {
@@ -306,7 +311,7 @@ fn office_handle_free_click(host: &mut Host, session: &mut Session, sel: i16) ->
         session.auto_play = false;
         return Ok(0);
     }
-    if auto || (mx > 0xf2 && my > 0x31 && mx < 0x132 && my < 0x66) {
+    if !session.save_disabled && (auto || (mx > 0xf2 && my > 0x31 && mx < 0x132 && my < 0x66)) {
         host.screen_fade(0)?;
         host.ui.redraw_buttons(&mut host.g, &mut host.rp, 0x7f, 0);
         return Ok(1);
@@ -328,18 +333,6 @@ fn office_handle_free_click(host: &mut Host, session: &mut Session, sel: i16) ->
     Ok(0)
 }
 
-/// Shows the pressed quit icon and asks whether to end the game.
-///
-/// TODO(#15): the question box `dialog_two_choice` 4091:146c ("M|CHTEN SIE / DAS
-/// SPIEL WIRKLICH / BEENDEN ?") is not ported; the port quits directly.
-///
-/// Origin: BMMAIN.EXE 18bc:1c1d (quit_game_confirm)
-fn quit_game_confirm(host: &mut Host) -> Run<()> {
-    host.ui
-        .draw_button(&mut host.g, &mut host.rp, 0x10a, 0xc4, 0, 0x40c8, false, 8);
-    Err(Quit)
-}
-
 /// One office turn of the current manager. Returns when the turn ends.
 ///
 /// TODO(#15): only the "Tabellen" screens and the squad list behind the sub
@@ -359,7 +352,7 @@ pub fn office_menu_dispatcher(
     let mut warned = false;
     // DS:5256 (autosave request) is 0: no autosave here.
     state.saved_manager = state.current_manager;
-    let day_saved = state.day_counter;
+    let mut day_saved = state.day_counter;
     host.screen_fade(0)?;
     host.number_no_separators = true;
     for (t, &rounds) in LEAGUE_ROUND_COUNT.iter().enumerate() {
@@ -456,7 +449,7 @@ pub fn office_menu_dispatcher(
                 if si == 0 {
                     if host.button == RIGHT_DOWN {
                         if Ui::hit_test_buttons(&main_rect, 6, mx, my, None) == 6 {
-                            quit_game_confirm(host)?;
+                            quit_game_confirm(host, session, state)?;
                         }
                     } else {
                         ret = office_handle_free_click(host, session, sel)?;
@@ -539,7 +532,7 @@ pub fn office_menu_dispatcher(
                             reopen = 0;
                             continue 'main;
                         }
-                        quit_game_confirm(host)?;
+                        quit_game_confirm(host, session, state)?;
                     }
                     ret = office_handle_free_click(host, session, sel)?;
                     match ret {
@@ -586,8 +579,23 @@ pub fn office_menu_dispatcher(
                         screen_squad_lineup(host, session, state, rules, 0, 0xff, None)?;
                     }
                     (4, 1..=4) => screen_cup_matches(host, session, state, (si - 1) as u8, 0)?,
+                    (5, 1) => {
+                        if let Some(loaded) = screen_load_game(host, session, pics, 0)? {
+                            *state = *loaded;
+                            day_saved = state.day_counter;
+                            warned = false;
+                        }
+                    }
+                    (5, 2) if !session.save_disabled => {
+                        screen_save_game(host, session, state, b"")?
+                    }
+                    (5, 3) if !HIGHSCORES_DISABLED => {
+                        highscore_screen(host, session, state, HighscoreMode::Preview)?;
+                    }
+                    (5, 4) => screen_settings(host, session, state)?,
                     _ => {}
                 }
+                // TODO(#15): (5, 5) is start_menu_new_or_load(0), adding managers.
                 // TODO(#29): (3, 2) is screen_squad_lineup(0x63, 0xff), which needs the
                 // contract negotiation.
                 // TODO(#15): the other screens of flow.md §6.5.

@@ -4,6 +4,7 @@
 pub mod contract;
 pub mod credits;
 pub mod cup_screens;
+pub mod disk;
 pub mod league;
 pub mod load_game;
 pub mod office;
@@ -44,6 +45,15 @@ pub struct Session {
     pub saves: load_game::SaveSession,
     /// `DS:0044/0046`: position and width of the status-line text.
     pub status_line: stadium::StatusLine,
+    /// `DS:05ad`: set after a save from the menu; blocks saving again and
+    /// ending the turn with a click (cleared by the settings cheat `d`).
+    pub save_disabled: bool,
+    /// `DS:05f5`: set by the settings cheat `p` (meaning not traced).
+    pub cheat_05f5: bool,
+    /// `DS:0668`: the tag written into new high-score entries (+0x36); 0 in
+    /// the data image.
+    /// TODO(re): its writer is not traced.
+    pub highscore_tag: i32,
 }
 
 impl Session {
@@ -55,6 +65,9 @@ impl Session {
             auto_play: false,
             saves: load_game::SaveSession::default(),
             status_line: stadium::StatusLine::default(),
+            save_disabled: false,
+            cheat_05f5: false,
+            highscore_tag: 0,
         }
     }
 }

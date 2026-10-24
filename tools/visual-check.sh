@@ -9,6 +9,9 @@
 # read from the "# seed: <n>" line of the port script; it has to be recovered once
 # for a new reference set when the scenario depends on random data. A "# seed2: <n>"
 # line fixes the second seed, read when a new game starts.
+# The port runs on a temporary copy of $BMP_DATA, so scenarios may save. A
+# "# compare-file: <name>" line compares the file <name> the port wrote with the
+# one the original wrote (fetched into the reference directory) byte for byte.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 DATA=${BMP_DATA:?set BMP_DATA to the game directory}
@@ -26,14 +29,21 @@ for name in "${names[@]}"; do
     tools/dosbox-capture.sh "$ref" "tests/visual/$name.dosbox.txt"
   fi
   out=$(mktemp -d)
+  data=$(mktemp -d)
+  cp -r "$DATA"/. "$data"
   seed=$(sed -n 's/^# seed: *\([0-9]*\).*/\1/p' "tests/visual/$name.port.txt")
   seed2=$(sed -n 's/^# seed2: *\([0-9]*\).*/\1/p' "tests/visual/$name.port.txt")
-  "$BIN" --data "$DATA" run --script "tests/visual/$name.port.txt" --shots "$out" \
+  "$BIN" --data "$data" run --script "tests/visual/$name.port.txt" --shots "$out" \
     ${seed:+--time "$seed"} ${seed2:+--time2 "$seed2"} 2>/dev/null
   for shot in "$ref"/*.png; do
     base=$(basename "$shot")
     printf '%s/%s: ' "$name" "$base"
     "$BIN" compare "$out/$base" "$shot" --diff "$out/diff-$base" || { status=1; echo "  diff: $out/diff-$base"; }
   done
+  for file in $(sed -n 's/^# compare-file: *\([^ ]*\).*/\1/p' "tests/visual/$name.port.txt"); do
+    printf '%s/%s: ' "$name" "$file"
+    if cmp -s "$data/$file" "$ref/$file"; then echo "identical"; else echo "DIFFERS"; status=1; fi
+  done
+  rm -rf "$data"
 done
 exit $status

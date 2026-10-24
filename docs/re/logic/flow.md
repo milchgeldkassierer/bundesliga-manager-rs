@@ -1169,7 +1169,10 @@ cells: 0x1029.
 ### 6.6 `office_handle_free_click` 18bc:08f2 — `int (u8 sel)`
 
 Handles a click that hit no icon. `my = ms[0]`, `mx = ms[1]`. `DS:05d4` = auto-play flag ("Spiele
-automatisch"), `DS:05ad` = flag that disables saving and ending the turn by click (0 in the shipped data).
+automatisch"), `DS:05ad` = flag that disables saving and ending the turn by click (0 at program start;
+`screen_save_game` sets it after every save from the menu, see stats.md §5.2; the settings cheat `d`
+clears it). Verified in DOSBox: after "Spielstand Speichern" the save sub-icon only redraws the office and
+a click on the calendar sheet no longer ends the turn.
 ```c
 if (FAR:2ea2 != 1 && DS:05d4 == 0) return 0;
 if (my == 0 && mx == 0 && DS:05d4) {                     // pointer in the top-left corner: stop auto play
@@ -1280,7 +1283,7 @@ the RNG stream when the flag is 0.
 | 0286..028a | `05 04 06 05 06` | copied to `M[m].b[0x141..0x145]` |
 | 028c..028f | `01 03 03 03` | copied to `M[m].b[0x146..0x149]` |
 | 05ac | `01` | copy protection passed |
-| 05ad | `00` | "save/turn-end by click disabled" flag (writer unknown) |
+| 05ad | `00` | "save/turn-end by click disabled" flag (set by `screen_save_game` 422b:11fd, cleared by the settings cheat `d`) |
 | 05d4 | `00` | auto-play flag |
 | 05da | `00` | crest blanking active |
 | 05dc | `67 68 6b 73 79 7a 7d 7e 7f 80 82 83 85 86 87 88 89 8a 8b 8d 8e 8f 90 00` | crest codes+0x50 that are blanked when 05da != 0 |
@@ -1456,8 +1459,9 @@ the RNG stream when the flag is 0.
 
 ## 12. Open questions
 
-1. `DS:05ad` (disables saving and ending a turn by click) has no writer found in the direct-reference
-   scan; maybe a demo flag patched in the EXE.
+1. ~~`DS:05ad` has no writer~~ (answered: `screen_save_game` 422b:11fd sets it after a menu save when
+   the game options `DS:224e` and `DS:2252` are equal, which they are in the shipped data; the writes
+   go through a selector, so the direct-reference scan missed them).
 2. Mouse event codes 2/3/4 are inferred from usage (release / right press / right release); the INT 33h
    handler at 45ac was not traced.
 3. `team_swap_slots(a, a, ...)` with equal ids: all swaps are no-ops except that every pool/manager
