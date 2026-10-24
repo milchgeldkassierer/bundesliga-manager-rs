@@ -87,7 +87,7 @@ and packed: the first record with `pid == 0` ends the list.
 | +0x09 | 7753 | u8 | **status bits**: bits 0-1 `st` (0 = available, 1 = suspended "GESPERRT", 2 = injured "VERLETZT", 3 = unavailable, no text); bits 6-7 = transfer-listed / offered flag (name drawn in colour 0xb in transfer modes) | 3635, 3170, 06af, 1560 |
 | +0x0a | 7754 | u8 | **lineup slot**: 0 = not selected, 1..11 = starting XI (always renumbered 1..k in record order, see 24cd), 12..`FAR:56ee` = substitutes | everywhere |
 | +0x0b | 7755 | u8 | **contract length** in seasons ("V.DAUER", "n JAHR"/"JAHRE") | 37d8, 06af col 16 |
-| +0x0c | 7756 | u8 | **loan flag** (" (AUSGEL.)" = on loan); `0x63` ('c') selects price mode 3 in transfer_value_calc | 37d8, 000e, 06af |
+| +0x0c | 7756 | u8 | **loan flag** (" (AUSGEL.)" = on loan); `0x63` ('c') selects price mode 3 in player_value_calc | 37d8, 000e, 06af |
 | +0x0d | 7757 | u8 | remaining suspension games ("NOCH n SPIELE", "GESP.(n)") | 000e, 06af, 3170 |
 | +0x0e | 7758 | u8 | **tendency**, `random_range(35,65)`; class = (v-30)/13 (signed): 0 "FALLEND."/'-', 1 "KONSTANT."/'O', 2 "STEIGEND."/'+' | 3277:000a, 000e, 06af |
 | +0x0f | 7759 | u8 | **player id** (index into the player table; 0 = empty record) | everywhere |
@@ -102,7 +102,7 @@ and packed: the first record with `pid == 0` ends the list.
 | +0x19 | 7763 | i8 | **tactics-board column** 0..7, `0xff` = not placed | 3360, 1266, 29c6 |
 | +0x1a | 7764 | i8 | **tactics-board row** 0..7 (0 = attack, 7 = goal) | 3360, 1266, 29c6 |
 | +0x1b..+0x27 | | | not used in 2ecd | |
-| +0x28 | 7772 | i32 | **value/salary** (from `transfer_value_calc`); list column 17 | 37d8, 06af |
+| +0x28 | 7772 | i32 | **value/salary** (from `player_value_calc`); list column 17 | 37d8, 06af |
 | +0x2c..+0x2f | | | not used in 2ecd | |
 | +0x30 | 777a | far ptr | message string (savegame relocates it on load) | 10ee, 06af |
 
@@ -195,7 +195,7 @@ DS:079c), `ui_dialog_box` 176b:0e57 `(line1, line2)` (always returns 1), `input_
 `(src, dst, n)`, CRT `strcpy/strcat/strlen`, `_aFlmul/_aFldiv/_aFlshr`, `clamp_int` 4091:1009
 `(int far *v, lo, hi)`, `text_to_upper_de` 4091:105d, `squad_count_by_flag` 4091:1109,
 `message_find_owner` 4091:0044, `ui_wait_with_highlight` 4091:1722, `FUN_212a_00b4` (squad size incl.
-owned players), `1310:1c22` (foot suffix), `transfer_value_calc` 3277:25de,
+owned players), `1310:1c22` (foot suffix), `player_value_calc` 3277:25de,
 `player_traits_randomize` 3277:000a, `contract_negotiation` 3277:2a8f, `event_helper_25d5` 1cb5:25d5,
 `manager_ai_weekly` 1f9d:0002.
 
@@ -206,8 +206,8 @@ owned players), `1310:1c22` (foot suffix), `transfer_value_calc` 3277:25de,
 Port status: §3 is ported as `bmp_game::squad` (`crates/bmp-game/src/squad.rs`), together with
 `squad_count_by_flag` 4091:1109 (mode 0 only, as `squad_count_listed`), `count_players_of_owner` 212a:00b4, `player_init_random_attrs`
 3277:000a and `event_helper_25d5` 1cb5:25d5 (`squad_fix_position_mismatch`, season.md §4.4).
-`transfer_value_calc` is passed in by the caller. Deliberate deviations: `auto_lineup` skips the slot-13
-write when `bench_best` was never assigned (§3.1), and `squad_remove_player` does not call
+`squad_insert_player` calls `bmp_game::transfer::player_value_calc` (3277:25de) directly.
+Deliberate deviations: `auto_lineup` skips the slot-13 write when `bench_best` was never assigned (§3.1), and `squad_remove_player` does not call
 `message_find_owner` (the message table is not modelled yet).
 §4 (the screen and its drawing helpers) is ported as `crates/bmp/src/game/squad_screen.rs`;
 `ui_dialog_box` and `contract_negotiation` are still stubs there.
@@ -373,7 +373,7 @@ u8 squad_insert_player(u8 pid, u8 contract, u8 loan, i32 unused, u8 limit) {
     r->contract = contract;
     r->loan     = loan;
     r->kond = PL(pid).kond; r->tech = PL(pid).tech; r->form = PL(pid).form;
-    r->value = transfer_value_calc(idx, (loan == 0x63 ? 1 : 0) * 2 + 1);  /* (u8 idx, u8 mode) -> i32 */
+    r->value = player_value_calc(idx, (loan == 0x63 ? 1 : 0) * 2 + 1);  /* (u8 idx, u8 mode) -> i32 */
     if ((i8)FAR_304a != 4 && PL(pid).club != MGR(m).club) {
         PL(pid).cnt_22 = 0; PL(pid).cnt_23 = 0;
         PL(pid).club = MGR(m).club;
@@ -384,7 +384,7 @@ u8 squad_insert_player(u8 pid, u8 contract, u8 loan, i32 unused, u8 limit) {
 
 `player_traits_randomize` (3277:000a, transfer area) does, in this order:
 `r->tendency = random_range(35,65); r->b14 = random_range(1,13); r->b14 |= random_range(1,3) << 4;
-r->b14 |= random_range(0,1) << 7;`. `transfer_value_calc` may consume more RNG calls (transfer area).
+r->b14 |= random_range(0,1) << 7;`. `player_value_calc` draws no random numbers in the salary modes used here (1 and 3).
 Note that the 12-player check looks at record 11 of the current group whatever the group is. The "24"
 check counts with `FUN_212a_00b4(m)`: the number of records in squads 0..`DS:07ab`-1 and group 4 whose
 player is owned (`+0x21`) by `m`, plus every record of group `m`. The `i32` argument is never read; the
@@ -596,7 +596,7 @@ previous drawn columns, in colour `DS:07b4[pos]` (overrides: slot > 11 in NR →
 (`pid == 0`) draw nothing. Column 17 value = `value * (i32)DS:2252 / (i32)DS:224e` (MSC long mul/div)
 + " DM"; if `DS:224d != 0`, x += 8 and the empty prefix string LBL@4f78 is used. In modes 1/2, for a
 player not owned by group 4, the value is recomputed with `FAR:304a` temporarily 4:
-`transfer_value_calc(si, 0)`. `DS:079c` is set to the number field width (2, 1 or `7 - DS:224d`).
+`player_value_calc(si, 0)`. `DS:079c` is set to the number field width (2, 1 or `7 - DS:224d`).
 
 ### 4.7 Other UI helpers
 * `squad_draw_status_cell(i)` 2ecd:3170: clear `(0xb1, (i+5)*6)-(0xd8, i*6+0x23)` colour 8; text at

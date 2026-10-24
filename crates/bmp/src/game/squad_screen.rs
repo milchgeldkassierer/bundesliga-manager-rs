@@ -334,7 +334,7 @@ fn squad_list_draw(
             let pl = &state.players[r.player_id as usize];
             let pos = pl.position_value / 25;
             let mut c = position_color(pos);
-            let offer = r.unknown_15[3];
+            let offer = r.negotiation;
             if mode == 3 && offer != 0 && offer < 100 {
                 c = 3;
             }
@@ -342,7 +342,7 @@ fn squad_list_draw(
                 c = 0x11;
             }
             host.number_pad = 2;
-            let count = |k: usize| i32::from(r.unknown_00[k]);
+            let sum = |c: [u8; 3]| c.iter().map(|&n| i32::from(n)).sum::<i32>();
             let mut text: Option<Vec<u8>> = None;
             match col {
                 0 => {
@@ -372,12 +372,12 @@ fn squad_list_draw(
                     }
                     text = Some(pl.name().to_vec());
                 }
-                3..=5 => text = Some(num(host, count(col + 3))),
+                3..=5 => text = Some(num(host, i32::from(r.appearances[col - 3]))),
                 6 => {
                     if mask == 0x0003_d146 {
                         x -= 6;
                     }
-                    text = Some(num(host, count(6) + count(7) + count(8)));
+                    text = Some(num(host, sum(r.appearances)));
                 }
                 7 => {
                     let mut s = num(host, i32::from(r.skills[0]));
@@ -391,12 +391,12 @@ fn squad_list_draw(
                     text = Some(s);
                 }
                 8 => text = Some(num(host, average_skill(r))),
-                9..=11 => text = Some(num(host, count(col - 6))),
-                12 => text = Some(num(host, count(3) + count(4) + count(5))),
+                9..=11 => text = Some(num(host, i32::from(r.goals[col - 9]))),
+                12 => text = Some(num(host, sum(r.goals))),
                 13 => {
-                    let mut s = num(host, count(1));
+                    let mut s = num(host, i32::from(r.cards[1]));
                     s.push(b' ');
-                    s.extend(num(host, count(0)));
+                    s.extend(num(host, i32::from(r.cards[0])));
                     text = Some(s);
                 }
                 14 => {
@@ -491,7 +491,7 @@ fn hover_text(
             s = ui_string(22).to_vec();
             s.extend_from_slice(pl.name());
             s.extend_from_slice(b" (");
-            s.extend(num(host, i32::from(pl.attr_1a)));
+            s.extend(num(host, i32::from(pl.age)));
             s.extend_from_slice(ui_string(303));
             player_append_foot_text(&mut s, state, row);
         }
@@ -516,7 +516,7 @@ fn hover_text(
                 s.extend_from_slice(ui_string(133 - i16::from(st)));
                 if st == 2 {
                     s.push(b'(');
-                    s.extend(text_to_upper_de(ui_string(53 + i16::from(r.unknown_15[2]))));
+                    s.extend(text_to_upper_de(ui_string(53 + i16::from(r.unknown_17))));
                     s.push(b')');
                 }
             }
@@ -726,7 +726,7 @@ fn squad_draw_strength_age_line(host: &mut Host, state: &GameState, i: usize, bo
     s.extend_from_slice(b", ");
     s.extend(num(
         host,
-        i32::from(state.players[r.player_id as usize].attr_1a),
+        i32::from(state.players[r.player_id as usize].age),
     ));
     s.extend_from_slice(ui_string(311));
     player_append_foot_text(&mut s, state, i);
@@ -1370,10 +1370,10 @@ pub fn screen_squad_lineup(
                                     state.players[pid].counters[1] =
                                         state.players[pid].counters[1].wrapping_add(1);
                                 }
-                                let k = 6 + usize::from(comp >= 1) + usize::from(comp > 1);
+                                let k = usize::from(comp >= 1) + usize::from(comp > 1);
                                 let bump = session.rng.random_range(2, 4) as u8 + 4;
                                 let rm = rec_mut(state, i);
-                                rm.unknown_00[k] = rm.unknown_00[k].wrapping_add(1);
+                                rm.appearances[k] = rm.appearances[k].wrapping_add(1);
                                 rm.exhaustion = rm.exhaustion.wrapping_add(bump);
                             }
                             let rm = rec_mut(state, i);

@@ -6,3 +6,6 @@ pub mod rng;
 pub mod squad;
 pub mod state;
 pub mod stats;
+#[cfg(test)]
+mod test_saves;
+pub mod transfer;

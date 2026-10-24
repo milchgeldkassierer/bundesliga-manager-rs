@@ -7,7 +7,7 @@ use crate::league::{
     LEAGUE_ROUND_COUNT, LEAGUE_TEAM_COUNT, NO_MATCH, NOT_PLAYED, league_team_ids, round_results,
 };
 use crate::rng::Rng;
-use crate::state::{GameState, PLAYER_COUNT, Player, SquadPlayer};
+use crate::state::{GameState, PLAYER_COUNT, Player};
 
 /// DS:5331 scorer selection weights, indexed by the candidate count.
 const SCORER_WEIGHTS: [u8; 11] = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 46];
@@ -122,10 +122,7 @@ pub fn top_scorers_order(state: &mut GameState) -> [u8; PLAYER_COUNT] {
         let count = state.squad_player_count(m) as usize;
         for i in 0..count {
             let slot = &state.squads[m][i];
-            let (id, goals) = (
-                slot.player_id as usize,
-                slot.unknown_00[SquadPlayer::LEAGUE_GOALS],
-            );
+            let (id, goals) = (slot.player_id as usize, slot.goals[0]);
             state.players[id].counters[0] = goals;
         }
     }
@@ -381,7 +378,7 @@ mod tests {
         // A human squad's goal counter overrides the pool counter.
         s.manager_count = 1;
         s.squads[0][0].player_id = 9;
-        s.squads[0][0].unknown_00[SquadPlayer::LEAGUE_GOALS] = 6;
+        s.squads[0][0].goals[0] = 6;
         let ord = top_scorers_order(&mut s);
         assert_eq!(ord[1..5], [9, 7, 3, 2]);
         assert_eq!(s.players[9].counters[0], 6);

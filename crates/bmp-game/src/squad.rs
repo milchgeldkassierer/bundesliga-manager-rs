@@ -13,15 +13,12 @@
 //! Full documentation with addresses: `docs/re/logic/squad.md`.
 
 use crate::rng::{Rng, long_abs_diff};
-use crate::state::{BOARD_UNPLACED, GameState, LOAN_PRICE_MODE, Layout, SQUAD_COUNT, SquadPlayer};
+use crate::state::{
+    BOARD_UNPLACED, GameState, LOAN_PRICE_MODE, Layout, SQUAD_COUNT, SQUAD_SCAN, SquadPlayer,
+    TRANSFER_LIST, TRANSFER_LIST_SCAN,
+};
+use crate::transfer::player_value_calc;
 
-/// Records 0..24 of a group are scanned; record 24 is only reached by the
-/// shifts of insert and remove.
-const SQUAD_SCAN: usize = 24;
-/// Group index of the transfer list.
-const TRANSFER_LIST: usize = 4;
-/// Records of the transfer list that [`squad_count_listed`] scans.
-const TRANSFER_LIST_SCAN: usize = 12;
 /// Highest lineup position of the starting eleven.
 const LAST_STARTER: u8 = 11;
 /// First lineup position of the bench.
@@ -60,7 +57,7 @@ pub enum InsertRejected {
 ///
 /// # Panics
 /// When [`GameState::current_manager`] is not a group index (0..=4).
-fn group(state: &GameState) -> usize {
+pub(crate) fn group(state: &GameState) -> usize {
     usize::try_from(state.current_manager)
         .ok()
         .filter(|&g| g < SQUAD_COUNT)
@@ -222,8 +219,7 @@ fn auto_lineup_pick_best(
             if player_pos as i16 != pos as i16 {
                 continue;
             }
-            let [a, b, c] = rec.skills.map(u16::from);
-            let mut val = ((a + b + c) / 3) as i16;
+            let mut val = rec.average_skill();
             if player_pos == 0 && start != 0 {
                 val = if gk_seen { 1 } else { -1 };
                 gk_seen = true;
@@ -433,10 +429,9 @@ pub fn player_init_random_attrs(rng: &mut Rng, rec: &mut SquadPlayer) {
 /// manager's club and his two club counters cleared (not for the transfer
 /// list).
 ///
-/// `value_calc` stands in for `transfer_value_calc` 3277:25de and gets
-/// `(state, rng, idx, mode)` with the new record already filled; mode is 3
-/// for a loan of [`LOAN_PRICE_MODE`] and 1 otherwise. The original's unused
-/// `long` argument is dropped.
+/// The record's `market_value` is the salary from [`player_value_calc`]
+/// (mode 3 for a loan of [`LOAN_PRICE_MODE`], 1 otherwise; no random draws).
+/// The original's unused `long` argument is dropped.
 ///
 /// Origin: BMMAIN.EXE 2ecd:37d8 (squad_insert_player)
 pub fn squad_insert_player(
@@ -446,10 +441,11 @@ pub fn squad_insert_player(
     contract: u8,
     loan: u8,
     limit: u8,
-    value_calc: impl FnOnce(&GameState, &mut Rng, u8, u8) -> i32,
 ) -> Result<u8, InsertRejected> {
     let g = group(state);
-    if limit == 12 && state.squads[g][11].player_id != 0 {
+    if usize::from(limit) == TRANSFER_LIST_SCAN
+        && state.squads[g][TRANSFER_LIST_SCAN - 1].player_id != 0
+    {
         return Err(InsertRejected::TransferListFull);
     }
     let joins_club =
@@ -478,7 +474,7 @@ pub fn squad_insert_player(
     state.squads[g][idx] = rec;
 
     let mode = if loan == LOAN_PRICE_MODE { 3 } else { 1 };
-    state.squads[g][idx].market_value = value_calc(state, rng, idx as u8, mode);
+    state.squads[g][idx].market_value = player_value_calc(state, rng, idx as u8, mode);
     if joins_club {
         let team = state.managers[g].team;
         let player = &mut state.players[pid as usize];
@@ -492,8 +488,7 @@ pub fn squad_insert_player(
 mod tests {
     use super::*;
     use crate::state::NO_OWNER;
-    use bmp_formats::savegame::SaveGame;
-    use std::path::PathBuf;
+    use crate::test_saves::save_states;
 
     const GK: u8 = 0;
     const DEF: u8 = 25;
@@ -868,30 +863,12 @@ mod tests {
         let mut rng = Rng::new(1234);
         let mut expected_rng = rng;
         let attrs = rolled(&mut expected_rng);
-        let value = i32::from(expected_rng.random_range(0, 30000));
         assert_ne!(attrs, (0, 0, 0));
-        let mut seen = None;
-        let idx = squad_insert_player(
-            &mut s,
-            &mut rng,
-            7,
-            2,
-            LOAN_PRICE_MODE,
-            24,
-            |st, r, i, m| {
-                let rec = &st.squads[0][i as usize];
-                seen = Some((
-                    rec.player_id,
-                    i,
-                    m,
-                    (rec.exhaustion, rec.tendency, rec.traits),
-                ));
-                i32::from(r.random_range(0, 30000))
-            },
-        );
+        let idx = squad_insert_player(&mut s, &mut rng, 7, 2, LOAN_PRICE_MODE, 24);
         assert_eq!(idx, Ok(1));
-        // value_calc draws after the five attribute rolls and sees their results.
-        assert_eq!(seen, Some((7, 1, 3, attrs)));
+        // The salary formula draws no random numbers.
+        assert_eq!(rng, expected_rng);
+        let value = player_value_calc(&s, &mut rng, 1, 3);
         assert_eq!(rng, expected_rng);
 
         let r = &s.squads[0][1];
@@ -908,13 +885,12 @@ mod tests {
         // Appending after the last player, own club: mode 1, club untouched.
         s.players[20].team = 1;
         s.players[20].counters = [4, 5];
-        let mut seen = None;
-        let idx = squad_insert_player(&mut s, &mut rng, 20, 1, 0, 24, |_, _, i, m| {
-            seen = Some((i, m));
-            0
-        });
+        let idx = squad_insert_player(&mut s, &mut rng, 20, 1, 0, 24);
         assert_eq!(idx, Ok(3));
-        assert_eq!(seen, Some((3, 1)));
+        assert_eq!(
+            s.squads[0][3].market_value,
+            player_value_calc(&s, &mut rng, 3, 1)
+        );
         assert_eq!(s.players[20].counters, [4, 5]);
     }
 
@@ -924,7 +900,7 @@ mod tests {
         s.current_manager = 4;
         s.players[7].team = 3;
         s.players[7].counters = [4, 5];
-        let idx = squad_insert_player(&mut s, &mut Rng::new(1), 7, 1, 0, 12, |_, _, _, _| 0);
+        let idx = squad_insert_player(&mut s, &mut Rng::new(1), 7, 1, 0, 12);
         assert_eq!(idx, Ok(0));
         assert_eq!(s.squads[4][0].player_id, 7);
         assert_eq!(s.players[7].team, 3);
@@ -938,7 +914,7 @@ mod tests {
         s.squads[4][11].player_id = 30;
         let mut rng = Rng::new(99);
         let before = s.clone();
-        let r = squad_insert_player(&mut s, &mut rng, 7, 1, 0, 12, |_, _, _, _| 0);
+        let r = squad_insert_player(&mut s, &mut rng, 7, 1, 0, 12);
         assert_eq!(r, Err(InsertRejected::TransferListFull));
         assert_eq!(s, before);
 
@@ -948,12 +924,12 @@ mod tests {
         put(&mut s, 1, 9, DEF, 50);
         s.players[7].team = 2;
         let before = s.clone();
-        let r = squad_insert_player(&mut s, &mut rng, 7, 1, 0, 2, |_, _, _, _| 0);
+        let r = squad_insert_player(&mut s, &mut rng, 7, 1, 0, 2);
         assert_eq!(r, Err(InsertRejected::SquadFull));
         assert_eq!(s, before);
         // A player of the own club is not counted against the limit.
         s.players[7].team = 1;
-        assert!(squad_insert_player(&mut s, &mut rng.clone(), 7, 1, 0, 2, |_, _, _, _| 0).is_ok());
+        assert!(squad_insert_player(&mut s, &mut rng.clone(), 7, 1, 0, 2).is_ok());
         assert_eq!(rng, Rng::new(99));
     }
 
@@ -1023,25 +999,6 @@ mod tests {
             assert!((1..=3).contains(&((r.traits >> 4) & 3)));
             assert_eq!(r.traits & 0x40, 0);
         }
-    }
-
-    fn save_states() -> Vec<(PathBuf, GameState)> {
-        let Some(dir) = bmp_formats::data_dir() else {
-            return Vec::new();
-        };
-        let mut v = Vec::new();
-        for d in [dir.clone(), dir.join("BMP")] {
-            for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
-                let p = e.path();
-                if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("man")) {
-                    let data = std::fs::read(&p).unwrap();
-                    let save = SaveGame::parse(&data).unwrap();
-                    v.push((p, GameState::from_savegame(&save).unwrap()));
-                }
-            }
-        }
-        assert!(!v.is_empty(), "BMP_DATA has no .MAN save");
-        v
     }
 
     #[test]

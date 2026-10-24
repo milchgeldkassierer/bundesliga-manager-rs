@@ -142,11 +142,22 @@ pub const PLAYER_COUNT: usize = 151;
 pub const SQUAD_SIZE: usize = 25;
 /// Number of squads in FAR:774a (4 human squads + transfer pool).
 pub const SQUAD_COUNT: usize = 5;
+/// Squad index of the transfer pool (transfer list) in FAR:774a.
+pub const TRANSFER_LIST: usize = 4;
+/// Records 0..24 of a human squad are scanned; record 24 is only reached by
+/// the shifts of insert and remove.
+pub const SQUAD_SCAN: usize = 24;
+/// Records 0..12 of the transfer list are scanned.
+pub const TRANSFER_LIST_SCAN: usize = 12;
+/// Value of [`Player::owner_manager`] for a player listed by his club. It
+/// equals the transfer list's squad index: `squad_remove_player` 2ecd:10ee
+/// compares the owner with `FAR:304a`, which is the squad index.
+pub const CLUB_LISTED: u8 = TRANSFER_LIST as u8;
 /// Value of [`SquadPlayer::board_col`] for a player without a tactics-board
 /// spot (0xff in the original).
 pub const BOARD_UNPLACED: i8 = -1;
 /// Value of [`SquadPlayer::loan`] that selects price mode 3 of
-/// `transfer_value_calc` 3277:25de (`'c'`).
+/// `player_value_calc` 3277:25de (`'c'`).
 pub const LOAN_PRICE_MODE: u8 = 0x63;
 
 record! {
@@ -336,8 +347,8 @@ record! {
     pub struct Player {
         /// +0x00 name, NUL terminated.
         pub name: [u8; 26],
-        /// +0x1a (FAR:57f7) random attribute set at generation.
-        pub attr_1a: u8,
+        /// +0x1a (FAR:57f7) age in years (random at generation).
+        pub age: u8,
         /// +0x1b (FAR:57f8) mean of `skills` (`(s0 + s1 + s2) / 3`, unsigned).
         pub average_skill: u8,
         /// +0x1c (FAR:57f9) three skill values.
@@ -368,8 +379,17 @@ record! {
     /// Squad slot, 0x34 bytes at FAR:774a + (s * 25 + i) * 0x34 (save block 18).
     /// Squads 0..3 belong to the human managers, squad 4 is the transfer pool.
     pub struct SquadPlayer {
-        /// +0x00..0x08 cards, goals and appearance counters (`squad.md` §1.2).
-        pub unknown_00: [u8; 9],
+        /// +0x00..0x02 (FAR:774a) red cards, yellow cards, unused
+        /// (`squad.md` §1.2); `6 * [0] + [1]` is a value term of
+        /// `player_value_calc` 3277:25de.
+        pub cards: [u8; 3],
+        /// +0x03..0x05 (FAR:774d) goals in league, DFB-Pokal, Europapokal.
+        /// In transfer-list records `[0]` doubles as the "bid rejected" mask
+        /// (bit `m` = manager `m`, bit 7 = any).
+        pub goals: [u8; 3],
+        /// +0x06..0x08 (FAR:7750) appearances in league, DFB-Pokal,
+        /// Europapokal.
+        pub appearances: [u8; 3],
         /// +0x09 (FAR:7753) status bits: bits 0-1 availability (0 available,
         /// 1 suspended, 2 injured, 3 unavailable), bits 6-7 transfer flags.
         pub status: u8,
@@ -380,7 +400,7 @@ record! {
         /// +0x0b (FAR:7755) contract length in seasons.
         pub contract_years: u8,
         /// +0x0c (FAR:7756) loan marker; [`LOAN_PRICE_MODE`] selects value
-        /// mode 3 of `transfer_value_calc` 3277:25de.
+        /// mode 3 of `player_value_calc` 3277:25de.
         pub loan: u8,
         /// +0x0d (FAR:7757) remaining suspension games.
         pub suspended: u8,
@@ -396,17 +416,32 @@ record! {
         /// +0x14 (FAR:775e) bit field from `player_init_random_attrs`
         /// 3277:000a: bits 0-3, bits 4-5 and bit 7.
         pub traits: u8,
-        /// +0x15..0x18 not traced by the squad port.
-        pub unknown_15: [u8; 4],
+        /// +0x15 not yet traced.
+        pub unknown_15: u8,
+        /// +0x16 (FAR:7760) club the player moves to when sold; a value
+        /// above 0x3f fixes an offer at 130 % (`player_value_calc`).
+        pub sale_club: u8,
+        /// +0x17 (FAR:7761) copied on a manager-to-manager sale.
+        pub unknown_17: u8,
+        /// +0x18 (FAR:7762) negotiation state: 0 willing, 1..=99 cool-down,
+        /// 100..=127 insists on `value - 100` seasons, bit 7 retires when the
+        /// contract ends.
+        pub negotiation: u8,
         /// +0x19 (FAR:7763) tactics-board column 0..=7, [`BOARD_UNPLACED`] =
         /// not placed.
         pub board_col: i8,
         /// +0x1a (FAR:7764) tactics-board row 0..=7 (0 = attack, 7 = goal).
         pub board_row: i8,
-        /// +0x1b..0x27 not yet traced.
-        pub unknown_1b: [u8; 13],
-        /// +0x28 (FAR:7772) market value `long` (`transfer_value_calc` 3277:25de);
-        /// `finance_monthly_expenses` 24a4:2822 adds it as the monthly salary.
+        /// +0x1b not yet traced.
+        pub unknown_1b: u8,
+        /// +0x1c, +0x1e, +0x20 (FAR:7766) value terms weighted 50/20/30 by
+        /// `player_value_calc` 3277:25de.
+        pub value_terms: [u16; 3],
+        /// +0x22..0x27 not yet traced.
+        pub unknown_22: [u8; 6],
+        /// +0x28 (FAR:7772) `long` from `player_value_calc` 3277:25de: the
+        /// monthly salary in squads 0..3 (`finance_monthly_expenses` 24a4:2822
+        /// adds it up), the asking fee in the transfer list.
         pub market_value: i32,
         /// +0x2c..0x2f not yet traced.
         pub unknown_2c: [u8; 4],
@@ -417,8 +452,10 @@ record! {
 }
 
 impl SquadPlayer {
-    /// Index of the league goals (+0x03, FAR:774d) in `unknown_00`.
-    pub const LEAGUE_GOALS: usize = 3;
+    /// Mean of the three skills, rounded down.
+    pub fn average_skill(&self) -> i16 {
+        (self.skills.iter().map(|&s| u16::from(s)).sum::<u16>() / 3) as i16
+    }
 }
 
 record! {
@@ -866,7 +903,11 @@ impl GameState {
     ///
     /// Origin: BMMAIN.EXE 4091:1109 (squad_count_by_flag, mode 0)
     pub fn squad_player_count(&self, squad: usize) -> u8 {
-        let n = if squad == 4 { 12 } else { 24 };
+        let n = if squad == TRANSFER_LIST {
+            TRANSFER_LIST_SCAN
+        } else {
+            SQUAD_SCAN
+        };
         self.squads[squad][..n]
             .iter()
             .filter(|p| p.player_id != 0)
@@ -1028,6 +1069,9 @@ pub(crate) mod tests {
         assert_eq!(p.player_id, 0x0f);
         assert_eq!(p.exhaustion, 0x13);
         assert_eq!(p.traits, 0x14);
+        assert_eq!((p.cards[0], p.goals[0], p.appearances[0]), (0, 3, 6));
+        assert_eq!((p.sale_club, p.negotiation), (0x16, 0x18));
+        assert_eq!(p.value_terms, [0x1d1c, 0x1f1e, 0x2120]);
         assert_eq!(p.board_col, 0x19);
         assert_eq!(p.board_row, 0x1a);
         assert_eq!(p.market_value, 0x2b2a_2928);
