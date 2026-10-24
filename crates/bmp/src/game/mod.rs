@@ -10,6 +10,7 @@ pub mod start_menu;
 pub mod widgets;
 
 use bmp_formats::mana::{self, ManaDat};
+use bmp_game::league::league_team_ids;
 use bmp_game::rng::Rng;
 
 use crate::host::{Host, LEFT_DOWN, Run};
@@ -21,12 +22,6 @@ pub struct ClubEntry {
     /// Crest code; the picture is `PIC\<code + 0x50>.VGA`.
     pub crest: u8,
 }
-
-/// League tiers: first slot (`DS:226e`) and club count (`DS:225e`).
-pub const TIER_FIRST: [u8; 3] = [0, 18, 38];
-pub const TIER_COUNT: [u8; 3] = [18, 20, 20];
-/// Rounds per tier (`DS:2262`).
-pub const TIER_ROUNDS: [u8; 3] = [34, 38, 38];
 
 /// `DS:224c`: season start-day offset (0 in the shipped data).
 pub const SEASON_START_DAY: i8 = 0;
@@ -89,8 +84,8 @@ pub fn load_clubs(host: &Host) -> Result<Vec<ClubEntry>, String> {
 /// Origin: BMMAIN.EXE 1310:09c5 (league_shuffle_teams)
 pub fn league_shuffle_teams(rng: &mut Rng, clubs: &mut [ClubEntry]) {
     for t in 0..3 {
-        let lo = TIER_FIRST[t] as i16;
-        let hi = lo + TIER_COUNT[t] as i16 - 1;
+        let ids = league_team_ids(t);
+        let (lo, hi) = (ids.start as i16, ids.end as i16 - 1);
         for _ in 0..0x37 {
             let a = rng.random_range(lo, hi) as usize;
             let b = rng.random_range(lo, hi) as usize;
@@ -266,11 +261,11 @@ mod tests {
             .collect();
         league_shuffle_teams(&mut Rng::new(7), &mut clubs);
         for t in 0..3 {
-            let lo = TIER_FIRST[t] as usize;
-            let hi = lo + TIER_COUNT[t] as usize;
-            let mut tier: Vec<u8> = clubs[lo..hi].iter().map(|c| c.crest).collect();
+            let ids = league_team_ids(t);
+            let range = ids.start as usize..ids.end as usize;
+            let mut tier: Vec<u8> = clubs[range].iter().map(|c| c.crest).collect();
             tier.sort_unstable();
-            assert_eq!(tier, (lo as u8..hi as u8).collect::<Vec<_>>());
+            assert_eq!(tier, ids.collect::<Vec<_>>());
         }
         assert!(clubs[58..].iter().map(|c| c.crest).eq(58..64));
     }

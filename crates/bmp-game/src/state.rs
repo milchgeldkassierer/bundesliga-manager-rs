@@ -349,7 +349,8 @@ record! {
         pub attr_20: u8,
         /// +0x21 (FAR:57fe) owning manager index, [`NO_OWNER`] = none.
         pub owner_manager: u8,
-        /// +0x22, +0x23 season counters (`screen_top_scorers`).
+        /// +0x22 league goals and +0x23 league games this season
+        /// (`match_assign_ai_scorers` 24a4:14d4, `screen_top_scorers`).
         pub counters: [u8; 2],
         /// +0x24 (FAR:5801) club index of the owner, 0xff = none.
         pub team: u8,
@@ -413,6 +414,11 @@ record! {
         /// segment high); patched by the loader through the string table.
         pub message_ptr: u32,
     }
+}
+
+impl SquadPlayer {
+    /// Index of the league goals (+0x03, FAR:774d) in `unknown_00`.
+    pub const LEAGUE_GOALS: usize = 3;
 }
 
 record! {
@@ -974,11 +980,12 @@ impl GameState {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn save_files() -> Vec<PathBuf> {
+    /// The `.MAN` saves in `$BMP_DATA` (and its `BMP` subdirectory).
+    pub(crate) fn save_files() -> Vec<PathBuf> {
         let Some(dir) = bmp_formats::data_dir() else {
             return Vec::new();
         };

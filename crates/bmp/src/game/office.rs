@@ -2,19 +2,20 @@
 //! competition of the day and the league-position curve, the date panel and the
 //! six main icons with their 3x3 submenus. Spec: `docs/re/logic/flow.md` §6.
 
+use bmp_game::league::{
+    LEAGUE_ROUND_COUNT, RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
+};
 use bmp_game::rng::{NumberFormat, format_long_thousands};
 use bmp_game::squad::{LineupRules, auto_lineup};
 use bmp_game::state::{GameState, Manager};
 
-use super::league::{
-    fixtures_build_round_pairings, has_rescheduled_match_today, league_snapshot_and_sort,
-};
+use super::league::has_rescheduled_match_today;
 use super::season::calendar_compute_date;
 use super::squad_screen::screen_squad_lineup;
 use super::start_menu::Pictures;
 use super::widgets::ui_wait_right_click_button;
 use super::{
-    GAME_OPTION_A, GAME_OPTION_B, SEASON_START_DAY, Session, TIER_ROUNDS, append_ordinal_suffix,
+    GAME_OPTION_A, GAME_OPTION_B, SEASON_START_DAY, Session, append_ordinal_suffix,
     office_show_cached_background,
 };
 use crate::gfx::{BitmapId, Gfx, Ui, ui_draw_line, ui_draw_text_centered_shadow};
@@ -354,11 +355,12 @@ pub fn office_menu_dispatcher(
     let day_saved = state.day_counter;
     host.screen_fade(0)?;
     host.number_no_separators = true;
-    for (t, &rounds) in TIER_ROUNDS.iter().enumerate() {
+    for (t, &rounds) in LEAGUE_ROUND_COUNT.iter().enumerate() {
         if (state.competition_rounds[t] as i8) < rounds as i8 {
             let round = state.competition_rounds[t];
             fixtures_build_round_pairings(state, t, round);
-            league_snapshot_and_sort(state, t);
+            // DS:224d == 0 in the shipped data: the games played are a sort key.
+            league_apply_round_and_sort(state, &mut session.rng, t, RoundMode::Snapshot, 1, false);
         }
     }
     let mut ret: u8 = 0;

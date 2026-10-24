@@ -237,7 +237,7 @@ the decompile shows the player-table generator.
 | 0x1f | `position_value: u8` | Band by index group (see above) |
 | 0x20 | `attr_20: u8` | Random attribute |
 | 0x21 | `owner_manager: u8` | Manager index. 5 = none (`NO_OWNER`) |
-| 0x22 | `counters: [u8;2]` | Season counters (`screen_top_scorers`) |
+| 0x22 | `counters: [u8;2]` | League goals and league games this season (`screen_top_scorers`, `match_assign_ai_scorers`) |
 | 0x24 | `team: u8` | Owner's club (`Manager::team`). 0xff = none if FAR:513c > 2000 |
 
 ### 3.4 `TeamTable`: FAR:0ecc + t*0x36, 54 bytes (block 16), t = German club 0..63
@@ -375,5 +375,5 @@ xrefs/decompilations above and MEMORY_MAP.
 * Which competition each of DS:07ac..07af is (inferred only from the prestige bonus order).
 * Blocks 30, 31, 36..40, 44, 46, 51..60 have only been located (users known); their meaning is not
   derived.
-* Player `attr_1a`, `attr_20` and `counters` (age, contract, goals?).
+* Player `attr_1a` and `attr_20` (age, contract?).
 * `TeamTable::unknown_22` (+0x22) is not touched by 3a41:2d33; its meaning is open.

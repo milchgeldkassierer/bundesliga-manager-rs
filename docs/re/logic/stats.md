@@ -114,7 +114,8 @@ Draws are never stored; screens compute `games - wins - losses`.
 current round of league `L` (`[home, away]` team ids, pair `i` < 10). `FAR:6ddc + ((L*0x26 + r) *
 0x14) + 2*i` (save block 6, 3 leagues x 38 rounds x 10 pairs x 2 bytes) holds the **result** of
 pair `i` in round `r` (0-based): `[home goals, away goals]`; home goals `0x1e` (30) means "not
-played yet". Note: code that indexes by the 1-based round counter `DS:225a[L]` uses the base
+played yet" to the code, although the saves hold 0:0 for rounds not played yet (open question
+2). Note: code that indexes by the 1-based round counter `DS:225a[L]` uses the base
 `FAR:6dc8 = 6ddc - 0x14`. A home team id `0x46` ('F') ends a pair list.
 
 **Table order.** `FAR:535a + 0x14*L + p` (save block 32) = team id at table position `p`.
@@ -937,8 +938,10 @@ Innenbandabri~, Wadenbeinbruch, Kapselri~, Leistenbruch, Kreuzbandri~.
    bytes `+0x22`/`+0x23`.
 3. Display (font 2; title `LBL[110]`; mode text `DS:2664[mode]`): walk `ord`, keep players whose
    team id is in the range `DS:2272[2*tier] .. DS:2273[2*tier]` of the current manager's tier;
-   stop at the first player with fewer than 2 goals. In mode 1 only the first player of each
-   human team is listed (a per-manager counter). Up to 20 rows (y from 0x22, step 7):
+   stop at the first player with fewer than 2 goals. In mode 1 only the players of the human
+   managers' teams are listed; the rank stays the rank in the whole tier. (A per-manager counter
+   is kept, but its "first player only" test is or-ed with the mode flag, so it never limits
+   mode 1 and is unused in mode 0.) Up to 20 rows (y from 0x22, step 7):
    `"<rank>. <name>"`, the team name, goals, and the ratio `g*10/games` printed as
    `"<q/10>.<q%10>"`. The 20 listed player ids are remembered; clicking a row opens
    `screen_player_info` for it. Exact columns are in Appendix A.
@@ -1430,6 +1433,10 @@ best streaks (84) + records (512) + record opponents (512) = 5012.
    adding a result but increments games, away wins/losses, streaks, records and head-to-head
    logs without restoring them, so mode 0 must run exactly once per round. Which caller runs
    mode 1 and when (before the live ticker?) has to be confirmed with the match-day agent.
+   Evidence from the saves: rounds not played yet hold 0:0, not `0x1e`, and every snapshot
+   column equals the current one. Replaying the saved results with mode 1 then mode 0 per round
+   from empty tables reproduces the saved totals and table order of all three leagues
+   (`bmp_game::league` test `real_saves_replay_the_league_tables`).
 3. `club_strength_boost` 24a4:23da sums with the uninitialised local `[BP-4]` as index (the loop
    counter is `[BP-6]`), so the result depends on stack garbage left by the caller. A port
    must reproduce the stack content of `screen_transfer_market` or pick a documented value;
