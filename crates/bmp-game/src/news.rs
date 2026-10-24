@@ -1260,7 +1260,7 @@ pub fn team_slot_free_index(state: &GameState, t: u8) -> u8 {
 mod tests {
     use super::*;
     use crate::state::BOARD_UNPLACED;
-    use crate::state::tests::save_files;
+    use bmp_formats::save_files;
     use bmp_formats::savegame::SaveGame;
 
     fn grades(rt: &Runtime, m: usize, n: usize) -> Vec<u8> {

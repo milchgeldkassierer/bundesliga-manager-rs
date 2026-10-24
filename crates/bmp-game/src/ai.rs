@@ -779,7 +779,6 @@ pub fn match_attendance_estimate(
 mod tests {
     use super::*;
     use crate::runtime::LiveMatch;
-    use bmp_formats::savegame::SaveGame;
 
     const TEAM: u8 = 7;
 
@@ -1959,27 +1958,9 @@ mod tests {
     }
 
     fn real_saves() -> Vec<GameState> {
-        let Some(dir) = bmp_formats::data_dir() else {
-            return Vec::new();
-        };
-        let mut paths = Vec::new();
-        for d in [dir.clone(), dir.join("BMP")] {
-            if let Ok(rd) = std::fs::read_dir(&d) {
-                for e in rd.flatten() {
-                    let p = e.path();
-                    if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("man")) {
-                        paths.push(p);
-                    }
-                }
-            }
-        }
-        paths.sort();
-        paths
-            .iter()
-            .map(|p| {
-                let data = std::fs::read(p).unwrap();
-                GameState::from_savegame(&SaveGame::parse(&data).unwrap()).unwrap()
-            })
+        crate::test_saves::save_states()
+            .into_iter()
+            .map(|(_, s)| s)
             .collect()
     }
 

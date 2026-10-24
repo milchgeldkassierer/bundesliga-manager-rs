@@ -555,7 +555,7 @@ pub fn player_value_percent(state: &GameState, s: &SquadPlayer) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::tests::save_files;
+    use bmp_formats::save_files;
     use bmp_formats::savegame::SaveGame;
 
     /// Players 1..=150 belong to no club; `team` gets the given players.

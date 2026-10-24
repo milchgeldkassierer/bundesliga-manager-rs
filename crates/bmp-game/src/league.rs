@@ -485,7 +485,7 @@ fn update_best_streaks(state: &mut GameState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::tests::save_files;
+    use bmp_formats::save_files;
     use bmp_formats::savegame::SaveGame;
 
     const EMPTY_FORM: [u8; 9] = *b"@@@@@@@@\0";

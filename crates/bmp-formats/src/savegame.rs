@@ -698,25 +698,7 @@ pub fn highscore_file_name(far_513c: u16, level: u8) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-
-    fn save_files() -> Vec<PathBuf> {
-        let Some(dir) = crate::data_dir() else {
-            return Vec::new();
-        };
-        let mut v = Vec::new();
-        for d in [dir.clone(), dir.join("BMP")] {
-            if let Ok(rd) = std::fs::read_dir(&d) {
-                for e in rd.flatten() {
-                    let p = e.path();
-                    if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("man")) {
-                        v.push(p);
-                    }
-                }
-            }
-        }
-        v
-    }
+    use crate::save_files;
 
     #[test]
     fn block_table_matches_file_size() {

@@ -1292,27 +1292,8 @@ fn team_swap_in_table_a4ca(table: &mut [[u8; 8]; 64], a: u8, b: u8) {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use std::path::PathBuf;
 
-    /// The `.MAN` saves in `$BMP_DATA` (and its `BMP` subdirectory).
-    pub(crate) fn save_files() -> Vec<PathBuf> {
-        let Some(dir) = bmp_formats::data_dir() else {
-            return Vec::new();
-        };
-        let mut v = Vec::new();
-        for d in [dir.clone(), dir.join("BMP")] {
-            if let Ok(rd) = std::fs::read_dir(&d) {
-                for e in rd.flatten() {
-                    let p = e.path();
-                    if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("man")) {
-                        v.push(p);
-                    }
-                }
-            }
-        }
-        v.sort();
-        v
-    }
+    use bmp_formats::save_files;
 
     #[test]
     fn record_sizes_match_original() {
