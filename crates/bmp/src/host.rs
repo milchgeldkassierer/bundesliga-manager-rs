@@ -40,6 +40,8 @@ pub enum ScriptStep {
     Wait(u64),
     /// Move the pointer and press/release a button (`right` selects the right one).
     Click { x: i16, y: i16, right: bool },
+    /// Move the pointer without pressing a button.
+    Move { x: i16, y: i16 },
     /// Press and hold the left button at a position (released by `Release`).
     Press { x: i16, y: i16 },
     /// Release the left (or right) button.
@@ -53,7 +55,7 @@ pub enum ScriptStep {
 }
 
 /// Parses a script: one step per line, `#` comments. Commands: `wait <ms>`,
-/// `click <x> <y>`, `rclick <x> <y>`, `press <x> <y>`, `release`, `type <text>`,
+/// `click <x> <y>`, `rclick <x> <y>`, `move <x> <y>`, `press <x> <y>`, `release`, `type <text>`,
 /// `key enter|backspace|esc`, `shot <name>`, `quit`.
 pub fn parse_script(text: &str) -> Result<Vec<ScriptStep>, String> {
     let mut steps = Vec::new();
@@ -87,6 +89,10 @@ pub fn parse_script(text: &str) -> Result<Vec<ScriptStep>, String> {
                     y,
                     right: cmd == "rclick",
                 }
+            }
+            "move" => {
+                let (x, y) = xy()?;
+                ScriptStep::Move { x, y }
             }
             "press" => {
                 let (x, y) = xy()?;
@@ -300,6 +306,9 @@ impl Host {
                     steps.push_front(ScriptStep::Release { right });
                     steps.push_front(ScriptStep::Wait(60));
                 }
+                ScriptStep::Move { x, y } => {
+                    self.g.mouse_event_handler(1, (x * 2) as u16, y as u16);
+                }
                 ScriptStep::Press { x, y } => {
                     self.g.mouse_event_handler(1, (x * 2) as u16, y as u16);
                     self.g.mouse_event_handler(2, (x * 2) as u16, y as u16);
@@ -416,7 +425,14 @@ impl Host {
     ///
     /// Origin: BMMAIN.EXE 176b:0c91 (ui_set_font)
     pub fn set_font(&mut self, n: usize) {
-        self.rp.font = Some(GAME_FONT_TO_LIBRARY[n]);
+        Self::set_rastport_font(&mut self.rp, n);
+    }
+
+    /// Selects game font `n` for any rastport (`ui_set_font` on a picture).
+    ///
+    /// Origin: BMMAIN.EXE 176b:0c91 (ui_set_font)
+    pub fn set_rastport_font(rp: &mut RastPort, n: usize) {
+        rp.font = Some(GAME_FONT_TO_LIBRARY[n]);
     }
 
     fn read_pic(&self, name: &str) -> Result<Vec<u8>, String> {
@@ -483,7 +499,7 @@ mod tests {
     #[test]
     fn script_parses_all_commands() {
         let steps = parse_script(
-            "# comment\nwait 10\nclick 1 2\nrclick 3 4\npress 5 6\nrelease\ntype ab\nkey enter\nshot x\nquit\n",
+            "# comment\nwait 10\nclick 1 2\nrclick 3 4\nmove 7 8\npress 5 6\nrelease\ntype ab\nkey enter\nshot x\nquit\n",
         )
         .unwrap();
         assert_eq!(
@@ -500,6 +516,7 @@ mod tests {
                     y: 4,
                     right: true
                 },
+                ScriptStep::Move { x: 7, y: 8 },
                 ScriptStep::Press { x: 5, y: 6 },
                 ScriptStep::Release { right: false },
                 ScriptStep::Keys(b"ab".to_vec()),

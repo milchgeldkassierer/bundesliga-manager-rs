@@ -209,6 +209,8 @@ Port status: §3 is ported as `bmp_game::squad` (`crates/bmp-game/src/squad.rs`)
 `transfer_value_calc` is passed in by the caller. Deliberate deviations: `auto_lineup` skips the slot-13
 write when `bench_best` was never assigned (§3.1), and `squad_remove_player` does not call
 `message_find_owner` (the message table is not modelled yet).
+§4 (the screen and its drawing helpers) is ported as `crates/bmp/src/game/squad_screen.rs`;
+`ui_dialog_box` and `contract_negotiation` are still stubs there.
 
 ### 3.1 `auto_lineup` 2ecd:3360
 
@@ -464,8 +466,9 @@ spot a removed starter vacated); `next_res` (bp-0xba, uninitialized on the first
 3. Frame button (2,7,w 0xee,h 0xb5) into `btn[0]` (overwritten next, so it is not clickable).
 4. If `tab == 0`: `squad_list_draw(6, 0x12, 0, 24, 0xec, 0xb0, 0x0000f0c7, 0)`.
 5. Icon buttons `btn[i]`, i = 0..2: `ui_draw_button(rp, 0x10c, 0x29 + 45*i, 0, DS:5410[i] | (tab==i ? 0x8000 : 0), &btn[i], 0, 8)`:
-   0x15 = squad list, 0x25 = tactics board, 0x16 = contracts. `btn[3]` = exit icon at (0x10c, 0xae),
-   icon `0x22` (comp == 0xff) or `0x23` (match).
+   0x15 = squad list, 0x25 = tactics board, 0x16 = contracts. `btn[3]` = exit icon at (0x10c, 0xb0),
+   icon `0x22` (comp == 0xff) or `0x23` (match). The exit icon is the fourth iteration of the same
+   formula, so it sits at (0x10c, 0xb0).
 6. `squad_draw_tactic_slider(bm37, MGR(m).slider)`; `nmax = squad_count_by_flag(m,0) - 1`;
    `squad_list_hover_info(-1,...)` (reset), `board_handle_input(NULL, ...)` (reset), `input_wait_release()`,
    `FAR:2ea2 = 0`.
@@ -492,7 +495,7 @@ renumber:                     /* 2ecd:19a0 */
      changed = 0;  cnt = squad_count_by_flag(m,0);
      for (di = 0; di < cnt; di++) {
         if (SQ(di).slot > FAR:56ee && p1 == 0) {           /* slot beyond the allowed bench */
-           t = 12; while (t < 16 && exists j in 1..cnt-1 with SQ(j).slot == t) t++;   /* record 0 is never checked */
+           t = 12; while (t < 16 && exists j in 0..cnt-1 with SQ(j).slot == t) t++;   /* the scan reads 0..cnt+1, but a hit at cnt or later does not count */
            if (t == FAR:56ee + 1) t = 0;
            SQ(di).slot = t;  ui_fill_rect(rp, 6, (di+5)*6, 16, di*6+0x23, 8);
            lineup_renumber_starters(1);  if (di < 9 || !board_open) squad_draw_status_cell(di);
@@ -566,6 +569,9 @@ After a row click, and also on every pass:
 
 ### 4.5 `squad_list_hover_info` 2ecd:000e (UI)
 * `x0 == -1`: reset `DS:53e6 = 0` (last column), `DS:53e8 = -1` (last highlighted row); returns garbage.
+* The list polls the mouse inside `ui_hit_test_buttons(btns, nbtn, 1)`; hover changes therefore only
+  show after a pointer motion has been polled (a scripted click without a prior move skips the hover
+  of the target row).
 * Font 2. `h = ui_hit_test_buttons(btns, nbtn, 1)`; if nonzero, return `h + 0x64`.
 * `row = (i16)(mouse_y - y0) / 6` (truncating); `px = mouse_x - x0`. Column: `acc = 0; for col in
   0..17: if (mask >> col) & 1 { acc += width[col]; if acc > px break }`. The cell is valid if
@@ -611,8 +617,8 @@ player not owned by group 4, the value is recomputed with `FAR:304a` temporarily
   (0,121) 13x13 transparently to the screen at (col*16 + 0xc2, row*14 + 0x63).
 * `board_open(...)` 2ecd:26e6: frame button (0xb5,0x56,0x84,0x84) → id stored to `*frame_btn_id`; board
   blit as in board_draw; font 2, draw mode 0; if `form_rects` and `full`: 3 formation buttons at
-  (60k+4, 0xc0), pressed if `DS:079e[2m] - k == 2`, each with the label graphic from pic6 (24k, 0x79)
-  0x20x0x17 drawn at (60k+0x11, 0xc9); badges of all starters; returns 1.
+  (60k+4, 0xc0), pressed if `DS:079e[2m] - k == 2`, each with the label graphic from pic6 (0x79, 24k)
+  0x20x0x17 drawn at (60k+0xd, 0xc9); badges of all starters; returns 1.
 * `board_handle_input(...)` 2ecd:29c6: with `pic6 == NULL`, reset (`FAR:54a0 = 1` (nothing held),
   `DS:a38e = 0xff` (highlighted list row), `DS:5416 = -1` (cursor x), `DS:a38d = 0`) and return 0.
   Formation click (`p1 == 0`, left click, `k = ui_hit_test_buttons(form_rects,3,0)`): redraw the old and

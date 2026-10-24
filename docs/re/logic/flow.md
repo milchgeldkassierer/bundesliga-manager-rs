@@ -1081,8 +1081,8 @@ for (int col = 0; col < 3; col++)                 // di
         if (icon == 0x1d) icon = 0x90;
         int x = col*0x36 + 0x52, y = row*0x2a + 0x70;
         ui_draw_button(rp, x, y, 0, (quick << 14) + icon + 6, &sub_rect[col*3 + row], 0, 8);
-        if ((si == 3 && c == 4 && M[cur].b[0x139] == 0) ||                       // FAR:237b
-            (si == 1 && c == 5 && !(FAR:513c == 0x7ac || FAR:513c == 0x7c9)) ||
+        if ((si == 3 && c == 4 && M[cur].b[0x139] != 0) ||                       // FAR:237b, 18bc:1624
+            (si == 1 && c == 5 && (FAR:513c == 0x7ac || FAR:513c == 0x7c9)) ||       // 18bc:163b
             (si == 5 && c == 4 && DS:07ab == 4))
             ui_draw_button(rp, x, y, 0, 0x4029, &sub_rect[col*3 + row], 0, 8);    // "disabled" overlay
         if (c != 0x63 && (s8)DS:027f[si] - 1 > c) c++; else c = 0x63;
@@ -1096,8 +1096,8 @@ Grid click loop:
 for (;;) {
     si = ui_hit_test_buttons(sub_rect, 15, 1);
     int valid = si != 0 && si - sel != 9 && !((s8)DS:027f[sel] < si && si < 10) && si != 15
-             && !(sel == 3 && si == 5 && M[cur].b[0x139] == 0)
-             && !(sel == 1 && si == 6 && !(FAR:513c == 0x7ac || FAR:513c == 0x7c9))
+             && !(sel == 3 && si == 5 && M[cur].b[0x139] != 0)                  // 18bc:17a8
+             && !(sel == 1 && si == 6 && (FAR:513c == 0x7ac || FAR:513c == 0x7c9))   // 18bc:17bf
              && !(sel == 5 && si == 5 && DS:07ab == 4);
     if (!valid) {
         if (FAR:2ea2 == 3) {
@@ -1150,7 +1150,7 @@ for (;;) {
 | | 2 | `screen_squad_lineup(0x63, 0xff)` |
 | | 3 | `screen_transfer_market()` 3277:04a5 |
 | | 4 | `screen_training()` 212a:274c |
-| | 5 | `office_free_bitmaps(3); screen_training_camp(); office_load_bitmaps(3)` (disabled when `M[cur].b[0x139] == 0`) |
+| | 5 | `office_free_bitmaps(3); screen_training_camp(); office_load_bitmaps(3)` (disabled while `M[cur].b[0x139] != 0`, the camp cooldown) |
 | | 6 | `FUN_24a4_1ad5(0)` *screen_top_scorers* |
 | 4 Pokal (direct) | 1..4 | `screen_cup_matches(si-1, 0)` 27c2:1ccb |
 | 5 Disk (direct) | 1 | `FUN_422b_120c(0)` *screen_load_game*; then `day_saved = DS:07dc; warned = 0` |

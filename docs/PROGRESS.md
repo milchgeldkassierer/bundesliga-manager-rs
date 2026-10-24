@@ -13,5 +13,6 @@ File names: `YYYY-MM-DD_NN_<source>_<screen>.png`, where `<source>` is `original
 | 2026-10-24 | `06_port_vs_original_start_menu` | Left port (`bmp run`, headless script), right original: start menu with carousel, manager "ADI" and the chosen club. **100 % match** (seed 35372 recovered from the original's carousel) |
 | 2026-10-24 | `07_port_vs_original_new_game_options` | Left port, right original: new-game level/mode dialog. **100 % match** |
 | 2026-10-24 | `08_port_vs_original_office` | Left port, right original: office after loading `07072019.MAN` via the start menu's file selector (banner "15. Spieltag", date panel, position curve, six main icons). Scenario `office`: load screen, picked file, office, "Tabellen" submenu and closed submenu all **100 % match** |
+| 2026-10-24 | `09_port_vs_original_squad` | Left port, right original: squad/lineup screen (office "Mannschaft" -> first sub icon) for `07072019.MAN`. Scenario `squad`: list, two players brought into the eleven, one taken out, tactics board opened, badges 6 and 8 swapped, board closed, back to the office: all 7 frames **100 % match** |
 
 Visual regression: `tools/visual-check.sh` replays `tests/visual/*.port.txt` on the port and compares with DOSBox references kept in `$BMP_HOLDOUT/visual/`.

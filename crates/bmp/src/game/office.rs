@@ -3,12 +3,14 @@
 //! six main icons with their 3x3 submenus. Spec: `docs/re/logic/flow.md` §6.
 
 use bmp_game::rng::{NumberFormat, format_long_thousands};
+use bmp_game::squad::{LineupRules, auto_lineup};
 use bmp_game::state::{GameState, Manager};
 
 use super::league::{
     fixtures_build_round_pairings, has_rescheduled_match_today, league_snapshot_and_sort,
 };
 use super::season::calendar_compute_date;
+use super::squad_screen::screen_squad_lineup;
 use super::start_menu::Pictures;
 use super::widgets::ui_wait_right_click_button;
 use super::{
@@ -271,10 +273,13 @@ fn draw_main_icon(host: &mut Host, i: i16, flags: u16) -> [i16; 4] {
         .1
 }
 
-/// True when sub icon `si` (1-based) of main icon `sel` is disabled.
+/// True when sub icon `si` (1-based) of main icon `sel` is disabled: the
+/// training camp while its cooldown runs, the manager contract in the
+/// scenarios 0x7ac/0x7c9, the new game with four managers
+/// (18bc:1605..1662, 18bc:17a4..17e9).
 fn sub_icon_disabled(state: &GameState, cur: usize, sel: i16, si: i16) -> bool {
-    (sel == 3 && si == 5 && state.managers[cur].camp_cooldown == 0)
-        || (sel == 1 && si == 6 && !(state.scenario == 0x7ac || state.scenario == 0x7c9))
+    (sel == 3 && si == 5 && state.managers[cur].camp_cooldown != 0)
+        || (sel == 1 && si == 6 && (state.scenario == 0x7ac || state.scenario == 0x7c9))
         || (sel == 5 && si == 5 && state.manager_count == 4)
 }
 
@@ -399,7 +404,11 @@ pub fn office_menu_dispatcher(
         let fmt = host.number_format();
         let banner = office_banner(state, arg, fmt, |s| has_rescheduled_match_today(s, week));
         normalise_bench(state, cur, banner.max_lineup_slot);
-        // TODO(#28): auto_lineup 2ecd:3360.
+        let rules = LineupRules {
+            suspended_allowed: banner.cup_day,
+            max_lineup_slot: banner.max_lineup_slot,
+        };
+        auto_lineup(state, rules);
         let name = state.managers[cur].name().to_vec();
         let (g, rp) = (&mut host.g, &mut host.rp);
         ui_draw_text_centered_shadow(g, rp, &banner.text, 0x4a, 0xa5, 0x3a, 0, 4);
@@ -546,7 +555,12 @@ pub fn office_menu_dispatcher(
                 host.input_wait_release()?;
                 office_show_cached_background(host)?;
                 host.ui.redraw_buttons(&mut host.g, &mut host.rp, 0x7f, 0);
-                // TODO(#15): dispatch to the screen of (sel, si), flow.md §6.5.
+                if (sel, si) == (3, 1) {
+                    screen_squad_lineup(host, session, state, rules, 0, 0xff, None)?;
+                }
+                // TODO(#29): (3, 2) is screen_squad_lineup(0x63, 0xff), which needs the
+                // contract negotiation.
+                // TODO(#15): the other screens of flow.md §6.5.
                 host.screen_fade(0)?;
                 host.g.palette_load_slot(0, 0x100);
                 host.ui.redraw_buttons(&mut host.g, &mut host.rp, 0x7f, 0);

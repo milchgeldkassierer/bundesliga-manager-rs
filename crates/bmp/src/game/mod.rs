@@ -5,6 +5,7 @@ pub mod league;
 pub mod load_game;
 pub mod office;
 pub mod season;
+pub mod squad_screen;
 pub mod start_menu;
 pub mod widgets;
 

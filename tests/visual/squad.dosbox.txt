@@ -1,0 +1,40 @@
+# DOSBox side of the squad scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN and opens the squad/lineup screen from the office.
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+click 30 216 240
+wait 2
+click 107 132 240
+wait 4
+shot r01-squad
+click 50 69 240
+wait 1
+click 50 99 240
+wait 1
+shot r02-added
+click 50 93 240
+wait 1
+shot r03-removed
+click 293 106 240
+wait 2
+shot r04-board
+click 264 147 240
+wait 1
+click 296 147 240
+wait 1
+shot r05-swapped
+click 293 61 240
+wait 2
+shot r06-closed
+click 293 196 240
+wait 4
+shot r07-office

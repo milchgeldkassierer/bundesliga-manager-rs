@@ -1,0 +1,60 @@
+# Port side of the squad scenario (bmp run --script syntax, milliseconds):
+# load 07072019.MAN, open "Mannschaft" -> squad/lineup screen, bring two
+# players into the eleven, take one out, swap two badges on the tactics board, close
+# it and return to the office.
+# Every click on the screen is preceded by a pointer move, like the
+# xdotool clicks of the DOSBox run (the list hover and the board cursor
+# react to the motion).
+# seed: 35372
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+click 30 216
+wait 500
+click 107 132
+wait 1000
+shot r01-squad
+move 50 69
+wait 200
+click 50 69
+wait 500
+move 50 99
+wait 200
+click 50 99
+wait 500
+shot r02-added
+move 50 93
+wait 200
+click 50 93
+wait 500
+shot r03-removed
+move 293 106
+wait 200
+click 293 106
+wait 500
+shot r04-board
+move 264 147
+wait 200
+click 264 147
+wait 500
+move 296 147
+wait 200
+click 296 147
+wait 500
+shot r05-swapped
+move 293 61
+wait 200
+click 293 61
+wait 500
+shot r06-closed
+move 293 196
+wait 200
+click 293 196
+wait 1000
+shot r07-office
