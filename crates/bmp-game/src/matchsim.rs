@@ -454,7 +454,9 @@ pub trait MatchHooks {
     /// The input poll of `minute` (`input_poll_mouse`, `dos_direct_console_io`): the space
     /// key or a left click with the pointer at (0, 0) opens the settings screen (whose copy
     /// protection draws from `rng`), and the whole minute is skipped. Called for every
-    /// minute, shown live or not.
+    /// minute, shown live or not. Without a pause a right click shows the author of the last
+    /// goal scene (`FAR:4bd8`) in an OKAY box, once a scene was played; it draws nothing
+    /// from `rng`.
     ///
     /// Origin: BMMAIN.EXE 1310:2303 (match_live_period, 1310:2550..25ae)
     fn pause_requested(
@@ -521,6 +523,35 @@ pub trait MatchHooks {
         _league_mask: u8,
         _cup_mask: u8,
         _penalties: bool,
+    ) {
+    }
+
+    /// Display: a penalty shoot-out with a human club starts in pairing `slot` of cup row
+    /// `cup`; the cup result cells are 0:0 and [`Runtime::live_matches`] holds the pairing
+    /// once per human club. The original shows the "Elfmeterschiessen" screen with both
+    /// clubs, waits for a click and draws the first live score panel.
+    ///
+    /// Origin: BMMAIN.EXE 1310:356d (match_penalty_shootout, 1310:3633..3856)
+    fn penalty_shootout_start(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _cup: u8,
+        _slot: u8,
+    ) {
+    }
+
+    /// Display: the shoot-out of pairing `slot` of cup row `cup` is decided (the result cells
+    /// hold the kicks scored, without the +20). The original waits 50 ticks and shows the
+    /// "Endergebnis:" screen with the clubs and the score, then waits for a click.
+    ///
+    /// Origin: BMMAIN.EXE 1310:356d (match_penalty_shootout, 1310:396a..3b5f)
+    fn penalty_shootout_end(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _cup: u8,
+        _slot: u8,
     ) {
     }
 
@@ -717,9 +748,11 @@ pub fn match_reschedule_chances(
 /// score is drawn at once (2..=5 each, redrawn while level); otherwise kicks alternate,
 /// starting with a random side, each scoring with chance 2/3 and reported through
 /// [`MatchHooks::match_ticker_events`], until both sides took five and a full round ends
-/// with the scores apart. The home score gets +20 ("after penalties"). The original's unused
-/// manager parameter and its screens are not modelled; its cup-mask parameter only reaches
-/// the screens.
+/// with the scores apart. A shoot-out with a human club counts in the cup result cells from
+/// 0:0 (the extra-time score is dropped), between the screens of
+/// [`MatchHooks::penalty_shootout_start`] and [`MatchHooks::penalty_shootout_end`]. The home
+/// score gets +20 ("after penalties"). The original's unused manager parameter is not
+/// modelled; its cup-mask parameter only reaches the screens.
 ///
 /// Origin: BMMAIN.EXE 1310:356d (match_penalty_shootout)
 pub fn match_penalty_shootout<H: MatchHooks + ?Sized>(
@@ -734,15 +767,21 @@ pub fn match_penalty_shootout<H: MatchHooks + ?Sized>(
     let first = rng.random_range(0, 1) as u8;
     let pairings = state.cup_pairings.as_flattened();
     let (home, away) = (pairings[cell], pairings[cell + 1]);
-    let score = if state.manager_index_of_team(home, away) == 0 {
-        loop {
+    if state.manager_index_of_team(home, away) == 0 {
+        let score = loop {
             let score = [rng.random_range(2, 5) as u8, rng.random_range(2, 5) as u8];
             if score[0] != score[1] {
                 break score;
             }
-        }
+        };
+        let results = state.cup_results.as_flattened_mut();
+        results[cell] = score[0].wrapping_add(0x14);
+        results[cell + 1] = score[1];
     } else {
-        let mut score = [0u8; 2];
+        // The kicks count in the result cells themselves (FAR:4c7e), which the screens show.
+        let results = state.cup_results.as_flattened_mut();
+        results[cell] = 0;
+        results[cell + 1] = 0;
         rt.live_matches.clear();
         state.ticker_slots = [0xff; 4];
         for team in [home, away] {
@@ -751,10 +790,15 @@ pub fn match_penalty_shootout<H: MatchHooks + ?Sized>(
             }
         }
         // UI: FAR:3052 (live managers) and FAR:4bf1 (ticker state) are only read by the screens.
+        hooks.penalty_shootout_start(state, rt, cup, slot);
         let kind = if cup == 0 { 1 } else { 2 };
         let mut shooter = first;
         let mut rounds = 0;
-        while !(rounds >= 5 && score[0] != score[1] && shooter == first) {
+        let score = |state: &GameState| {
+            let r = state.cup_results.as_flattened();
+            [r[cell], r[cell + 1]]
+        };
+        while !(rounds >= 5 && score(state)[0] != score(state)[1] && shooter == first) {
             let goal = rng.random_range(0, 2).min(1) as u8;
             let event = TickerEvent {
                 kind: goal,
@@ -770,18 +814,18 @@ pub fn match_penalty_shootout<H: MatchHooks + ?Sized>(
             };
             hooks.match_ticker_events(state, rt, rng, event);
             if goal != 0 {
-                score[usize::from(shooter)] += 1;
+                let r = &mut state.cup_results.as_flattened_mut()[cell + usize::from(shooter)];
+                *r = r.wrapping_add(1);
             }
             shooter ^= 1;
             if shooter == first {
                 rounds += 1;
             }
         }
-        score
-    };
-    let results = state.cup_results.as_flattened_mut();
-    results[cell] = score[0].wrapping_add(0x14);
-    results[cell + 1] = score[1];
+        hooks.penalty_shootout_end(state, rt, cup, slot);
+        let r = &mut state.cup_results.as_flattened_mut()[cell];
+        *r = r.wrapping_add(0x14);
+    }
 }
 
 /// Pairing bytes of the cup round of a cup day: the European round (FAR:0009) for
@@ -995,7 +1039,8 @@ pub fn match_live_period<H: MatchHooks + ?Sized>(
         if hooks.pause_requested(state, rt, rng, minute) {
             continue;
         }
-        // TODO(#32): the pending message dialog (FAR:4bd8) of a right click.
+        // The goal-scene author box of a right click (FAR:4bd8, 1310:252a..256e) is display
+        // only; the UI shows it from its pause_requested poll.
         if cup_mask == 0 {
             for tier in 0..tiers {
                 if (active >> tier) & 1 == 0 {
@@ -1667,6 +1712,11 @@ mod tests {
         },
         RoundComplete(u8),
         Newspaper(u8),
+        /// A shoot-out screen (`end`: the result screen) with the result cells at the time.
+        Shootout {
+            end: bool,
+            score: [u8; 2],
+        },
     }
 
     /// Hooks for computer-only match days: every logic hook only records its call and returns
@@ -1731,6 +1781,16 @@ mod tests {
             e: TickerEvent,
         ) {
             self.calls.push(Call::Ticker(e));
+        }
+
+        fn penalty_shootout_start(&mut self, s: &mut GameState, _: &mut Runtime, c: u8, p: u8) {
+            let score = s.cup_results[usize::from(c) * 16 + usize::from(p / 2)];
+            self.calls.push(Call::Shootout { end: false, score });
+        }
+
+        fn penalty_shootout_end(&mut self, s: &mut GameState, _: &mut Runtime, c: u8, p: u8) {
+            let score = s.cup_results[usize::from(c) * 16 + usize::from(p / 2)];
+            self.calls.push(Call::Shootout { end: true, score });
         }
 
         fn cup_check_ties_extra_time(
@@ -2112,6 +2172,22 @@ mod tests {
             goals[usize::from(shooter)] += e.kind;
         }
         assert_ne!(goals[0], goals[1]);
+        // The screens frame the kicks: the start sees 0:0 (the extra-time score is dropped),
+        // the result screen the kicks scored, before the +20.
+        assert_eq!(
+            hooks.calls.first(),
+            Some(&Call::Shootout {
+                end: false,
+                score: [0, 0]
+            })
+        );
+        assert_eq!(
+            hooks.calls.last(),
+            Some(&Call::Shootout {
+                end: true,
+                score: goals
+            })
+        );
         assert_eq!(s.cup_results[2], [goals[0] + 20, goals[1]]);
         assert_eq!(rt.live_matches, [LiveMatch { row: 0, slot: 4 }]);
         assert_eq!(s.ticker_slots, [0xff; 4]);

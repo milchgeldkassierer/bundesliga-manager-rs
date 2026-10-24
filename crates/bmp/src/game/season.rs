@@ -302,6 +302,7 @@ impl SeasonUi for ScreenSeason<'_> {
             side,
             ybase,
             penalty,
+            &mut self.session.goal_scene_author,
         );
         match r {
             Ok(scene) => scene,
@@ -387,6 +388,34 @@ impl SeasonUi for ScreenSeason<'_> {
             }
             let auto = self.session.auto_play;
             let r = newspaper::newspaper_show(self.host, paper, auto);
+            self.keep(r);
+        }
+    }
+
+    fn penalty_shootout_start(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        cup: u8,
+        slot: u8,
+    ) {
+        self.sync_format();
+        if !self.quitting() {
+            let r = super::live_match::penalty_shootout_start(self, state, rt, cup, slot);
+            self.keep(r);
+        }
+    }
+
+    fn penalty_shootout_end(
+        &mut self,
+        state: &mut GameState,
+        _rt: &mut Runtime,
+        cup: u8,
+        slot: u8,
+    ) {
+        self.sync_format();
+        if !self.quitting() {
+            let r = super::live_match::penalty_shootout_end(self, state, cup, slot);
             self.keep(r);
         }
     }

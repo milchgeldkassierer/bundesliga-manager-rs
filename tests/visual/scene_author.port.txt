@@ -1,0 +1,69 @@
+# Port side of the scene_author scenario (bmp run --script syntax, milliseconds):
+# the goal_scenes run (seed 1151) up to the "TOR!" panel after the goal scene of the 6th
+# minute, then a right click in the live view: the next minute's poll shows who built the
+# last goal scene played (match_live_period 1310:252a..256e, "Der Erbauer der letzten
+# gespielten Torszene war:" and the author from the TORE\ file, FAR:4bd8). The OKAY click
+# closes it and the match goes on to the half-time fixtures. The right click lies outside
+# the score panels, so the OKAY click (the minute's mouse event at the restored pointer)
+# opens no lineup screen. The DOSBox run is faster in the live view, so the box may show
+# over a later minute of the ticker than in the port (the reference shows the 24th minute,
+# the port the 18th: 72 pixels of the ticker differ). The goal-scene frames themselves are
+# checked by goal_scenes; this run only waits through them.
+# seed: 1151
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 161 132
+wait 100
+click 161 132
+wait 1000
+move 245 108
+wait 100
+click 245 108
+wait 300
+move 187 43
+wait 100
+click 187 43
+wait 300
+move 187 62
+wait 100
+click 187 62
+wait 300
+move 129 108
+wait 100
+click 129 108
+wait 300
+shot a00-settings
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot a01-office
+move 280 75
+wait 100
+click 280 75
+wait 2500
+wait 3520
+wait 3080
+wait 1520
+wait 1000
+move 300 232
+wait 100
+rclick 300 232
+wait 1500
+shot a06-author
+click 191 165
+wait 90000
+shot a07-half-time
+quit

@@ -17,12 +17,13 @@ use super::season::ScreenSeason;
 use super::squad_screen::{MatchSubs, screen_squad_lineup};
 use super::stats_screens::CUP_NAMES;
 use super::tables::{screen_fixtures, screen_league_table};
+use super::widgets::dialog_okay_auto;
 use super::{GAME_OPTION_A, GAME_OPTION_B, append_ordinal_suffix, office_show_cached_background};
 use crate::gfx::{
     BitmapId, Gfx, ui_draw_frame, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow,
     ui_fill_rect,
 };
-use crate::host::{Host, LEFT_DOWN, Run};
+use crate::host::{Host, LEFT_DOWN, RIGHT_DOWN, Run};
 
 /// `DS:0632` / `DS:063c`: the origins of the four score panels.
 const PANEL_X: [i16; 4] = [0, 0xa1, 0, 0xa1];
@@ -58,6 +59,9 @@ const RED_CARD: &[u8] = b"Rote Karte: ";
 const YELLOW_RED_CARD: &[u8] = b"Gelb-Rote Karte: ";
 const YELLOW_CARD: &[u8] = b"Gelbe Karte: ";
 const INJURED: &[u8] = b"Verletzt: ";
+/// `DS:3911`, `DS:3921`, `DS:3934` (the pointers `DS:4e44..4e4c`): the first three lines of
+/// the goal-scene author box of a right click in the live match.
+const SCENE_AUTHOR: [&[u8]; 3] = [b"Der Erbauer der", b"letzten gespielten", b"Torszene war:"];
 /// `DS:063a` values from which the minute waits are skipped.
 const FAST_SPEED: u16 = 0x47;
 /// [`TickerEvent::kind`] of an injury.
@@ -379,6 +383,20 @@ fn match_draw_live_screen(
     rt: &Runtime,
     cup_mode: bool,
 ) -> Run<()> {
+    match_draw_live_screen_slots(ui, state, rt, cup_mode, 0xff)
+}
+
+/// [`match_draw_live_screen`] for `only_slot` 0xff (every live match) or 0 (only the first
+/// one, as the penalty shoot-out draws it).
+///
+/// Origin: BMMAIN.EXE 2a58:042f (match_draw_live_screen)
+fn match_draw_live_screen_slots(
+    ui: &mut ScreenSeason<'_>,
+    state: &GameState,
+    rt: &Runtime,
+    cup_mode: bool,
+    only_slot: u8,
+) -> Run<()> {
     let crests = Some(ui.crest_cache());
     let host = &mut *ui.host;
     let live = &mut ui.live;
@@ -386,7 +404,8 @@ fn match_draw_live_screen(
     host.g.rastport_clear(&host.rp, 0);
     let mut badge: u8 = 0;
     live.panel_teams = [[0xff; 2]; 4];
-    for i in 0..rt.live_matches.len().min(4) {
+    let shown = if only_slot == 0xff { 4 } else { 1 };
+    for i in 0..rt.live_matches.len().min(shown) {
         let (x, y) = (PANEL_X[i], PANEL_Y[i]);
         blit(host, live.panel, 0, 0, x + 3, y, 0x9b, 0x72);
         let (h, a) = live_pairing(state, rt, i, cup_mode);
@@ -555,9 +574,13 @@ pub fn period_minute(
 /// live or not). The space key or a left click with the pointer at (0, 0) opens the settings
 /// screen over the office background ("Einstellungen", where the copy protection may draw
 /// from `rng`); the live screen is drawn again afterwards and the engine skips the minute.
+/// Otherwise a right click, once a goal scene was played in this program run, shows who built
+/// the last goal scene ("Der Erbauer der letzten gespielten Torszene war:" and the author of
+/// the `TORE\` file); the OKAY click is then the minute's mouse event, so it reaches the
+/// score panels' hit test at the restored pointer position, as in the original.
 /// Returns whether the minute was paused.
 ///
-/// Origin: BMMAIN.EXE 1310:2303 (match_live_period, 1310:2550..25ae)
+/// Origin: BMMAIN.EXE 1310:2303 (match_live_period, 1310:2550..2571)
 pub fn match_pause_poll(
     ui: &mut ScreenSeason<'_>,
     state: &mut GameState,
@@ -567,6 +590,12 @@ pub fn match_pause_poll(
     let button = ui.host.input_poll_mouse()?;
     let key = ui.host.read_key_nowait();
     if key != b' ' && !(ui.host.mouse_xy() == (0, 0) && button == LEFT_DOWN) {
+        if button == RIGHT_DOWN && !ui.session.goal_scene_author.is_empty() {
+            let [l1, l2, l3] = SCENE_AUTHOR;
+            let author = ui.session.goal_scene_author.clone();
+            let auto = ui.session.auto_play;
+            dialog_okay_auto(ui.host, auto, l1, l2, l3, &author)?;
+        }
         return Ok(false);
     }
     office_show_cached_background(ui.host)?;
@@ -709,6 +738,79 @@ pub fn period_end(
         None => {}
     }
     Ok(())
+}
+
+/// `DS:26cc`, `DS:26d0`, `DS:26d4`, `DS:0102`, `DS:26d8`: the texts of the penalty shoot-out
+/// screens.
+const SHOOTOUT_TITLE: &[u8] = b"!    Elfmeterschiessen    !";
+const VERSUS: &[u8] = b"gegen";
+const FINAL_SCORE: &[u8] = b"Endergebnis:";
+const SCORE_SEPARATOR: &[u8] = b" : ";
+const AFTER_PENALTIES: &[u8] = b"   n.E.";
+
+/// The two clubs of cup pairing `slot` of cup row `cup` centred under `title` on the cleared
+/// match background (font 3): the title at y 0x32, the home club at 0x64, "gegen" at 0x80
+/// (colour 0x0b), the away club at 0x9c.
+fn shootout_clubs_screen(host: &mut Host, state: &GameState, title: &[u8], cup: u8, slot: u8) {
+    let c = usize::from(cup) * 32 + usize::from(slot);
+    let p = state.cup_pairings.as_flattened();
+    let (home, away) = (p[c], p[c + 1]);
+    match_screen_clear_background(host);
+    let name = |t: u8| state.clubs[usize::from(t)].name().to_vec();
+    centered(host, title, 0, 0x140, 0x32, 0x1d, 0xff);
+    centered(host, &name(home), 0, 0x140, 0x64, 0x1d, 0xff);
+    centered(host, VERSUS, 0, 0x140, 0x80, 0x0b, 0xff);
+    centered(host, &name(away), 0, 0x140, 0x9c, 0x1d, 0xff);
+}
+
+/// The start of a penalty shoot-out with a human club: the "Elfmeterschiessen" screen with
+/// both clubs, a click, then the live screen with the first live score panel only (its
+/// computer crests loaded afresh).
+///
+/// Origin: BMMAIN.EXE 1310:356d (match_penalty_shootout, 1310:3633..3856)
+pub fn penalty_shootout_start(
+    ui: &mut ScreenSeason<'_>,
+    state: &mut GameState,
+    rt: &Runtime,
+    cup: u8,
+    slot: u8,
+) -> Run<()> {
+    let auto = ui.session.auto_play;
+    shootout_clubs_screen(ui.host, state, SHOOTOUT_TITLE, cup, slot);
+    ui.live.slots = [0xff; 4];
+    ui.live.badges_valid = false;
+    ui.host.screen_fade(1)?;
+    super::widgets::input_wait_click(ui.host, auto)?;
+    match_draw_live_screen_slots(ui, state, rt, true, 0)?;
+    state.ticker_slots = ui.live.slots;
+    Ok(())
+}
+
+/// The end of a penalty shoot-out with a human club: after 50 ticks the "Endergebnis:"
+/// screen with both clubs and the kicks scored ("4 : 3   n.E."), then a click.
+///
+/// Origin: BMMAIN.EXE 1310:356d (match_penalty_shootout, 1310:396a..3b5f)
+pub fn penalty_shootout_end(
+    ui: &mut ScreenSeason<'_>,
+    state: &GameState,
+    cup: u8,
+    slot: u8,
+) -> Run<()> {
+    let auto = ui.session.auto_play;
+    let host = &mut *ui.host;
+    delay(host, auto, 50)?;
+    host.screen_fade(0)?;
+    shootout_clubs_screen(host, state, FINAL_SCORE, cup, slot);
+    let c = usize::from(cup) * 32 + usize::from(slot);
+    let r = state.cup_results.as_flattened();
+    let fmt = host.number_format();
+    let mut buf = format_long_thousands(i32::from(r[c]), fmt);
+    buf.extend_from_slice(SCORE_SEPARATOR);
+    buf.extend(format_long_thousands(i32::from(r[c + 1]), fmt));
+    buf.extend_from_slice(AFTER_PENALTIES);
+    centered(host, &buf, 0, 0x140, 0xc8, 0x1d, 0xff);
+    host.screen_fade(1)?;
+    super::widgets::input_wait_click(host, auto)
 }
 
 /// After the last period: the cup results after a shoot-out, the pictures are freed, and the

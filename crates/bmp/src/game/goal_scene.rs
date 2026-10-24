@@ -86,7 +86,8 @@ fn tore_read_anzahl(host: &Host) -> Option<Anzahl> {
 /// a penalty ("E") scene, else with chance 1/401 a joke ("J") scene; a file that cannot be
 /// opened or read is drawn again. A replay shows the file of `name` again (a new file is
 /// drawn when it cannot be read). The scene is
-/// mirrored for the away side (`scoring_side` 0) and played at `screen_y`. Returns the
+/// mirrored for the away side (`scoring_side` 0) and played at `screen_y`; its author goes
+/// to `author` (`FAR:4bd8`, read by a right click in the live match). Returns the
 /// penalty-scene flag.
 ///
 /// Origin: BMMAIN.EXE 24a4:05ec (tore_scene_play)
@@ -102,6 +103,7 @@ pub fn tore_scene_play(
     mut force_e: bool,
     replay: u8,
     name: &mut String,
+    author: &mut Vec<u8>,
 ) -> Run<bool> {
     host.g.mouse_pointer_hide(0);
     // DS:07b2: format_long_thousands writes no separators from here on.
@@ -147,6 +149,9 @@ pub fn tore_scene_play(
         }
     };
     if let Some(mut scene) = scene {
+        // 24a4:086f: the author block is read into FAR:4bd8 before the frames are played.
+        author.clear();
+        author.extend_from_slice(scene.author_text());
         tore::mirror_scene(&mut scene, 1u8.wrapping_sub(scoring_side) != 0);
         tore_play_frames(host, pics, &scene, i16::from(screen_y), replay)?;
     }
@@ -318,6 +323,7 @@ fn tore_play_frames(
 /// event panel at `ybase`: the scene pictures replace the live view's, the scene plays, and
 /// while `r` or `w` is pressed after it, it is replayed (at most three showings). Returns
 /// the penalty-scene flag of the last showing (`prev` starts as the event's penalty flag).
+/// `author` receives the author of the scene played (`FAR:4bd8`).
 ///
 /// Origin: BMMAIN.EXE 2a58:0ca3 (match_ticker_events, 2a58:1290..1300)
 #[allow(clippy::too_many_arguments)]
@@ -330,6 +336,7 @@ pub fn goal_scene(
     side: u8,
     ybase: i16,
     penalty: u8,
+    author: &mut Vec<u8>,
 ) -> Run<u8> {
     let pics = match_screen_load_pictures(host, live);
     let mut prev = penalty != 0;
@@ -351,6 +358,7 @@ pub fn goal_scene(
                 prev,
                 replay,
                 &mut name,
+                author,
             )?;
             replay += 1;
             if !auto {

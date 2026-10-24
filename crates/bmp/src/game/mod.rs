@@ -66,6 +66,9 @@ pub struct Session {
     /// `DS:5258`: weekly training-camp prices; scaled once per program run
     /// by the first visit of the camp screen.
     pub camp_prices: [i32; 8],
+    /// `FAR:4bd8`: the author of the last goal scene read (`tore_scene_play` 24a4:05ec), shown
+    /// by a right click in the live match; empty until the first scene of the program run.
+    pub goal_scene_author: Vec<u8>,
 }
 
 impl Session {
@@ -81,6 +84,7 @@ impl Session {
             cheat_05f5: false,
             highscore_tag: 0,
             camp_prices: training::CAMP_BASE_PRICES,
+            goal_scene_author: Vec::new(),
         }
     }
 }

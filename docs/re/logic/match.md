@@ -628,7 +628,8 @@ for (u8 mi = from; mi <= to; mi++) {
         FUN_2a58_042f(cmask, 0xff); screen_fade(FAR:2e70, 1);
         continue;                          /* NOTE: the whole minute is skipped (no events, no goals) */
     }
-    if (FAR:2ea2 == 3 && FAR:4bd8) dialog_okay(DS:4e44..4e4e, &FAR:4bd8);
+    if (FAR:2ea2 == 3 && FAR:4bd8)       /* right click: who built the last goal scene */
+        dialog_okay("Der Erbauer der", "letzten gespielten", "Torszene war:", &FAR:4bd8);
     if (cmask == 0) {
         if (lmask == 0) { lmask = 1; fixed = 1; }
         for (L = 0; L < nl; L++) if ((lmask >> L) & 1)
@@ -1198,7 +1199,7 @@ literals `DS:5383` " !", `DS:538b` " (", `DS:538e` ")".
 | FAR:4b3e/4c7e + 32c | u8[32] | cup_scores | 33 |
 | FAR:4b5e + 20L | u8[20] | league_pairings | 19 |
 | FAR:4bd0, 549c, 57a6 | u8[] | forfeit list (tier, side, round-1) | — |
-| FAR:4bd8 | u8 | pending_message flag | — |
+| FAR:4bd8 | char[] | author of the last goal scene read (`tore_scene_play` 24a4:086f, tore.md), shown by a right click | — |
 | FAR:4bf0 / 4bf1 | u8 | live_count / ticker state | — |
 | FAR:4c6c[2k] | u8 | panel teams | — |
 | FAR:5140 + 6m | u8[6] | match_event_counters | — |

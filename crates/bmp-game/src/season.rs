@@ -1534,6 +1534,26 @@ pub trait SeasonUi {
     ) {
     }
 
+    /// Display: [`MatchHooks::penalty_shootout_start`].
+    fn penalty_shootout_start(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _cup: u8,
+        _slot: u8,
+    ) {
+    }
+
+    /// Display: [`MatchHooks::penalty_shootout_end`].
+    fn penalty_shootout_end(
+        &mut self,
+        _state: &mut GameState,
+        _rt: &mut Runtime,
+        _cup: u8,
+        _slot: u8,
+    ) {
+    }
+
     /// Display: a live ticker event is about to be applied ([`match_ticker_events`]): the event
     /// panel, the card and injury whistles and the blinking chance text.
     ///
@@ -1635,6 +1655,20 @@ impl<U: SeasonUi + ?Sized> MatchHooks for SeasonHooks<'_, U> {
     ) -> Option<u8> {
         self.0
             .match_handle_panel_click(state, rt, rng, cup_mask, home, away, slot, comp, minute)
+    }
+
+    fn penalty_shootout_start(
+        &mut self,
+        state: &mut GameState,
+        rt: &mut Runtime,
+        cup: u8,
+        slot: u8,
+    ) {
+        self.0.penalty_shootout_start(state, rt, cup, slot);
+    }
+
+    fn penalty_shootout_end(&mut self, state: &mut GameState, rt: &mut Runtime, cup: u8, slot: u8) {
+        self.0.penalty_shootout_end(state, rt, cup, slot);
     }
 
     fn period_start(
