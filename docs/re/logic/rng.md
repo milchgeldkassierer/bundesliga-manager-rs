@@ -82,7 +82,7 @@ Globals (the ES selectors DS:99a8, DS:99ae and DS:99b0 all hold `5cb3`, so these
 | DS:a312[..] | `fmt_out_buf` | returned string, far pointer `DS:a312` |
 | DS:07b2 | `fmt_no_separators` | byte. Non-zero suppresses separators. MEMORY_MAP calls it "message window open flag (low)". the value spinner 4091:0ba5 clears it before drawing |
 | DS:224e/2250 | `game_option_224e` | long. The value 4 selects `,` instead of `.` as separator. MEMORY_MAP calls it "difficulty level" (medium), but savegame.md has the difficulty in DS:4a28, so its meaning is unresolved |
-| DS:079c | `fmt_pad_width` | signed byte, the minimum width for non-negative values. MEMORY_MAP calls it "picture loading in progress" (medium); that conflicts with this use and needs re-checking |
+| DS:079c | `fmt_pad_width` | signed byte, the minimum width for non-negative values. Both are true: `vga_load_picture` 176b:0356 sets it to 1 on every call, so after any picture load numbers are padded to one digit and `0` prints as `0` (confirmed against DOSBox: level box 0 of the new-game dialog shows "0") |
 
 Algorithm (`d` and `e` are signed bytes):
 1. `neg = v < 0`. If so, `v = -v` with wrapping, so `MIN` stays `MIN`.

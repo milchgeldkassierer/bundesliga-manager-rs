@@ -1,0 +1,19 @@
+# DOSBox side of the start-menu scenario (tools/dosbox-capture.sh syntax, seconds).
+wait 4
+key space
+wait 4
+shot r01-title
+click 160 120 240
+wait 6
+shot r02-start
+click 40 220 240
+wait 1
+type adi
+key Return
+wait 1
+click 40 120 240
+wait 1
+shot r04-manager
+click 160 120 240 3
+wait 3
+shot r05-options

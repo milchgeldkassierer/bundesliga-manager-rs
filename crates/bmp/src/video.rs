@@ -104,6 +104,7 @@ pub struct Window {
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
     creator: sdl2::render::TextureCreator<sdl2::video::WindowContext>,
     pub events: sdl2::EventPump,
+    mouse: sdl2::mouse::MouseUtil,
 }
 
 impl Window {
@@ -127,7 +128,13 @@ impl Window {
             canvas,
             creator,
             events,
+            mouse: sdl.mouse(),
         })
+    }
+
+    /// Hides the host cursor; the game draws its own pointer into VRAM.
+    pub fn hide_cursor(&self) {
+        self.mouse.show_cursor(false);
     }
 
     pub fn present(&mut self, vga: &Vga) -> Result<(), String> {

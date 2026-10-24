@@ -1,0 +1,18 @@
+# Port side of the start-menu scenario (bmp run --script syntax, milliseconds).
+# seed: 35372
+wait 500
+shot r01-title
+click 160 120
+wait 4000
+shot r02-start
+click 40 220
+wait 200
+type adi
+key enter
+wait 200
+click 40 120
+wait 300
+shot r04-manager
+rclick 160 120
+wait 500
+shot r05-options

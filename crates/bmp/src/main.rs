@@ -1,5 +1,7 @@
 mod compare;
+mod game;
 mod gfx;
+mod host;
 mod video;
 
 use std::path::{Path, PathBuf};
@@ -10,8 +12,11 @@ use video::{Mode, Vga, Window};
 
 const USAGE: &str = "usage: bmp [--data <dir>] [--version]
        bmp [--data <dir>] show-pic <name> [--palette <0..2>] [--screenshot <out.png>]
+       bmp [--data <dir>] run [--script <file> --shots <dir>] [--time <seconds>]
        bmp compare <port.png> <reference.png> [--diff <out.png>] [--threshold <percent>]
   <name> is a file below PIC/, e.g. 47.CP or 120.VGA
+  run starts the game; with --script it runs headless on a virtual clock
+  (see host::parse_script) and --time fixes the RNG seed time
   compare exits 0 when at least <percent> (default 90) of the pixels match, 1 otherwise";
 
 struct Args {
@@ -145,6 +150,41 @@ fn compare_frames(args: &Args) -> Result<ExitCode, String> {
     })
 }
 
+/// Starts the game in a window, or headless driven by an input script.
+fn run_game(args: &Args) -> Result<(), String> {
+    let mut rest = args.rest[1..].to_vec();
+    let script = take_opt(&mut rest, "--script")?;
+    let shots = take_opt(&mut rest, "--shots")?.unwrap_or_else(|| ".".into());
+    let time = match take_opt(&mut rest, "--time")? {
+        Some(t) => t.parse::<i32>().map_err(|e| format!("--time: {e}"))?,
+        None => std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i32),
+    };
+    let dir = data_dir(args)?;
+    let mut host = match script {
+        Some(path) => {
+            let text = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+            std::fs::create_dir_all(&shots).map_err(|e| format!("{shots}: {e}"))?;
+            host::Host::with_script(&dir, host::parse_script(&text)?, Path::new(&shots))?
+        }
+        None => host::Host::with_window(&dir, 3)?,
+    };
+    // TODO(#30): hand the choices to the new-game initialisation and the office.
+    match game::run(&mut host, time)? {
+        Ok(game::start_menu::Outcome::NewGame(ng)) => eprintln!(
+            "new game: {} manager(s), end year {}, modern start {}, difficulty {}",
+            ng.managers.len(),
+            ng.end_year(),
+            ng.modern_start(),
+            ng.difficulty()
+        ),
+        Ok(outcome) => eprintln!("{outcome:?}"),
+        Err(host::Quit) => {}
+    }
+    Ok(())
+}
+
 fn run() -> Result<ExitCode, String> {
     let args = parse_args()?;
     if args.rest.iter().any(|a| a == "--version") {
@@ -154,6 +194,7 @@ fn run() -> Result<ExitCode, String> {
     match args.rest.first().map(String::as_str) {
         Some("show-pic") => show_pic(&args).map(|()| ExitCode::SUCCESS),
         Some("compare") => compare_frames(&args),
+        Some("run") => run_game(&args).map(|()| ExitCode::SUCCESS),
         Some("--help") | Some("-h") => {
             println!("{USAGE}");
             Ok(ExitCode::SUCCESS)
