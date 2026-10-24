@@ -7,6 +7,7 @@ pub mod office;
 pub mod season;
 pub mod squad_screen;
 pub mod start_menu;
+pub mod tables;
 pub mod widgets;
 
 use bmp_formats::mana::{self, ManaDat};

@@ -1,0 +1,84 @@
+# DOSBox side of the tables scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads 07072019.MAN and walks through the screens of the office "Tabellen" submenu.
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+click 30 173 240
+wait 2
+click 107 132 240
+wait 4
+shot r01-table-bl
+click 50 180 240
+wait 3
+shot r02-table-home
+click 60 43 240
+wait 2
+shot r03-info
+click 121 220 240
+wait 2
+shot r04-info-closed
+click 293 213 240
+wait 4
+shot r05-office
+click 107 174 240
+wait 4
+shot r06-table-2l
+click 293 213 240
+wait 4
+click 107 216 240
+wait 4
+shot r07-table-ol
+click 293 213 240
+wait 4
+click 161 132 240
+wait 4
+shot r08-fixtures-bl
+click 84 213 240
+wait 3
+shot r09-fixtures-next
+click 26 213 240
+wait 3
+click 26 213 240
+wait 3
+shot r10-fixtures-prev
+click 200 60 240
+wait 2
+shot r11-info-away
+click 123 220 240
+wait 2
+click 293 213 240
+wait 4
+click 161 216 240
+wait 4
+shot r12-fixtures-ol
+click 293 213 240
+wait 4
+click 215 132 240
+wait 4
+shot r13-strength-bl
+click 161 187 240
+wait 3
+shot r14-strength-def
+click 100 60 240
+wait 2
+shot r15-info-both
+click 121 220 240
+wait 2
+click 293 213 240
+wait 4
+click 215 174 240
+wait 4
+shot r16-strength-2l
+click 293 213 240
+wait 4
+click 160 230 240 3
+wait 2
+shot r17-office

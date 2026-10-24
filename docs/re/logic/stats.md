@@ -503,7 +503,8 @@ return v;
 
 ### 2.5 `format_position_strength` 3a41:1d18
 
-`void (char far *out, uint8 t, int8 detailed)`. Callers: `screen_fixtures`, 1000:28c4.
+`void (char far *out, uint8 t, uint8 league /*unused*/, int8 detailed)`. Callers: `screen_fixtures`
+(detailed = 1), 1000:28c4.
 Builds `"<pos+1><ordinal> (<strength>)"` and, if `detailed`, `"... (PLATZ, ST[RKE <s>
 (<d>,<m>,<a>)"`. Exactly:
 
@@ -526,7 +527,8 @@ DS:079c = 1;
 ### 2.6 Shared screen elements
 
 * `copy_protection_penalty(title)` (16c7:09f9, lib) is called at the start of every screen with
-  the window title string; it also draws the title. Titles: `LBL[112] "Spielplan"`,
+  the window title string; it draws nothing (with the protection passed it returns at once), the
+  screens draw their titles themselves. Titles: `LBL[112] "Spielplan"`,
   `LBL[113] "St{rketabelle"`, `LBL[117] "Statistik"`, `LBL[118] "Ewige Tabelle/Bilanz"`,
   `LBL[119] "Damals... Ihre Erfolge"`, `LBL[116] "Einstellungen"`, `LBL[110] "Torsch}tzenliste"`.
 * Every screen draws its panels with `ui_draw_button(x, y, w, h, buttons, 0, 8)` and an exit
@@ -543,66 +545,92 @@ DS:079c = 1;
 
 ### 2.7 `screen_league_table` 3a41:214c
 
-`uint16 screen_league_table(uint8 league, uint8 unused)`. Callers: `office_menu_dispatcher`,
+`void screen_league_table(uint8 league, uint8 arg)`. Callers: `office_menu_dispatcher` (arg 1),
 season loop. Font 1 title, font 2 body.
 
-1. Title `LBL[79] "Tabelle " + UI[42+league]`, frame (5,8,0x134,0xb4), exit button, lines at
-   y = 0x19 and 0xa9, header `LBL[78]` at (9, 0x17).
-2. `cols = 1` (GESAMT). Draw loop (on entry and after each mode change): register the three
-   mode icons at y = 0xae (x from the trace), print `"Tabelle <mode> <round>. SPIELTAG"`.
-   Temporarily clamp `DS:225a[league]` to `DS:2262[league]-1` if it is past the last round,
-   call `league_apply_round_and_sort(league, 1, cols)` and restore it.
-3. Colour bands in the position column: rows 0..2 colour 0xf (league 0 only: champion and
-   European places), relegation band of `DS:2266[league]` rows at the bottom colour 0x11.
-4. Rows `p` = 0..teams-1 at y = 0x1c + 7*p: `"<p+1>."`, club name at x = 0x15 (colour 0x1d
-   for human teams), then the numbers string at x = 0x67: games, `S-U-N` (wins - draws -
-   losses, draws = games - wins - losses), points `x:y` (2-point rule: minus points =
-   `2*games - points` when `DS:2271 < 3`, see trace), goals `for:against`, goal difference
-   with sign (`long_abs_diff`). Every number uses the columns selected by `cols`.
-5. Clicks: X > 0xa9 on the icon row selects the mode by X (< 0x87 HEIM = 0, < 0xd7 GESAMT = 1,
-   else AUSWÄRTS = 2) and redraws. A click on a row (`0x1a < y < 0xa9`, row = (y - 0x1a)/7)
-   opens `screen_opponent_info(team, DS:5538[cols], 0, ...)`. Exit: button 2 or `DS:05d4`.
+1. Title `LBL[79] "Tabelle " + UI[42+league]` centered 0..0x10c at y 0xdc (colour 0xb, shadow 0),
+   frame (5,8,0x134,0xb4), exit icon `0x22 + (arg < 1)` at (0x10c,0xc1), lines at y = 0x19 and
+   0xa9 (colour 1), header `LBL[78]` at (9, 0x17).
+2. `cols = 1` (GESAMT). Draw loop (on entry and after each mode change): `screen_fade(0)`, register
+   the three mode icons `ui_register_icon_slot(0x1e + 0x66*i, 0xae, LBL[75+i], i == cols ? 0x12 : 1)`,
+   `DS:079c = 1`, fill (6,9,0x137,0x11,8) and print `"Tabelle <mode>   <round>.SPIELTAG"` centered
+   5..0x139 at y 0x10 (font 1, colour 1, shadow 7). The shown round is `DS:225a[league] - 1` when
+   `arg == 1` and the counter is > 1, else the counter. Temporarily clamp `DS:225a[league]` to
+   `DS:2262[league]-1` if it is past the last round, call `league_apply_round_and_sort(league, 1,
+   cols)` and restore it.
+3. Fill (9,0x1a,0x137,0xa8,8). Colour bands in the position column x 9..0x13: league 0: row 0
+   (y 0x1c..0x22) colour 0xf and rows 1..`DS:226d` (= 4; y 0x23..0x22+7*4) colour 0xc; every
+   league: relegation band y `7*(teams - DS:2266[L] + 4)`..`7*teams + 0x1b` colour 0x11; leagues
+   1, 2: promotion band y 0x1c..`7*DS:2265[L] + 0x1b` (`DS:2265 + L` = 3 / 4 rows) colour 0xc.
+4. Rows `p` = 0..teams-1 at baseline y = 0x21 + 7*p: `"<p+1>."` (field width 2) at x 9 in colour
+   0x1d; club name at x 0x15 and the numbers string at x 0x67 in colour 0xb for human teams, else 1.
+   Numbers string: the form string `T(t)+4` + `"   "` + games (width 2) + `"     "` + wins + `" "` +
+   draws + `" "` + losses + `"    "` + points + (`DS:2271 < 3`: `":"` + `2*games - points`, else
+   `" "`, with `"     "` before the points when `DS:2271 > 2`) + `"    "` + goals for (width 3) +
+   `":"` + goals against + `"      "` + (width 2) sign (`"#"` for 0, `"+"`, `"-"`) + `|difference|`.
+   Every number uses the columns selected by `cols`.
+5. Clicks (`ui_hit_test_buttons` on frame and exit): frame click with Y > 0xa9 selects the mode
+   by X (< 0x87 HEIM = 0, < 0xd7 GESAMT = 1, else AUSWÄRTS = 2) and redraws if it changed. A frame
+   click with `0x1a < y < 0xa9` (row = (y - 0x1a)/7 < teams) opens
+   `screen_opponent_info(team, DS:5538[cols] /* 0,2,1 */, 0, arg == 0)` (no redraw afterwards: the
+   info window restores the background). Exit: button 2 or `DS:05d4`.
 6. On exit it clamps the round again and calls `league_apply_round_and_sort(league, 1, 1)`, so
    the stored order is always the full table.
 
 ### 2.8 `screen_fixtures` 3a41:120a
 
-`void screen_fixtures(uint8 league, int8 mode, uint16 unused, int8 live)`. Callers:
-`office_menu_dispatcher` (mode 0), `match_live_view` (mode 2 = live minute display).
+`void screen_fixtures(uint8 league, int8 mode, uint8 arg, int8 by_round)`. Callers:
+`office_menu_dispatcher` (mode 0, arg 0, by_round 1), `match_live_view` (mode 2 = live minute
+display, `arg` = minute). `by_round == 0` lists the rescheduled matches (`LBL[72]`).
 
-* If `mode != 0`: call `manager_ai_weekly(m)` (1f9d:0002) for every manager before and after.
-* Frame (1,2,0x13a,0xb9); in mode 0 two arrow buttons (1,0xc1,w=0x28) and (0x3b,0xc1,w=0x27).
-* `round = DS:225a[league]`, wrapped to 1 if past the last round.
-* Header: if `live == 0` `LBL[70] "SPIELE  " + league name + "   " + round + ordinal +
-  LBL[71] "SPIELTAG  "`, then (mode != 2) the date: day `FAR:2eba` + `DS:299c` + month
-  `FAR:2e8e` + `DS:29a0` (via `fixture_info_helper` 1000:2895 and `matchday_refresh`). Live:
-  `LBL[72] "NACHHOLSPIELE  "` / minute + `LBL[73] "MINUTE"`.
-* If `live`: `fixtures_build_round_pairings(league, round)`.
-* Two columns of pairs (pair `i`: column `i & 1`, row `i >> 1`, row height 0x11, y0 = 0xf):
-  home and away names, `format_position_strength` lines below each, and the result
-  `gh:ga` at x = 0x120..0x12e, `"-:-"` if not yet played, or (unplayed but a rescheduled entry
-  in `FAR:5716` (5-byte records: round, league, pair/2) exists) the new date + `W[2] " (N)"`.
-  The result is only shown for rounds `< DS:225a[league] + (mode == 2)`.
-* Clicks (mode 0): arrow buttons 3/4 step the round down/up with wrap (1..rounds). A click in the
-  grid (y > 0xe) selects `pair = ((y - 0xe)/0x11)*2 + (x > 0x8c)`; if valid it saves
-  `FAR:4b5e` (60 bytes) in a temporary buffer, calls `screen_opponent_info(team, 0, 1,
-  ...)` and restores the buffer. Exit: button 2 or `DS:05d4`; if `live` it rebuilds the pairings
-  for the real current round before returning.
+* If `mode != 0`: call `squad_recalc_team_strength(m, 0/1)` (1f9d:0002, FUNCTION_MAP
+  *manager_ai_weekly*) for every manager before and after.
+* Frame (1,2,0x13a,0xb9), exit icon `0x22 + (mode == 2)` at (0x10c,0xc1); in mode 0 the arrow
+  icons 0x28 at (1,0xc1) and 0x27 at (0x3b,0xc1) (button count 4, else 2); line (3,0xe)-(0x139,0xe)
+  colour 0xb.
+* `round = DS:225a[league]`, set to 1 if past the last round.
+* Header (fill (6,3,0x13a,0xd,8), font 1, centered 7..0x139 at y 0xb, colour 1, shadow 7): if
+  `by_round`: `LBL[70] "SPIELE  " + league name + "   " + round + ordinal + LBL[71] "SPIELTAG  "`,
+  then (mode != 2) the date: `w = fixture_week_of_nth_match(1 << league, round)` (1000:2895,
+  0x78 if 0), `calendar_compute_date(w)` (1310:1190, overwrites the date globals), day `FAR:2eba` +
+  `"."` (`DS:299c`) + month+1 `FAR:2e8e` + `"."` (`DS:29a0`). Else `LBL[72] "NACHHOLSPIELE  "`.
+  Mode 2 appends `"  " + arg + ordinal + LBL[73] "MINUTE"`.
+* If `by_round`: `fixtures_build_round_pairings(league, round)`. Fill (3,0xf,0x13a,0xb9,8).
+* One pair per row `i` (byte offset `2i`, stop at home id 0x46), baseline y = 0x1a + 0x11*i,
+  colour 0xb if a human manager runs either club, else 1: font 1 home name at (3, y-2), `"-"` at
+  (0x88, y-2), away name at (0x92, y-2); font 2 `format_position_strength(.., detailed = 1)` of
+  both clubs at (5, y+5) and (0x94, y+5) in colour 4; font 1 again. Result `FAR:6dc8[20*(0x26*L +
+  round) + 2i]`: if home goals == 0x1e, search the 20 rescheduled records `FAR:5714 + 5k` for
+  `[2] == round && [3] == L && 2*[4] == 2i`; when found, `calendar_compute_date([1])`,
+  `DS:079c = 2`, `day + "." + month+1 + "." + W[2] " (N)"` centered at x 0x128 (font 2, y-3,
+  no shadow), `DS:079c = 1`; when not found nothing is drawn. Otherwise, if `round <
+  DS:225a[L] + (mode == 2)`, `gh` at x 0x120, `":"` at 0x129, `ga` at 0x12e (baseline y), else
+  `"-:-"` at 0x120.
+* Clicks (mode 0): arrow buttons 3/4 step the round down/up with wrap (1..rounds) and
+  `ui_wait_with_highlight` on the arrow, then redraw. A frame click with y > 0xe selects
+  `side = x > 0x8c`, `pair = ((y - 0xe)/0x11)*2 + side`; if valid it saves `FAR:4b5e` (60 bytes),
+  calls `screen_opponent_info(team, side, 1, mode == 2 && arg == 0x5a)` and restores the buffer.
+  Exit: button 2 or `DS:05d4`; if `by_round` it rebuilds the pairings for the real current round.
 
 ### 2.9 `screen_strength_table` 3a41:3891
 
 `void screen_strength_table(uint8 league)`. Caller: `office_menu_dispatcher`.
 
-* Frame (0x3d,0x11,0xbb,0xb2), title `LBL[86] "ST[RKEN " + league name`, header `LBL[81]
-  "PL.     VEREIN               KONDITION   TECHNIK    FORM"` at (0x41,0x21).
-* `part = 0` (GESAMT). Range of parts: `part == 0` → 0..2, else `part-1` only; `n = 3` or 1.
+* Frame (0x3d,0x11,0xbb,0xb2), exit icon 0x22 at (0x10c,0xc1), lines y 0x23 and 0xb2 from x 0x3f
+  to 0xf6, title `LBL[86] "ST[RKEN " + league name` centered 0x3d..0xf8 at y 0x19 (font 1, colour
+  1, shadow 7), header `LBL[81] "PL.     VEREIN               KONDITION   TECHNIK    FORM"` at
+  (0x41,0x21) (font 2).
+* `part = 0` (GESAMT). Draw: `ui_register_icon_slot(0x85, 0xb5, LBL[82+part], 0x12)`, fill
+  (0x3e,0x24,0xf6,0xb0,8). Range of parts: `part == 0` → 0..2, else `part-1` only; `n = 3` or 1.
 * Score per team `k` (team id `DS:226e[league] + k`): sum over the parts of
-  `C[0x1b+j] + C[0x18+j] + C[0x1e+j]` (int16). Exchange sort descending
-  (`for i, for j > i: if score[ord[i]] < score[ord[j]] swap`).
-* Rows y = 0x25 + 7*row: `"<row+1>. <name>"`, then the three columns each
-  `clamp_int(Σ parts / n, 0, 99)` for `+0x18` (KONDITION), `+0x1b` (TECHNIK), `+0x1e` (FORM).
-* Clicks: y > 0xb1 cycles `part` 0→1→2→3→0; row click (0x25 < y < 0xb2) opens
-  `screen_opponent_info(DS:226e[league] + ord[(y-0x25)/7], 2, 0, 0)`. Exit with button 2.
+  `C[0x1e+j] + C[0x18+j] + C[0x1b+j]` (int16). Exchange sort descending
+  (`for i, for j > i: if score[ord[j]] > score[ord[i]] swap`).
+* `DS:079c = 2`. Rows at baseline y = 0x2a + 7*row (colour 0xb for human teams, else 1):
+  `"<row+1>. <name>"` at x 0x41, then at x 0xa2 the three columns each `clamp_int(Σ parts / n, 0,
+  99)` for `+0x18` (KONDITION), `+0x1b` (TECHNIK), `+0x1e` (FORM), separated by 12 spaces.
+* Clicks: a frame click with y > 0xb1 cycles `part` 0→1→2→3→0 and redraws; a frame click with
+  0x25 < y < 0xb2 opens `screen_opponent_info(DS:226e[league] + ord[(y-0x25)/7], 2, 0, 0)`.
+  Exit with button 2.
 
 ### 2.10 `screen_opponent_info` 3a41:000e
 
@@ -613,9 +641,11 @@ season loop. Font 1 title, font 2 body.
 * Frame at x = 0x59 (+2 if `from_list`), y = 0x37, w = 0xe0, h = 0xae. Title
   `LBL[43] "Info ]ber " + name` (font 1, colour 0xb) with a line below. Icons: `UI[408]
   "REICHT MIR"` (exit, slot 1).
+* The frame is drawn with a saved background (restored by `ui_redraw_buttons` on exit); the
+  allocation goes through `vga_load_picture`, which resets `DS:079c` to 1.
 * Foreign team (`t >= 0x40`): three lines `LBL[44..46]` ("IHRE SP[HER K|NNEN LEIDER NUR" /
-  "AUF DEUTSCHEM BODEN OPERIEREN..." / "WILL SAGEN: KEINE INFORMATIONEN VERF]GBAR.") and only the
-  exit icon.
+  "AUF DEUTSCHEM BODEN OPERIEREN..." / "WILL SAGEN: KEINE INFORMATIONEN VERF]GBAR.") centered at
+  y 0x7b, 0x83, 0x8d, the exit icon and "ANZEIGEN" (slot 2).
 * Otherwise icons `LBL[47] "RESTPROGRAMM"` (slot 2, opens `screen_fixture_results(t, ...)`
   1000:28c4) and `LBL[48] "ANZEIGEN"` (slot 3, colour `DS:54dc[C(t)[0x21] >> 7]`; a click
   toggles bit 7 of `C(t)[0x21]` and redraws the icon). Lines:
@@ -626,16 +656,21 @@ season loop. Font 1 title, font 2 body.
   4. `"DIE LETZTEN SPIELE:"` + the 8 form characters drawn one by one.
   5. `"TORE PRO SPIEL " + LBL[36+col]` and `format_goals_per_game(t, col, 2)` where
      `col = DS:54d8[side]`.
-  6. `"SERIEN " + LBL[36+col]`, then up to 4 lines for streak categories `k` whose cell
-     `S(t,k,col) > 1`: `"<UI[...]> <n> SPIELE IN FOLGE <LBL[29+k]>"` (the "ZUHAUSE"/"AUSWÄRTS"
-     prefix LBL[27..28] is chosen with `DS:224e == DS:2252`); `FAR:2e6a` counts the lines. If
-     none: `LBL[60] "KEINE BEMERKENSWERTE SERIE VORHANDEN."`.
+  6. `"SERIEN " + LBL[36+side]`, then up to 4 lines for streak categories `k` whose cell
+     `S(t,k,col) > 1`: `"<n> SPIELE IN FOLGE " + X + LBL[29+k]` at (x+3) where, with
+     `DS:224e == DS:2252` (shipped data), `X` is the far pointer `FAR:2f2c[col]`. That table is
+     **never written**: the null pointer reads the interrupt vector table at 0000:0000, which
+     DOSBox shows as one glyph (0x7e). With different options the line is `LBL[29+k] +
+     LBL[26+col]` (" ", "ZUHAUSE ", "AUSW[RTS "). `FAR:2e6a` counts the lines. If none:
+     `LBL[60] "KEINE BEMERKENSWERTE SERIE VORHANDEN."` at (x+0xa) in colour 2.
   7. Records: for slots `s` 0..3 (side 0) or 4..7 (side ≠ 0): label `UI[...]` and
      `format_team_record(t, s)`. For side 2 the best of the home and away record is shown with
      `" (H)"` / `" (A)"`.
-  8. If `t` is not the current manager's team: `LBL[63] "HISTORISCHE ERGEBNISSE GEGEN " +
-     name` and `"H: g:g,g:g... -- A: ..."` from the head-to-head log of manager `FAR:304a`
-     (`LBL[64] "H: "`, `LBL[66] " -- A: "`, `LBL[65] " NOCH KEINE"` for an empty side).
+  8. If `t` is not the current manager's team: `LBL[63] "HISTORISCHE ERGEBNISSE GEGEN " +`
+     the name of the **manager's own club**, and `"H: g:g,g:g... -- A: ..."` from the
+     head-to-head log of manager `FAR:304a` (`LBL[64] "H: "`, `LBL[66] " -- A: "`, `LBL[65]
+     " NOCH KEINE"` for an empty side). The "H:" group reads the side-1 bytes (`FAR:9337 + 2i`),
+     the "A:" group the side-0 bytes; a `","` precedes every non-empty entry `k != 0`.
   9. `LBL[67] "PUNKTE IN DER EWIGEN TABELLE: " + T(t)[0x32] (int32)` or `LBL[68] "NOCH KEINEN
      EINZIGEN..."` when 0.
 * Loop: slot 1 = exit; slot 2 = RESTPROGRAMM (redraws the whole info afterwards unless it

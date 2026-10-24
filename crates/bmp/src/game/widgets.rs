@@ -59,6 +59,17 @@ impl TextButtons {
         );
     }
 
+    /// Number of registered buttons (`DS:07b3`).
+    pub fn count(&self) -> usize {
+        self.count
+    }
+
+    /// Forgets the last button (`DEC DS:07b3`), so the next registration
+    /// redraws it in place.
+    pub fn drop_last(&mut self) {
+        self.count = self.count.saturating_sub(1);
+    }
+
     /// 1-based index of the button under the pointer, or 0.
     ///
     /// Origin: BMMAIN.EXE 4091:11cc (ui_hit_icon_slot)

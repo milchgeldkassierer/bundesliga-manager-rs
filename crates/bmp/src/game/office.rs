@@ -13,6 +13,7 @@ use super::league::has_rescheduled_match_today;
 use super::season::calendar_compute_date;
 use super::squad_screen::screen_squad_lineup;
 use super::start_menu::Pictures;
+use super::tables::{screen_fixtures, screen_league_table, screen_strength_table};
 use super::widgets::ui_wait_right_click_button;
 use super::{
     GAME_OPTION_A, GAME_OPTION_B, SEASON_START_DAY, Session, append_ordinal_suffix,
@@ -336,8 +337,9 @@ fn quit_game_confirm(host: &mut Host) -> Run<()> {
 
 /// One office turn of the current manager. Returns when the turn ends.
 ///
-/// TODO(#15): the screens behind the sub icons (§6.5) are not ported; choosing
-/// one redraws the office and reopens the submenu.
+/// TODO(#15): only the "Tabellen" screens and the squad list behind the sub
+/// icons (§6.5) are ported; choosing another one redraws the office and
+/// reopens the submenu.
 ///
 /// Origin: BMMAIN.EXE 18bc:0b5f (office_menu_dispatcher)
 pub fn office_menu_dispatcher(
@@ -557,8 +559,20 @@ pub fn office_menu_dispatcher(
                 host.input_wait_release()?;
                 office_show_cached_background(host)?;
                 host.ui.redraw_buttons(&mut host.g, &mut host.rp, 0x7f, 0);
-                if (sel, si) == (3, 1) {
-                    screen_squad_lineup(host, session, state, rules, 0, 0xff, None)?;
+                match (sel, si) {
+                    (2, 1..=3) => {
+                        screen_league_table(host, session, state, (si - 1) as usize, 1)?;
+                    }
+                    (2, 4..=6) => {
+                        screen_fixtures(host, session, state, (si - 4) as usize, 0, 0, true)?;
+                    }
+                    (2, 7..=9) => {
+                        screen_strength_table(host, session, state, (si - 7) as usize)?;
+                    }
+                    (3, 1) => {
+                        screen_squad_lineup(host, session, state, rules, 0, 0xff, None)?;
+                    }
+                    _ => {}
                 }
                 // TODO(#29): (3, 2) is screen_squad_lineup(0x63, 0xff), which needs the
                 // contract negotiation.

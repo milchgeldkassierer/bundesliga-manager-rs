@@ -1,0 +1,138 @@
+# Port side of the tables scenario (bmp run --script syntax, milliseconds):
+# load 07072019.MAN, open every screen of the office "Tabellen" submenu (league
+# tables of the three tiers with a mode switch, fixtures with paging, strength
+# tables with a part switch, the club info from each of them) and return to
+# the office.
+# seed: 35372
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+move 30 173
+wait 100
+click 30 173
+wait 500
+move 107 132
+wait 100
+click 107 132
+wait 1000
+shot r01-table-bl
+move 50 180
+wait 100
+click 50 180
+wait 750
+shot r02-table-home
+move 60 43
+wait 100
+click 60 43
+wait 500
+shot r03-info
+move 121 220
+wait 100
+click 121 220
+wait 500
+shot r04-info-closed
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot r05-office
+move 107 174
+wait 100
+click 107 174
+wait 1000
+shot r06-table-2l
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 107 216
+wait 100
+click 107 216
+wait 1000
+shot r07-table-ol
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 161 132
+wait 100
+click 161 132
+wait 1000
+shot r08-fixtures-bl
+move 84 213
+wait 100
+click 84 213
+wait 750
+shot r09-fixtures-next
+move 26 213
+wait 100
+click 26 213
+wait 750
+move 26 213
+wait 100
+click 26 213
+wait 750
+shot r10-fixtures-prev
+move 200 60
+wait 100
+click 200 60
+wait 500
+shot r11-info-away
+move 123 220
+wait 100
+click 123 220
+wait 500
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 161 216
+wait 100
+click 161 216
+wait 1000
+shot r12-fixtures-ol
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 215 132
+wait 100
+click 215 132
+wait 1000
+shot r13-strength-bl
+move 161 187
+wait 100
+click 161 187
+wait 750
+shot r14-strength-def
+move 100 60
+wait 100
+click 100 60
+wait 500
+shot r15-info-both
+move 121 220
+wait 100
+click 121 220
+wait 500
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 215 174
+wait 100
+click 215 174
+wait 1000
+shot r16-strength-2l
+move 293 213
+wait 100
+click 293 213
+wait 1000
+rclick 160 230
+wait 500
+shot r17-office
