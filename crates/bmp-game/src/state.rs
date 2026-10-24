@@ -854,7 +854,19 @@ pub enum StateError {
     },
     /// The save has the wrong number of blocks.
     BlockCount,
+    /// Player `player` has a position code of 100 or more. The original's
+    /// `auto_lineup_pick_best` 2ecd:3635 loops forever once such a player is
+    /// available in records 0..23 of a manager's squad (`squad.md` §3.2);
+    /// the market can move any player there, so every player is checked.
+    PositionCode {
+        /// Index into [`GameState::players`].
+        player: usize,
+    },
 }
+
+/// Smallest [`Player::position_value`] that is no position: `value / 25`
+/// has to be 0 (GK) ..= 3 (ATT).
+const POSITION_CODE_LIMIT: u8 = 100;
 
 /// Calls `$m!(index, field, Type)` for every save block in save order.
 macro_rules! for_each_block {
@@ -941,7 +953,9 @@ macro_rules! decode_blocks {
         // the unsaved runtime globals when a game is loaded mid-session
         // (finance.md §7 q.2).
         /// Builds the state from a decoded save game. The runtime globals the
-        /// save lacks get their program-start values.
+        /// save lacks get their program-start values. Unlike the original it
+        /// rejects a save with a player whose position code would hang the
+        /// lineup logic ([`StateError::PositionCode`], `state.md` §1).
         ///
         /// Origin: BMMAIN.EXE 422b:120c (screen_load_game; block reads mirror
         /// savegame_write_man 422b:07fe)
@@ -949,7 +963,7 @@ macro_rules! decode_blocks {
             if save.blocks.len() != BLOCKS.len() {
                 return Err(StateError::BlockCount);
             }
-            Ok(GameState {
+            let state = GameState {
                 signature: save.signature,
                 version: save.version,
                 save_id: save.save_id,
@@ -964,7 +978,9 @@ macro_rules! decode_blocks {
                 base_interest_rate: INITIAL_BASE_INTEREST_RATE,
                 month_balance_sum: [0; 4],
                 autosave_pending: 0,
-            })
+            };
+            state.check_position_codes()?;
+            Ok(state)
         }
 
         /// Converts the state back into save blocks, byte for byte.
@@ -1038,6 +1054,19 @@ impl GameState {
         s.ds_061c = [0x31, 0x20, 0x0b, 0x0c];
         s.ds_05b8 = [7; 4];
         s
+    }
+
+    /// The load-time guard of [`GameState::from_savegame`]: the first real
+    /// player (index 1..) with a position code of [`POSITION_CODE_LIMIT`] or
+    /// more. A deliberate deviation; the original loads such a save and hangs
+    /// in `auto_lineup_pick_best` 2ecd:3635 once the player is in a squad.
+    fn check_position_codes(&self) -> Result<(), StateError> {
+        match (1..self.players.len())
+            .find(|&i| self.players[i].position_value >= POSITION_CODE_LIMIT)
+        {
+            Some(player) => Err(StateError::PositionCode { player }),
+            None => Ok(()),
+        }
     }
 
     // TODO(re): far globals the save does not store read as zero here; the
@@ -1509,6 +1538,65 @@ pub(crate) mod tests {
             assert_eq!(back, save, "{path:?}");
             assert_eq!(back.to_bytes().unwrap(), data, "{path:?}");
         }
+    }
+
+    /// The bytes of `path` with the position code of player `pick(state)`
+    /// set to `code`, and that player's index.
+    fn save_with_position_code(
+        path: &std::path::Path,
+        pick: fn(&GameState) -> usize,
+        code: u8,
+    ) -> (Vec<u8>, usize) {
+        let data = std::fs::read(path).unwrap();
+        let mut state = GameState::from_savegame(&SaveGame::parse(&data).unwrap()).unwrap();
+        let player = pick(&state);
+        state.players[player].position_value = code;
+        (state.to_savegame().to_bytes().unwrap(), player)
+    }
+
+    fn first_squad_player(s: &GameState) -> usize {
+        let rec = s.squads[0].iter().find(|r| r.player_id != 0).unwrap();
+        usize::from(rec.player_id)
+    }
+
+    /// A player no squad record holds: the market can hand it to a squad.
+    fn first_unowned_player(s: &GameState) -> usize {
+        (1..s.players.len())
+            .find(|&i| {
+                s.players[i].owner_manager == NO_OWNER
+                    && !s
+                        .squads
+                        .iter()
+                        .flatten()
+                        .any(|r| usize::from(r.player_id) == i)
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn real_save_with_position_code_100_is_rejected() {
+        let Some(path) = save_files().into_iter().next() else {
+            return;
+        };
+        for pick in [first_squad_player, first_unowned_player] {
+            let (bytes, player) = save_with_position_code(&path, pick, POSITION_CODE_LIMIT);
+            let save = SaveGame::parse(&bytes).unwrap();
+            assert_eq!(
+                GameState::from_savegame(&save),
+                Err(StateError::PositionCode { player })
+            );
+            let (bytes, _) = save_with_position_code(&path, pick, POSITION_CODE_LIMIT - 1);
+            let save = SaveGame::parse(&bytes).unwrap();
+            assert!(GameState::from_savegame(&save).is_ok());
+        }
+    }
+
+    #[test]
+    fn position_code_of_player_0_is_not_checked() {
+        let mut s = GameState::zeroed();
+        s.players[0].position_value = 0xff;
+        let save = SaveGame::parse(&s.to_savegame().to_bytes().unwrap()).unwrap();
+        assert!(GameState::from_savegame(&save).is_ok());
     }
 
     /// Number of used entries of `league_teams[tier]`: the longest prefix

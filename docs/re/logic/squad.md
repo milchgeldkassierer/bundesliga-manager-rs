@@ -338,7 +338,8 @@ Notes:
 * The loop cannot hang as long as every position code is below 100: if `any` is set, some position has a
   candidate, and the outfield-to-GK case ends through `gk_seen`. An available player with a code of 100
   or more sets `any` but never matches `pos`, so the original loops forever; the game never generates
-  such a code.
+  such a code. The port rejects on load a save in which any player holds one, a stricter rule than
+  this hang condition (state.md §1.1).
 
 ### 3.3 `squad_insert_player` 2ecd:37d8
 

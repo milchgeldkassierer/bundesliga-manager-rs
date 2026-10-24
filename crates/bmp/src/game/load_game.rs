@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 
 use bmp_formats::savegame::{self, SaveGame};
 use bmp_game::rng::format_long_thousands;
-use bmp_game::state::GameState;
+use bmp_game::state::{GameState, StateError};
 
 use super::start_menu::Pictures;
 use super::start_menu::text_input;
-use super::widgets::{TextButtons, ui_wait_right_click_button};
+use super::widgets::{TextButtons, dialog_okay, ui_wait_right_click_button};
 use super::{Session, text_to_upper_de};
 use crate::gfx::{
     Gfx, Ui, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow, ui_fill_rect,
@@ -28,6 +28,13 @@ const DELETE_LABEL: &[u8] = b"L\x99SCHEN";
 const LOGICAL_DRIVES: usize = 26;
 /// Most save ids remembered per session (`FAR:a6d8`).
 const SAVE_ID_HISTORY: usize = 50;
+/// The message for [`LoadError::Corrupt`]; the original has none (it hangs later).
+const CORRUPT_SAVE: [&[u8]; 4] = [
+    b"Achtung !",
+    b"Spielstand",
+    b"ist fehlerhaft !",
+    b"Vorgang abgebrochen.",
+];
 
 /// File-selector and loader state kept between calls.
 #[derive(Debug, Clone, Default)]
@@ -366,7 +373,8 @@ pub fn file_selector(host: &mut Host, saves: &mut SaveSession, icon: u8) -> Run<
     }
 }
 
-/// Why a save could not be loaded (each case is a dialog in the original).
+/// Why a save could not be loaded (each case but [`LoadError::Corrupt`] is a
+/// dialog in the original).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoadError {
     /// `disk_error_dialog` 422b:0006.
@@ -379,6 +387,9 @@ pub enum LoadError {
     AlreadyLoaded,
     /// A checksum does not match: "DER GROSSE MOGELGURU" screen.
     Checksum,
+    /// A player's position code would hang the lineup logic
+    /// ([`StateError::PositionCode`]); the original loads such a save.
+    Corrupt,
 }
 
 /// Loads `path` and checks it like the original: signature, version, session
@@ -403,7 +414,10 @@ pub fn read_save(saves: &mut SaveSession, path: &Path) -> Result<GameState, Load
         Err(savegame::Error::Checksum { .. }) => return Err(LoadError::Checksum),
         Err(_) => return Err(LoadError::Disk),
     };
-    GameState::from_savegame(&save).map_err(|_| LoadError::Disk)
+    GameState::from_savegame(&save).map_err(|e| match e {
+        StateError::PositionCode { .. } => LoadError::Corrupt,
+        StateError::BlockSize { .. } | StateError::BlockCount => LoadError::Disk,
+    })
 }
 
 /// The endless "DER GROSSE MOGELGURU" screen shown for a manipulated save.
@@ -438,8 +452,10 @@ fn cheat_screen(host: &mut Host) -> Run<()> {
 /// `None` when nothing was loaded. On success the crest cache and the portrait
 /// sheet of [`Pictures`] are rebuilt for the loaded managers.
 ///
-/// TODO(#15): the error dialogs (`dialog_okay`, `ui_dialog_box`) are not ported;
-/// the errors are reported on stderr. The V1.x level question
+/// A corrupt save ([`LoadError::Corrupt`]) gets a `dialog_okay` message box.
+///
+/// TODO(#15): the original's error dialogs (`dialog_okay`, `ui_dialog_box`) are
+/// not ported; those errors are reported on stderr. The V1.x level question
 /// (`ui_value_spinner` 4091:0ba5) keeps its default level 3.
 ///
 /// Origin: BMMAIN.EXE 422b:120c (screen_load_game)
@@ -472,6 +488,11 @@ pub fn screen_load_game(
         Ok(s) => s,
         Err(LoadError::Checksum) => {
             cheat_screen(host)?;
+            return Ok(None);
+        }
+        Err(LoadError::Corrupt) => {
+            let [a, b, c, d] = CORRUPT_SAVE;
+            dialog_okay(host, a, b, c, d)?;
             return Ok(None);
         }
         Err(e) => {
@@ -578,5 +599,27 @@ mod tests {
         assert_eq!(s.cwd_text(), b"C:\\");
         s.change_dir(&data, b"NOSUCHDIR");
         assert_eq!(s.cwd_text(), b"C:\\");
+    }
+
+    #[test]
+    fn save_with_an_out_of_range_position_code_is_corrupt() {
+        let Some(path) = bmp_formats::save_files().into_iter().next() else {
+            return;
+        };
+        let save = SaveGame::parse(&std::fs::read(&path).unwrap()).unwrap();
+        let mut state = GameState::from_savegame(&save).unwrap();
+        let id = state.squads[0]
+            .iter()
+            .find(|r| r.player_id != 0)
+            .unwrap()
+            .player_id;
+        state.players[usize::from(id)].position_value = 100;
+        let dir = std::env::temp_dir().join(format!("bmp-corrupt-save-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("CORRUPT.MAN");
+        std::fs::write(&file, state.to_savegame().to_bytes().unwrap()).unwrap();
+        let result = read_save(&mut SaveSession::default(), &file);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(result, Err(LoadError::Corrupt));
     }
 }

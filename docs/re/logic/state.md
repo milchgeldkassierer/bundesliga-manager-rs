@@ -23,7 +23,7 @@ symbols, where the function is still called `FUN_xxxx_xxxx`.
 |---|---|---|
 | `trait Layout` (`LEN`, `read`, `write`, `zeroed`, `from_bytes`, `to_bytes`) | – | Fixed little-endian layout. It is implemented for `u8 i8 u16 i16 u32 i32`, for arrays of any `Layout`, and for every record. MSC tables are packed, so there is no padding |
 | `record!` macro | – | Declares a struct whose fields lie back to back. `LEN` is the sum of the field sizes |
-| `GameState::from_savegame(&SaveGame)` | 422b:120c `screen_load_game` | Decodes every block into its typed field. Header, string table and tail are kept |
+| `GameState::from_savegame(&SaveGame)` | 422b:120c `screen_load_game` | Decodes every block into its typed field. Header, string table and tail are kept. Rejects a save in which a player (index 1..) has a position code of 100 or more (`StateError::PositionCode`, §1.1) |
 | `GameState::to_savegame()` | 422b:07fe `screen_save_game` / `savegame_write_man` | Inverse of `from_savegame`. `SaveGame::to_bytes` then recomputes the cipher and checksums |
 | `GameState::zeroed()` | – | All blocks zero, empty message table, V2 header. Not the program-start state |
 | `GameState::program_start()` | DGROUP image (segment 5cb3) | `zeroed()` plus the initialised DGROUP blocks: #0, #5, #8, #24, #34, #36, #41, #42, #47, #50, #51, #54, #57..#59 (every far block starts zero) |
@@ -41,6 +41,8 @@ The tests check that:
 * **every `*.MAN` in `BMP/` and `BMP/BMP/` round-trips byte-exactly** (`SaveGame -> GameState ->
   SaveGame -> bytes`);
 * `zeroed()` round-trips;
+* a shipped save with one squad player's, or one unowned pool player's, `position_value` patched to 100
+  is rejected with `StateError::PositionCode`, and the same save patched to 99 loads;
 * `manager_index_of_team` behaves as described;
 * `sort_league_table` applies the four keys in order (synthetic test), and re-sorting the full
   (view 1) table of every real save is a no-op;
@@ -54,6 +56,23 @@ The tests check that:
 
 Types follow the original: `char` is `i8`, `int` is `i16` and `long` is `i32`. The managers' `FAR:304a`
 and `FAR:5358` are `char`, because the code multiplies them signed (`*(char*)0x304a * 0x30a`).
+
+### 1.1 Deliberate deviation: the position-code guard
+
+The original loads any save whose checksums match. It hangs once a player whose `Player::position_value`
+is 100 or more is available (`slot == 0`, status available) in records 0..23 of a manager's squad:
+`auto_lineup_pick_best` 2ecd:3635 maps the code to the position `value / 25`, which is never 0..3, and
+loops forever (squad.md §3.2). The game never generates such a code (§3.3: bands 0, 25+, 50+, 75+).
+
+The port's rule is stricter than that hang condition on purpose: the transfer market, purchases and
+slot shifts can move any player into those records later, so `from_savegame` rejects a save in which
+any real player (index 1..150, wherever he is held) has such a code, with
+`StateError::PositionCode { player }` (first offending player). `screen_load_game` shows it as a
+`dialog_okay` box ("Achtung ! / Spielstand / ist fehlerhaft ! / Vorgang abgebrochen.", a text the original
+does not have) and loads nothing.
+`auto_lineup_pick_best` itself stays as in the original, unbounded. Only this hang is guarded: a
+`player_id` past the 151-entry table is not checked. As with a checksum error, the save id is already in
+the session history, so picking the same file again in this session gives `LoadError::AlreadyLoaded`.
 
 ## 2. The 61 save blocks
 
