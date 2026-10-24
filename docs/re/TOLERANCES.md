@@ -8,3 +8,5 @@ Each rendered 320x200 frame is compared against a DOSBox reference capture of th
 
 ## Long-term target
 - At most 0.5 % differing pixels, color differences only from VGA DAC rounding, geometry exact.
+
+The reference implementation is `bmp compare <port.png> <reference.png> [--diff out.png] [--threshold 90]` (`crates/bmp/src/compare.rs`).
