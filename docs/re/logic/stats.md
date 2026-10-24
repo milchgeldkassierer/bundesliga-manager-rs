@@ -818,6 +818,13 @@ not human-managed and (`P(p)[0x24] == 0xff` or `FAR:a7a0` (int32) != 0): for `k`
 24a4:1a5d..1a76; 1cb5:2987 never reads `list_k`). `transfer_value(p, 0)` in
 `player_pool_season_shuffle` gets the pool index as a squad slot, so it reads record
 `FAR:304a * 25 + p` of the flat table FAR:774a, past the 125 squad records for large `p`.
+The slot is **signed** (3277:25eb `MOV AL,[BP+6]; CBW`): the record offset is
+`(25 * (i8)FAR:304a + (i8)p) * 0x34 + 0x774a`, 16-bit throughout, so a pool index `p >= 128`
+reads record `25 * FAR:304a + p - 256`, before the squad table (in the player table FAR:57dd for
+`FAR:304a <= 3`). The age is then `P[rec[0x0f]].b[0x1a]` (unsigned id). Verified with the
+`season_two` scenario: with an unsigned slot the move of pool player 138 read a record of 0xff
+bytes (value byte 138, no club matches, 502 draws), while the original read a player-table record
+(value byte 34..54, an early match), which shifted every later random draw of the new season.
 
 ### 3.4 Club strength and player value
 

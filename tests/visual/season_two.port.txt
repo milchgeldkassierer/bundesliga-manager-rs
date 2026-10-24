@@ -1,0 +1,160 @@
+# Port side of the season_two scenario (bmp run --script syntax, milliseconds).
+# Starts like season_end (same fixture 00SAISON.MAN, office of the season end of 1967/68, and
+# seed 3271): ends the turn, goes through the "Saisonende" report and the contract talks to
+# the first office of 1968/69, then saves the game right after the season rollover as
+# 02ZWEI.MAN. The save the port writes must equal the one the original writes byte for byte,
+# which pins the whole state of the new season (club strengths, players, finances, RNG-driven
+# summer changes).
+# fixture: season_end.fixture-saison.txt 00SAISON.MAN 1000
+# seed: 3271
+# compare-file: 02ZWEI.MAN
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+shot s01-office
+move 30 173
+wait 100
+click 30 173
+wait 500
+move 107 174
+wait 100
+click 107 174
+wait 1000
+move 60 43
+wait 100
+click 60 43
+wait 500
+shot r1-info
+move 203 220
+wait 100
+click 203 220
+wait 1000
+shot r1-fixtures
+move 281 220
+wait 100
+click 281 220
+wait 1000
+shot r1-second-half
+move 121 220
+wait 100
+click 121 220
+wait 500
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot r1-office
+move 280 75
+wait 100
+click 280 75
+wait 2000
+shot s02-report
+move 191 165
+wait 100
+click 191 165
+wait 2000
+shot s03
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s04
+move 191 165
+wait 100
+click 191 165
+wait 4500
+shot s05-contracts
+move 100 214
+wait 100
+click 100 214
+wait 300
+type 2
+key enter
+wait 500
+shot s06-typed
+move 212 207
+wait 100
+click 212 207
+wait 1000
+shot s07-answer
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s08
+move 191 165
+wait 100
+click 191 165
+wait 500
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s09-next
+move 212 222
+wait 100
+click 212 222
+wait 1000
+shot s10-leaves
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s11-fee
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s12-next
+move 212 222
+wait 100
+click 212 222
+wait 1000
+move 191 165
+wait 100
+click 191 165
+wait 1000
+move 191 165
+wait 100
+click 191 165
+wait 1000
+shot s13-next
+move 212 222
+wait 100
+click 212 222
+wait 1000
+move 191 165
+wait 100
+click 191 165
+wait 1000
+move 191 165
+wait 100
+click 191 165
+wait 4000
+shot s14-office
+move 291 173
+wait 100
+click 291 173
+wait 500
+shot s15-disk
+move 107 174
+wait 100
+click 107 174
+wait 1000
+move 100 178
+wait 100
+click 100 178
+wait 250
+type 02zwei
+wait 250
+shot s16-name
+key enter
+wait 1000
+shot s17-saved

@@ -1,5 +1,11 @@
 # DOSBox side of the cups scenario (tools/dosbox-capture.sh syntax, seconds).
 # Loads 07072019.MAN and walks through the screens of the office "Pokal/Europa" submenu.
+# The capture must run with the port's seed 35372: the weekly strength drift at the loop top
+# after loading is random, and the club info strengths (c10) depend on it. An earlier capture
+# with a seed one or two seconds off showed FORTUNA DUESSELDORF with strength 74 instead of 73;
+# a capture aimed at 35372 that also saved and fetched the game wrote a save whose random
+# header (save id, key, pad) equals the port's, i.e. the seed was exact, and matched all frames.
+# aim-seed: 35372
 wait 4
 key space
 wait 4

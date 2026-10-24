@@ -12,11 +12,10 @@
 # writes must equal the original's.
 # Seed 3271 was recovered from the reference's report and first fixtures frame (searched
 # around the seed expected from the capture time; the only one that matches).
-# Known difference: r2-fixtures (99.92 %), r2-info and r2-info-again (99.99 %): the club
-# strengths of the new season differ by up to 3 points (DYNAMO DRESDEN 66 instead of 64);
-# everything before the rollover, the new fixture list and the high scores match, so one of
-# the steps after the contract talks (season_rebalance_player_clubs, the summer break or the
-# loop top of the new season) still differs from the original (#31).
+# The new season's club strengths (r2 frames) used to differ by up to 3 points: the pool
+# reshuffle read the value of pool player 138 from the wrong record (player_value_calc takes a
+# signed slot, stats.md 3.3), which shifted every later random draw; the season_two scenario
+# compares the whole save after the rollover.
 # fixture: season_end.fixture-saison.txt 00SAISON.MAN 1000
 # fixture: season_end.fixture-jahr.txt 01JAHR.MAN 45817 45841
 # seed: 3271

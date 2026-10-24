@@ -310,14 +310,35 @@ fn is_foreign(team: u8) -> bool {
 /// squad slot, so the value is that of record `FAR:304a * 25 + p` of the flat
 /// squad table, which runs past the 125 squad records into the following far
 /// data; the age is read the same way, through the record's player id.
+/// `player_value_calc` sign-extends the slot (`CBW`), so a pool index of 128 or
+/// more is a negative slot and reads a record *before* the squad table (in the
+/// player table); the record offset is 16-bit and wraps inside the segment.
+///
+/// Origin: BMMAIN.EXE 3277:25de (player_value_calc, record address 3277:25eb..2603)
 fn pool_value_byte(state: &GameState, img: &[u8], rng: &mut Rng, p: u8) -> u8 {
-    let r = usize::try_from(i16::from(state.current_manager) * 25 + i16::from(p))
-        .expect("FAR:304a is not a squad group");
-    let at = SQUADS_FAR + r * SquadPlayer::LEN;
-    let rec = SquadPlayer::from_bytes(&img[at..at + SquadPlayer::LEN]).unwrap();
-    let at = PLAYERS_FAR + rec.player_id as usize * Player::LEN;
-    let age = Player::from_bytes(&img[at..at + Player::LEN]).unwrap().age;
+    let at = pool_record_offset(state.current_manager, p);
+    let read = |at: u16, len: usize| -> Vec<u8> {
+        (0..len)
+            .map(|k| img[usize::from(at.wrapping_add(k as u16))])
+            .collect()
+    };
+    let rec = SquadPlayer::from_bytes(&read(at, SquadPlayer::LEN)).unwrap();
+    let at = (PLAYERS_FAR as u16)
+        .wrapping_add(u16::from(rec.player_id).wrapping_mul(Player::LEN as u16));
+    let age = Player::from_bytes(&read(at, Player::LEN)).unwrap().age;
     ldiv(player_value_of(rng, &rec, age, 0), 10000) as u8
+}
+
+/// Far offset of the squad record `player_value_calc` reads for slot `slot` of
+/// manager `FAR:304a = cm`: `(25 * (i8)cm + (i8)slot) * 0x34 + 0x774a`, all
+/// 16-bit (`IMUL byte`, `CBW`, `IMUL CX`, `ADD AX,0x774a`).
+///
+/// Origin: BMMAIN.EXE 3277:25de (player_value_calc, 3277:25eb..2603)
+fn pool_record_offset(cm: i8, slot: u8) -> u16 {
+    let index = i16::from(cm)
+        .wrapping_mul(25)
+        .wrapping_add(i16::from(slot as i8));
+    (index.wrapping_mul(SquadPlayer::LEN as i16) as u16).wrapping_add(SQUADS_FAR as u16)
 }
 
 /// The yearly reshuffle of the player pool: every player's two skills drift,
@@ -557,6 +578,46 @@ mod tests {
     use super::*;
     use bmp_formats::save_files;
     use bmp_formats::savegame::SaveGame;
+
+    #[test]
+    fn pool_record_offset_sign_extends_the_slot() {
+        // Squad record 25 + 4 of manager 1.
+        assert_eq!(pool_record_offset(1, 4), 0x774a + 29 * 0x34);
+        // Past the 125 squad records (slot 99): FAR:907a.
+        assert_eq!(pool_record_offset(1, 99), 0x907a);
+        // Pool index 138 is slot -118: record -93, inside the player table.
+        assert_eq!(pool_record_offset(1, 138), 0x774a - 93 * 0x34);
+        // The 16-bit offset wraps inside the segment.
+        assert_eq!(
+            pool_record_offset(-128, 0),
+            (0x774a_i32 - 3200 * 0x34).rem_euclid(0x10000) as u16
+        );
+    }
+
+    #[test]
+    fn pool_value_byte_reads_a_negative_slot_before_the_squads() {
+        let mut s = GameState::zeroed();
+        s.manager_count = 1;
+        s.current_manager = 1;
+        // The record at slot -118 of manager 1 lies in the player table; make it a player
+        // record of id 5 (age 24) with some skill and stamina so its value is not the empty one.
+        let mut img = s.far_data_image();
+        let at = usize::from(pool_record_offset(1, 138));
+        let mut rec = SquadPlayer::zeroed();
+        rec.player_id = 5;
+        rec.skills = [60, 60, 60];
+        img[at..at + SquadPlayer::LEN].copy_from_slice(&rec.to_bytes());
+        img[PLAYERS_FAR + 5 * Player::LEN + 0x1a] = 24;
+        let mut rng = Rng::new(1);
+        let negative = pool_value_byte(&s, &img, &mut rng, 138);
+        let empty = pool_value_byte(&s, &s.far_data_image(), &mut rng, 138);
+        assert_ne!(negative, empty);
+        assert_eq!(
+            rng,
+            Rng::new(1),
+            "a mode-0 value draws nothing for an unlisted record"
+        );
+    }
 
     /// Players 1..=150 belong to no club; `team` gets the given players.
     fn pool(team: u8, members: &[usize], talent: u8) -> GameState {
@@ -1034,18 +1095,21 @@ mod tests {
         rec.player_id = 7;
         rec.skills = [80, 90, 50];
         rec.value_terms = [100, 0, 0];
-        // Record 140 of the flat squad table starts 0x84 bytes into FAR:9336.
+        // Record 25 + 116 = 141 of the flat squad table (manager 1, pool index 116) starts
+        // 0xb8 bytes into FAR:9336.
         let mut h = s.match_history.to_bytes();
-        h[0x84..0x84 + SquadPlayer::LEN].copy_from_slice(&rec.to_bytes());
+        h[0xb8..0xb8 + SquadPlayer::LEN].copy_from_slice(&rec.to_bytes());
         s.match_history = crate::state::MatchHistory::from_bytes(&h).unwrap();
+        s.current_manager = 1;
         let img = s.far_data_image();
         let mut rng = Rng::new(1);
-        let v = pool_value_byte(&s, &img, &mut rng, 140);
+        let v = pool_value_byte(&s, &img, &mut rng, 116);
         let expected = ldiv(player_value_of(&mut Rng::new(1), &rec, 21, 0), 10000) as u8;
         assert_eq!(v, expected);
         assert_ne!(v, 0);
         // Inside the table the record is the squad slot itself.
         s.squads[4][10] = rec.clone();
+        s.current_manager = 0;
         let img = s.far_data_image();
         assert_eq!(pool_value_byte(&s, &img, &mut rng, 110), expected);
     }

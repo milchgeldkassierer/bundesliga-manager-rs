@@ -1,0 +1,121 @@
+# DOSBox side of the season_two scenario (tools/dosbox-capture.sh syntax, seconds).
+# Loads the fixture 00SAISON.MAN like season_end, ends the turn through the report and the
+# contract talks to the first office of the next season and saves the game as 02ZWEI.MAN,
+# which is fetched for the byte comparison with the port's save.
+# aim-seed: 3271
+wait 4
+key space
+wait 4
+click 160 120 240
+wait 6
+click 160 10 240
+wait 3
+click 40 82 240
+wait 1
+click 40 82 240
+wait 6
+shot s01-office
+click 30 173 240
+wait 2
+click 107 174 240
+wait 3
+click 60 43 240
+wait 2
+shot r1-info
+click 203 220 240
+wait 3
+shot r1-fixtures
+click 281 220 240
+wait 3
+shot r1-second-half
+click 121 220 240
+wait 2
+click 293 213 240
+wait 3
+shot r1-office
+click 280 75 240
+wait 5
+shot s02-report
+move 160 120 240
+click 191 165 240
+wait 2
+shot s03
+move 160 120 240
+click 191 165 240
+wait 2
+shot s04
+move 160 120 240
+click 191 165 240
+wait 3
+shot s05-contracts
+move 160 120 240
+click 100 214 240
+wait 1
+type 2
+key Return
+wait 1
+shot s06-typed
+move 160 120 240
+click 212 207 240
+wait 2
+shot s07-answer
+move 160 120 240
+click 191 165 240
+wait 2
+shot s08
+move 160 120 240
+click 191 165 240
+wait 2
+move 160 120 240
+click 191 165 240
+wait 2
+shot s09-next
+move 160 120 240
+click 212 222 240
+wait 2
+shot s10-leaves
+move 160 120 240
+click 191 165 240
+wait 2
+shot s11-fee
+move 160 120 240
+click 191 165 240
+wait 2
+shot s12-next
+move 160 120 240
+click 212 222 240
+wait 2
+move 160 120 240
+click 191 165 240
+wait 2
+move 160 120 240
+click 191 165 240
+wait 2
+shot s13-next
+move 160 120 240
+click 212 222 240
+wait 2
+move 160 120 240
+click 191 165 240
+wait 2
+move 160 120 240
+click 191 165 240
+wait 6
+shot s14-office
+move 160 120 240
+click 291 173 240
+wait 2
+shot s15-disk
+move 160 120 240
+click 107 174 240
+wait 3
+move 160 120 240
+click 100 178 240
+wait 1
+type 02zwei
+wait 1
+shot s16-name
+key Return
+wait 4
+shot s17-saved
+fetch 02ZWEI.MAN
