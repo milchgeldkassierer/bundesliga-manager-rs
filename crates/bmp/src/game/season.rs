@@ -485,8 +485,16 @@ impl SeasonUi for ScreenSeason<'_> {
     ) {
         self.sync_format();
         if !self.quitting() {
+            let relegation = rt.relegation_mode != 0;
             let r = self.lend(rng, rt, |ui| {
-                super::live_match::matchday_results(ui, state, league_mask, cup_mask, penalties)
+                super::live_match::matchday_results(
+                    ui,
+                    state,
+                    league_mask,
+                    cup_mask,
+                    penalties,
+                    relegation,
+                )
             });
             self.keep(r);
         }

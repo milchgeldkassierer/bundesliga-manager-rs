@@ -692,18 +692,9 @@ pub fn period_end(
             }
         }
         None if cup_mask != 0 => {
-            // TODO(re): the original also shows them when DS:07dc > 0x13b.
-            let show = (cup_mask == 1 && state.options[OPTION_DFB_CUP] != 0)
-                || (cup_mask > 1 && state.options[OPTION_EURO_CUPS] != 0);
-            if show {
-                for c in 0..4u8 {
-                    if (cup_mask == 1 && c == 0)
-                        || (cup_mask > 1 && c > 0 && (1 << c) & cup_mask != 0)
-                    {
-                        office_show_cached_background(ui.host)?;
-                        screen_cup_matches(ui.host, ui.session, state, c, to)?;
-                    }
-                }
+            for c in period_end_cup_rows(state, cup_mask) {
+                office_show_cached_background(ui.host)?;
+                screen_cup_matches(ui.host, ui.session, state, c, to)?;
             }
         }
         None => {}
@@ -721,20 +712,13 @@ pub fn matchday_results(
     league_mask: u8,
     cup_mask: u8,
     penalties: bool,
+    relegation: bool,
 ) -> Run<()> {
     if penalties {
-        for c in 0..4u8 {
-            let show = if c == 0 {
-                cup_mask == 1 && state.options[OPTION_DFB_CUP] != 0
-            } else {
-                // FAR:57dc (the relegation match) also shows its cup row.
-                (1 << c) & cup_mask != 0 && state.options[OPTION_EURO_CUPS] != 0
-            };
-            if show {
-                office_show_cached_background(ui.host)?;
-                screen_cup_matches(ui.host, ui.session, state, c, 0x78)?;
-                ui.host.screen_fade(0)?;
-            }
+        for c in shootout_cup_rows(state, cup_mask, relegation) {
+            office_show_cached_background(ui.host)?;
+            screen_cup_matches(ui.host, ui.session, state, c, 0x78)?;
+            ui.host.screen_fade(0)?;
         }
     }
     let live = &mut ui.live;
@@ -755,6 +739,39 @@ pub fn matchday_results(
     // The cup round (cup_round_complete) and its draw screens follow in the logic
     // (SeasonUi::ask_draw, draw_slot, draw_close).
     ui.host.screen_fade(0)
+}
+
+/// The cup rows whose list closes a period of a cup day: the DFB-Pokal (`cup_mask` 1) or
+/// the masked European rows, when their option asks for them (`DS:0608`, `DS:0609`) or
+/// always from day 316 on (the relegation play-off, `DS:07dc > 0x13b`).
+///
+/// Origin: BMMAIN.EXE 1310:2303 (match_live_period, 1310:2c0e..2c94)
+fn period_end_cup_rows(state: &GameState, cup_mask: u8) -> Vec<u8> {
+    let show = state.day_counter > 0x13b
+        || (cup_mask == 1 && state.options[OPTION_DFB_CUP] != 0)
+        || (cup_mask > 1 && state.options[OPTION_EURO_CUPS] != 0);
+    if !show {
+        Vec::new()
+    } else if cup_mask == 1 {
+        vec![0]
+    } else {
+        (1..4u8).filter(|c| (1 << c) & cup_mask != 0).collect()
+    }
+}
+
+/// The cup rows whose results are shown after a penalty shoot-out: the DFB-Pokal when its
+/// option `DS:0608` is set, otherwise the masked European rows when their option `DS:0609`
+/// is set or a relegation play-off leg is played (`FAR:57dc`, `relegation`).
+///
+/// Origin: BMMAIN.EXE 1310:15db (matchday_play, 1310:1a51..1aec)
+fn shootout_cup_rows(state: &GameState, cup_mask: u8, relegation: bool) -> Vec<u8> {
+    if state.options[OPTION_DFB_CUP] != 0 && cup_mask == 1 {
+        return vec![0];
+    }
+    if !relegation && state.options[OPTION_EURO_CUPS] == 0 {
+        return Vec::new();
+    }
+    (1..4u8).filter(|c| (1 << c) & cup_mask != 0).collect()
 }
 
 /// The panel row of the match of `home` (`FAR:5350`) and the y of its event panel.
@@ -1208,6 +1225,35 @@ pub fn screen_title_winner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn period_end_shows_the_relegation_list_without_the_option() {
+        let mut s = GameState::zeroed();
+        s.day_counter = 0x13b;
+        assert!(period_end_cup_rows(&s, 2).is_empty());
+        assert!(period_end_cup_rows(&s, 1).is_empty());
+        s.options[OPTION_EURO_CUPS] = 1;
+        assert_eq!(period_end_cup_rows(&s, 0x0e), [1, 2, 3]);
+        assert!(period_end_cup_rows(&s, 1).is_empty());
+        s.options[OPTION_EURO_CUPS] = 0;
+        s.day_counter = 0x13c;
+        assert_eq!(period_end_cup_rows(&s, 2), [1]);
+        assert_eq!(period_end_cup_rows(&s, 1), [0]);
+    }
+
+    #[test]
+    fn shootout_lists_follow_the_options_or_the_relegation_leg() {
+        let mut s = GameState::zeroed();
+        assert!(shootout_cup_rows(&s, 1, false).is_empty());
+        assert!(shootout_cup_rows(&s, 2, false).is_empty());
+        // FAR:57dc shows the relegation leg's row although DS:0609 is off.
+        assert_eq!(shootout_cup_rows(&s, 2, true), [1]);
+        s.options[OPTION_DFB_CUP] = 1;
+        assert_eq!(shootout_cup_rows(&s, 1, false), [0]);
+        assert!(shootout_cup_rows(&s, 0x0a, false).is_empty());
+        s.options[OPTION_EURO_CUPS] = 1;
+        assert_eq!(shootout_cup_rows(&s, 0x0a, false), [1, 3]);
+    }
     use bmp_game::news::news_record_match_event;
 
     /// Two managers: 0 manages club 7 (home of panel 0), 1 manages club 12 (away of panel 1).
