@@ -95,6 +95,20 @@ cargo build --release -p bmp
 The game is played with the mouse like the original: left click selects, right click confirms
 or leaves a screen. Any key skips the intro.
 
+### Team editor
+
+The team editor `TEAMED.EXE` is ported too:
+
+```sh
+./target/release/bmp --data /path/to/BMP teamed
+```
+
+It edits `MANA.DAT` in the data directory like the original. You can change club names,
+league placement, last season's table (rank, points, goals), player names, the club crests
+(paint them or import an IFF/ILBM picture) and the names and strengths of the foreign UEFA
+clubs. "PROGRAMM-ENDE" followed by "MACH MAL !" saves, and the next `bmp run` uses the edited
+data. The editor writes into the data directory, so keep a backup of `MANA.DAT` and `PIC/`.
+
 ## How it was made
 
 1. **Reverse engineering.** The original executables (`BMINTRO.EXE`, `BMMAIN.EXE`, unpacked from

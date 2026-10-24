@@ -289,7 +289,7 @@ fn swap_prompt(host: &mut Host, ed: &mut Editor) -> Run<(i16, i16)> {
 /// points, goals, rank and players in the `MANA.DAT` buffers and in the copies, and the
 /// crest number. The strengths stay (the save recomputes them for all German clubs).
 ///
-/// Origin: TEAMED.EXE 12a5:0aba (teamed_main_loop, league swap)
+/// Origin: TEAMED.EXE 12a5:0aba (teamed_main_loop, league swap), 1000:012b (mem_swap)
 pub fn swap_clubs(m: &mut ManaDat, copy: &mut ManaDat, a: usize, b: usize) {
     for buf in [&mut *m, &mut *copy] {
         buf.clubs.swap(a, b);

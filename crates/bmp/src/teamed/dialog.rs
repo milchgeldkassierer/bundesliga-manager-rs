@@ -101,7 +101,8 @@ pub fn message(host: &mut Host, ed: &mut Editor, line1: &[u8], line2: &[u8]) -> 
     host.delay_ticks(0x5a)?;
     host.g
         .blit_bitmap(backup, 0, 0, ed.screen.bitmap, 0, 0, MESSAGE_W, MESSAGE_H);
-    // The original never frees this picture (a leak of one 120x50 bitmap per message).
+    // DEVIATION: the original never frees this picture (a leak of one 120x50 bitmap per
+    // message).
     host.g.free(backup);
     Ok(())
 }

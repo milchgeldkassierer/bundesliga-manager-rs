@@ -1,11 +1,10 @@
 # TEAMED.EXE – the team editor
 
-Status: reconnaissance of #158. Program flow, screens, data and library reuse are mapped;
-the start-up, the main screen with its hover display, the "LIGA" paging, the save
-question, package club (selecting and editing a club, `club.md`) and package uefa (the
-UEFA strength list and the strength recomputation of the save, `uefa.md`) are ported
-(`crates/bmp/src/teamed/`, `bmp teamed`). The rest is split into the feature packages at
-the end of this document.
+Status: complete (#158). The whole editor is ported (`crates/bmp/src/teamed/`, `bmp teamed`):
+start-up, main screen with the hover display, "LIGA" paging, save question, package club
+(`club.md`), package crest with the IFF import (`crest.md`), package uefa with the strength
+recomputation of the save (`uefa.md`) and the error screen `fatal_error_exit`.
+`coverage.md` classifies every function and lists every input site.
 
 All addresses are Ghidra addresses in `/unpacked/TEAMED_unpacked.EXE` (load segment
 `0x1000`, see `docs/re/FUNCTION_MAP.md` §0). DGROUP is `2256`, the far data segment `1cb5`;
@@ -186,6 +185,9 @@ Editor-only code (to port): `1000:0000..0268`, `049e`, `04f1`, `0a7d..0d8c`, `0e
   instead of `BMP.BAT`; `fetch MANA.DAT` copies the written file.
 * `tools/visual-check.sh`: a `# command: teamed` line runs `bmp teamed` on the port side;
   `# compare-file: MANA.DAT` compares the files byte for byte.
+* `tests/visual/teamed_e2e.*`: one session across every screen with the save; `MANA.DAT`
+  and the crest file are byte-identical to the original's (see `coverage.md`).
+* `tests/visual/teamed_fatal.*`: the "DISK" error screen for a missing crest picture.
 * `tests/visual/teamed_start.*`: start screen, hover, panel clearing, "LIGA" page 2, save
   question (all 100 %). In this 242-line mode the DOSBox pointer lands about one pixel left
   of the requested x, so the DOSBox script uses slightly different x values.

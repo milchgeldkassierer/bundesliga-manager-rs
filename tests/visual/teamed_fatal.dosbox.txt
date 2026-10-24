@@ -1,0 +1,7 @@
+# DOSBox side of the team-editor fatal-error scenario (tools/dosbox-capture.sh syntax, seconds).
+# exe: TEAMED.EXE
+# PIC\95.VGA is missing (the port script's "# fixture-delete:"): the "DISK" screen.
+wait 5
+shot f01-disk
+click 160 120 242
+wait 2

@@ -90,6 +90,8 @@ pub const INPUT_BUF_LEN: usize = 0x52;
 pub enum Exit {
     /// "PROGRAMM-ENDE" (after the save question).
     Ended,
+    /// A file could not be opened at start-up: the "DISK" screen was shown.
+    Fatal,
 }
 
 /// The editor's state: the `MANA.DAT` buffers, the pictures and the screen.
@@ -149,11 +151,62 @@ pub struct Editor {
 }
 
 /// Loads `MANA.DAT` from the data directory (`open("mana.dat")` in the current
-/// directory of the original).
-pub fn load_mana(host: &Host) -> Result<ManaDat, String> {
+/// directory of the original). A file that cannot be opened is TEAMED's "DISK" error
+/// (`1000:1791`): it is recorded in [`Host::fatal`] for [`run`].
+pub fn load_mana(host: &mut Host) -> Result<ManaDat, String> {
     let path = host.data.join("MANA.DAT");
-    let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let bytes = std::fs::read(&path).map_err(|e| {
+        let detail = format!("{}: {e}", path.display());
+        host.fatal_error(crate::game::fatal::DISK_ERROR, &detail);
+        detail
+    })?;
     ManaDat::parse(&bytes).map_err(|e| e.to_string())
+}
+
+/// Message of `fatal_error_exit` for a file that cannot be opened (`DS:0293` from
+/// `picture_load`, `DS:02D2` for `mana.dat`).
+pub const FATAL_DISK: &[u8] = b"DISK";
+/// Second line of the error screen (`DS:0270`).
+pub const FATAL_PRESS_KEY: &[u8] = b"<TASTE>";
+
+/// TEAMED's error screen: unless the message is "OK." (the normal end, `main`), the
+/// screen is cleared and shows the message (font 1, centred at y 0x78, colour 0x11, no
+/// shadow) and, 10 ticks later, "<TASTE>" (font 3, y 0x8C); then it waits for a left
+/// click. The caller ends the program (the original frees the pictures and buffers,
+/// closes mouse and screen and exits to DOS).
+///
+/// The other messages ("SPEICHER", "FONT", "GRAFIK-ERROR": allocation, font and screen
+/// failures) cannot occur in the port.
+///
+/// Origin: TEAMED.EXE 1000:0ee4 (fatal_error_exit)
+pub fn fatal_error_exit(host: &mut Host, msg: &[u8]) -> Run<()> {
+    screen_set_visible(&mut host.g, true);
+    // The mouse library's screen rastport DS:1E44 (no origin).
+    let bm = host
+        .g
+        .alloc(Bitmap::vram(gfx::SCREEN_W, TEAMED_SCREEN_H, 0));
+    let mut rp = RastPort::new(bm);
+    host.g.rastport_clear(&rp, 0);
+    Gfx::rastport_set_draw_mode(&mut rp, 0);
+    set_font(&mut rp, 1);
+    gfx::ui_draw_text_centered_shadow(&mut host.g, &mut rp, msg, 0, 0x140, 0x78, 0x11, 0xff);
+    screen_set_visible(&mut host.g, true);
+    host.delay_ticks(10)?;
+    set_font(&mut rp, 3);
+    gfx::ui_draw_text_centered_shadow(
+        &mut host.g,
+        &mut rp,
+        FATAL_PRESS_KEY,
+        0,
+        0x140,
+        0x8c,
+        0x11,
+        0xff,
+    );
+    // input_wait_click (1000:088e): polls until a left-button event, without first
+    // waiting for the button to be released.
+    while host.input_poll_mouse()? != LEFT_DOWN {}
+    Ok(())
 }
 
 /// `format_long_thousands` with TEAMED's globals: no separators (`DS:0123 = 1`), minimum
@@ -188,7 +241,14 @@ pub fn screen_set_visible(g: &mut Gfx, on: bool) {
 ///
 /// Origin: TEAMED.EXE 1000:111a (main)
 pub fn run(host: &mut Host) -> Result<Run<Exit>, String> {
-    let mut ed = init(host)?;
+    let mut ed = match init(host) {
+        Ok(ed) => ed,
+        // A picture or MANA.DAT that cannot be opened: fatal_error_exit("DISK").
+        Err(_) if host.fatal.take().is_some() => {
+            return Ok(fatal_error_exit(host, FATAL_DISK).map(|()| Exit::Fatal));
+        }
+        Err(e) => return Err(e),
+    };
     Ok(main_loop(host, &mut ed))
     // main then calls fatal_error_exit("OK.") (1000:0ee4): text mode, message, exit.
 }
@@ -323,6 +383,8 @@ pub fn draw_hover_panel(g: &mut Gfx, ed: &mut Editor, club: u8) {
 
 /// The panel of [`draw_hover_panel`] drawn from the given buffers: `1000:24be` reads the
 /// `MANA.DAT` buffers, `panel_draw_selected` (`1000:26f1`, the same code) their copies.
+///
+/// Origin: TEAMED.EXE 1000:24be (panel_draw_hovered), 1000:26f1 (panel_draw_selected)
 pub fn draw_panel(g: &mut Gfx, rp: &mut RastPort, m: &ManaDat, club: u8) {
     gfx::ui_fill_rect(g, rp, 0x33, 3, 0x92, 0x27, 0xc);
     set_font(rp, 3);

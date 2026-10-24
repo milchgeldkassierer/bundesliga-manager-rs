@@ -1,0 +1,107 @@
+# Port side of the team-editor end-to-end scenario (bmp teamed --script syntax, milliseconds):
+# one session across every screen of the editor, then the save. Club 14 (1.FC NUERNBERG,
+# the centre club of the new_game carousel) gets a new name, rank, points, goals, two
+# player names and three painted crest pixels; club 2 swaps its league with club 20; the
+# UEFA club 64 gets a new name and strengths. "MACH MAL !" writes MANA.DAT and the crest
+# PIC\95.VGA; both are compared with the files the original wrote.
+# tests/visual/teamed_e2e_game.port.txt then starts the game on the edited data.
+# command: teamed
+# compare-file: MANA.DAT
+# compare-file: PIC/95.VGA
+wait 2000
+# Club 14 (page 0, row 1, column 6). The pointer moves first: the hover display takes
+# the iteration of a move.
+move 253 139
+wait 300
+click 253 139
+wait 500
+shot e01-selected
+# Name, rank 3 (the old holder gets rank 15), points, goals.
+click 80 6
+wait 300
+type fc franken
+key enter
+wait 300
+click 80 22
+wait 300
+type 3
+key enter
+wait 300
+click 80 30
+wait 300
+type 50:18
+key enter
+wait 300
+click 80 37
+wait 300
+type 80:30
+key enter
+wait 300
+# Player slots 0 and 12.
+click 176 16
+wait 300
+type testspieler
+key enter
+wait 300
+click 260 30
+wait 300
+type zweiter mann
+key enter
+wait 300
+# Crest: colour field row 2, column 7 (yellow), three single-pixel strokes.
+click 310 128
+wait 1000
+click 40 120
+wait 1000
+click 44 124
+wait 1000
+click 80 160
+wait 1000
+shot e02-edited
+# AENDERUNG SICHERN.
+click 77 65
+wait 2000
+shot e03-saved
+# Club 2 swaps its league with club 20 (BAYER 05 UERDINGEN).
+move 98 100
+wait 300
+click 98 100
+wait 500
+click 80 14
+wait 500
+move 176 185
+wait 500
+click 176 185
+wait 800
+shot e04-swapped
+# UEFA list: club 64 gets the name TESTCLUB and strengths 90/90/90.
+move 318 200
+wait 300
+click 318 200
+wait 1000
+move 50 96
+wait 300
+click 50 96
+wait 300
+type testclub
+key enter
+wait 300
+type 90
+key enter
+type 90
+key enter
+type 90
+key enter
+wait 500
+shot e05-uefa
+# "LIGA" back to the crest grid.
+move 318 125
+wait 300
+click 318 125
+wait 1000
+shot e06-grid
+# PROGRAMM-ENDE, MACH MAL !
+click 77 78
+wait 500
+click 115 190
+wait 1000

@@ -227,7 +227,7 @@ fn run_teamed(args: &Args) -> Result<(), String> {
         None => host::Host::with_window(&dir, 3, false)?,
     };
     match teamed::run(&mut host)? {
-        Ok(teamed::Exit::Ended) | Err(host::Quit) => Ok(()),
+        Ok(teamed::Exit::Ended | teamed::Exit::Fatal) | Err(host::Quit) => Ok(()),
     }
 }
 

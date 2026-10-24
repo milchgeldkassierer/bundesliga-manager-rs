@@ -1,0 +1,11 @@
+# Port side of the team-editor fatal-error scenario (bmp teamed --script syntax, milliseconds).
+# The game directory lacks PIC\95.VGA, the crest of club 14 (tools/visual-check.sh
+# "# fixture-delete:"). teamed_init_and_load_mana 1000:1439 loads the 64 crests with
+# picture_load 1000:1136, which ends the program with fatal_error_exit("DISK") 1000:0ee4:
+# the cleared screen with "DISK" and "<TASTE>"; a click ends the program.
+# command: teamed
+# fixture-delete: PIC/95.VGA
+wait 2000
+shot f01-disk
+click 160 120
+wait 500
