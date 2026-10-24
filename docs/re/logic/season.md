@@ -365,7 +365,7 @@ for (FAR:304a = 0; FAR:304a < n; FAR:304a++) {
 }
 // promotion / relegation (2a58:3ee0)
 for (u8 k = 0; k < 3; k++) {
-    if (k == 0 && FAR:3060 == 0) extra_down[0]++;               // no play-off: one more down
+    if (k == 0 && FAR:3060 == 0) extra_down[0]++;               // Bundesliga team won the play-off
     if ((i8)DS:2266[k] < extra_down[k]) extra_down[k] -= DS:2266[k]; else extra_down[k] = 0;
     DS:225a[k] = 1;                                             // round counters restart
     for (u8 j = 0; (i16)j < extra_down[k] + (i8)DS:2266[k]; j++) {
@@ -378,7 +378,7 @@ for (u8 k = 0; k < 3; k++) {
             else up += 3 - j;
         }
         if (k == 0 && extra_down[0] + (i8)DS:2266[0] - j == 1 && FAR:3060 == 0 && DS:226a[0] != 0)
-            continue;                                           // the play-off place is not swapped
+            continue;                                           // play-off slot kept (Bundesliga team won the play-off)
         u8 mi = manager_index_of_team(down, 0xff);              // 1310:32b1, 1+index or 0
         if (mi && M[mi-1].b[0x140] == 0) {
             if (k < 2) { M[mi-1].b[0x140] = 2; M[mi-1].b[0x138]++; }     // relegated
@@ -1667,7 +1667,7 @@ functions, `_aFl*` long helpers, `mem_alloc/mem_free`, `far_memcpy_bytes(src, ds
 | FAR:2eba | i32 | `day_of_month` | 20 |
 | FAR:2f28 | far ptr | main rastport | — |
 | FAR:3052/305c | u8[] | `match_slot_manager`, `match_slot_neutral` | 39 (2ec2 region) |
-| FAR:3060 | u8 | `relegation_playoff_disabled` | 60 |
+| FAR:3060 | u8 | `relegation_result` (0 = Bundesliga team won, 1 = 2.Liga team won, 0x1e = undecided) | 60 |
 | FAR:3066+0x22*c | struct | club (C) | 15 |
 | FAR:304a | u8 | `current_manager` | 3 |
 | FAR:4b9a | u8[4][6][2] | `sponsor_contract_flags` | 38 |
