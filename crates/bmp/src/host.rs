@@ -336,6 +336,18 @@ impl Host {
         Ok(())
     }
 
+    /// Test support: the clicks of the script that have not run yet (0 for a window).
+    #[cfg(test)]
+    pub(crate) fn script_clicks_left(&self) -> usize {
+        match &self.backend {
+            Backend::Script { steps, .. } => steps
+                .iter()
+                .filter(|s| matches!(s, ScriptStep::Click { .. }))
+                .count(),
+            Backend::Window { .. } => 0,
+        }
+    }
+
     fn advance_script(&mut self) -> Run<()> {
         let Backend::Script {
             now_ms,

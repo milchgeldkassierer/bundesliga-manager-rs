@@ -601,11 +601,11 @@ mod tests {
         assert_eq!(s.cwd_text(), b"C:\\");
     }
 
-    #[test]
-    fn save_with_an_out_of_range_position_code_is_corrupt() {
-        let Some(path) = bmp_formats::save_files().into_iter().next() else {
-            return;
-        };
+    /// Writes `CORRUPT.MAN` into `dir`: the first real save with an out-of-range
+    /// position code (100) and the copy-protection flag `ds_05fa[0]` cleared, so a
+    /// successful load would change `copy_protection_ok`. `None` without `BMP_DATA`.
+    fn write_corrupt_save(dir: &Path) -> Option<PathBuf> {
+        let path = bmp_formats::save_files().into_iter().next()?;
         let save = SaveGame::parse(&std::fs::read(&path).unwrap()).unwrap();
         let mut state = GameState::from_savegame(&save).unwrap();
         let id = state.squads[0]
@@ -614,12 +614,61 @@ mod tests {
             .unwrap()
             .player_id;
         state.players[usize::from(id)].position_value = 100;
-        let dir = std::env::temp_dir().join(format!("bmp-corrupt-save-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        state.ds_05fa[0] = 0;
+        std::fs::create_dir_all(dir).unwrap();
         let file = dir.join("CORRUPT.MAN");
         std::fs::write(&file, state.to_savegame().to_bytes().unwrap()).unwrap();
+        Some(file)
+    }
+
+    #[test]
+    fn save_with_an_out_of_range_position_code_is_corrupt() {
+        let dir = std::env::temp_dir().join(format!("bmp-corrupt-save-{}", std::process::id()));
+        let Some(file) = write_corrupt_save(&dir) else {
+            return;
+        };
         let result = read_save(&mut SaveSession::default(), &file);
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(result, Err(LoadError::Corrupt));
+    }
+
+    /// The [`LoadError::Corrupt`] arm end to end: the file selector returns
+    /// `CORRUPT.MAN`, the message box is shown and dismissed with its OKAY
+    /// button, and nothing is loaded or remembered.
+    #[cfg(unix)]
+    #[test]
+    fn loading_a_corrupt_save_shows_the_message_and_loads_nothing() {
+        use crate::host::{Host, parse_script};
+        use bmp_game::rng::Rng;
+
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        // A game directory holding the original data (linked) plus the corrupt save.
+        let dir = std::env::temp_dir().join(format!("bmp-corrupt-load-{}", std::process::id()));
+        if write_corrupt_save(&dir).is_none() {
+            return;
+        }
+        for e in std::fs::read_dir(&data).unwrap().flatten() {
+            let link = dir.join(e.file_name());
+            if !link.exists() {
+                std::os::unix::fs::symlink(e.path(), link).unwrap();
+            }
+        }
+        // Right-click on the file name field takes the preset name ("CORRUPT"
+        // plus ".MAN"); the left click hits the OKAY button of the message box.
+        let script = parse_script("wait 1000\nrclick 100 178\nwait 1000\nclick 191 165\n").unwrap();
+        let mut host = Host::with_script(&dir, script, &dir, false).unwrap();
+        let pics = Pictures::load(&mut host).unwrap();
+        let mut session = Session::new(Rng::new(1));
+        session.saves.last_name = b"CORRUPT".to_vec();
+        let result = screen_load_game(&mut host, &mut session, &pics, 0);
+        let clicks_left = host.script_clicks_left();
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        assert!(matches!(result, Ok(None)), "nothing is loaded");
+        assert_eq!(clicks_left, 0, "the message box took the OKAY click");
+        assert_eq!(session.saves.last_name, b"CORRUPT", "last name unchanged");
+        assert!(session.copy_protection_ok, "copy-protection flag unchanged");
     }
 }
