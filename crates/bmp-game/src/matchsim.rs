@@ -1249,14 +1249,22 @@ pub fn league_reschedule_match(
     false
 }
 
-/// True when the current manager has a rescheduled match in `week` (always for
-/// [`MATCH_DAY_MANAGER`]).
+/// True when the current manager has a rescheduled match in `week`. For
+/// [`MATCH_DAY_MANAGER`] any match rescheduled to `week` counts, whoever plays it.
 ///
 /// Origin: BMMAIN.EXE 1310:000a (has_rescheduled_match_today)
 pub fn has_rescheduled_match_today(state: &mut GameState, week: u8) -> bool {
     let cur = state.current_manager;
     let Some(m) = usize::try_from(cur).ok().filter(|&m| m < 4) else {
-        return cur == MATCH_DAY_MANAGER;
+        // The original returns 1 for 0x1e only after an entry passed the day test;
+        // with none it falls through to `found` = 0. Its closing pairing rebuild
+        // then uses the league byte of an out-of-range manager slot, which is not
+        // modelled: the pairings are left alone.
+        return cur == MATCH_DAY_MANAGER
+            && state
+                .rescheduled_matches
+                .iter()
+                .any(|e| e[RESCHEDULED_DAY] == week);
     };
     let tier = state.managers[m].league as usize;
     let team = state.managers[m].team;
@@ -2660,6 +2668,34 @@ mod tests {
         }
         assert!(league_reschedule_match(&mut s, 0x10, 0, 3, 10));
         assert_eq!(s.rescheduled_matches[10][RESCHEDULED_DAY], 0x11);
+    }
+
+    #[test]
+    fn match_day_manager_needs_a_rescheduled_match_this_week() {
+        let mut s = GameState::zeroed();
+        s.current_manager = MATCH_DAY_MANAGER;
+        s.rescheduled_matches[4] = [0, 0x21, 3, 1, 2];
+        let before = s.clone();
+        assert!(!has_rescheduled_match_today(&mut s, 0x20));
+        assert_eq!(s, before);
+        // Any entry for the week counts, whatever its tier.
+        s.rescheduled_matches[9] = [0, 0x20, 1, 7, 0];
+        let before = s.clone();
+        assert!(has_rescheduled_match_today(&mut s, 0x20));
+        assert_eq!(s.matchday_pairings, before.matchday_pairings);
+        assert_eq!(s, before);
+    }
+
+    #[test]
+    fn other_non_managers_have_no_rescheduled_match() {
+        let mut s = GameState::zeroed();
+        s.rescheduled_matches[0] = [0, 0x20, 1, 0, 0];
+        for cur in [4, 0x1d, 0x1f, -1] {
+            s.current_manager = cur;
+            let before = s.clone();
+            assert!(!has_rescheduled_match_today(&mut s, 0x20), "{cur}");
+            assert_eq!(s, before, "{cur}");
+        }
     }
 
     #[test]

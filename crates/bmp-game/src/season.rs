@@ -4414,6 +4414,9 @@ mod tests {
             // A winter slot, where the weather may postpone matches.
             s.season_week = WEEK;
             s.lineup_state = [[2, 4], [3, 1], [0, 0], [0, 0]];
+            if wf & RESCHEDULED_GAMES_DAY != 0 {
+                s.rescheduled_matches[2] = [0, WEEK, 1, 0, 3];
+            }
             let mut rt = Runtime {
                 manager_plays_now: [1; MANAGER_SLOTS],
                 lineup_change_count: [2; MANAGER_SLOTS],
@@ -4453,6 +4456,17 @@ mod tests {
             assert!(rt == want_rt, "wf {wf:#x}");
             assert_eq!(rng, want_rng, "wf {wf:#x}");
         }
+
+        // The rescheduled bit without a game rescheduled to this slot plays nothing.
+        let mut s = league_season(10);
+        s.season_week = WEEK;
+        s.rescheduled_matches[2] = [0, WEEK + 1, 1, 0, 3];
+        let mut ui = Headless::new(&s);
+        let want = s.clone();
+        let (mut rt, mut rng) = (Runtime::default(), Rng::new(29));
+        play_slot_matches(&mut s, &mut rt, &mut rng, &mut ui, RESCHEDULED_GAMES_DAY).unwrap();
+        assert!(ui.titles.is_empty());
+        assert_eq!(s.rescheduled_matches, want.rescheduled_matches);
     }
 
     #[test]
