@@ -464,7 +464,9 @@ pub enum LoadError {
     /// A checksum does not match: "DER GROSSE MOGELGURU" screen.
     Checksum,
     /// A player's position code would hang the lineup logic
-    /// ([`StateError::PositionCode`]); the original loads such a save.
+    /// ([`StateError::PositionCode`]), or a squad record or another saved
+    /// index is past its table ([`StateError::SquadPlayerId`],
+    /// [`StateError::SavedIndex`]); the original loads such a save.
     Corrupt,
 }
 
@@ -504,7 +506,9 @@ pub fn read_save(saves: &mut SaveSession, path: &Path) -> Result<GameState, Load
         Err(_) => return Err(LoadError::Disk),
     };
     GameState::from_savegame(&save).map_err(|e| match e {
-        StateError::PositionCode { .. } => LoadError::Corrupt,
+        StateError::PositionCode { .. }
+        | StateError::SquadPlayerId { .. }
+        | StateError::SavedIndex { .. } => LoadError::Corrupt,
         StateError::BlockSize { .. } | StateError::BlockCount => LoadError::Disk,
     })
 }
@@ -738,19 +742,47 @@ mod tests {
         assert_eq!(s.cwd_text(), b"C:\\");
     }
 
-    /// Writes `CORRUPT.MAN` into `dir`: the first real save with an out-of-range
-    /// position code (100) and the copy-protection flag `ds_05fa[0]` cleared, so a
-    /// successful load would change `copy_protection_ok`. `None` without `BMP_DATA`.
-    fn write_corrupt_save(dir: &Path) -> Option<PathBuf> {
-        let path = bmp_formats::save_files().into_iter().next()?;
-        let save = SaveGame::parse(&std::fs::read(&path).unwrap()).unwrap();
-        let mut state = GameState::from_savegame(&save).unwrap();
+    /// Gives the first squad player of squad 0 an out-of-range position code (100).
+    fn corrupt_position_code(state: &mut GameState) {
         let id = state.squads[0]
             .iter()
             .find(|r| r.player_id != 0)
             .unwrap()
             .player_id;
         state.players[usize::from(id)].position_value = 100;
+    }
+
+    /// [`read_save`] of a `CORRUPT.MAN` written by [`write_corrupt_save`] into a
+    /// temporary directory named after `tag`. `None` without `BMP_DATA`.
+    fn read_corrupt_save(
+        tag: &str,
+        corrupt: fn(&mut GameState),
+    ) -> Option<Result<GameState, LoadError>> {
+        let dir =
+            std::env::temp_dir().join(format!("bmp-corrupt-save-{tag}-{}", std::process::id()));
+        let file = write_corrupt_save(&dir, corrupt)?;
+        let result = read_save(&mut SaveSession::default(), &file);
+        std::fs::remove_dir_all(&dir).unwrap();
+        Some(result)
+    }
+
+    #[test]
+    fn save_with_a_squad_record_past_the_player_table_is_corrupt() {
+        let corrupt = |s: &mut GameState| s.squads[0][0].player_id = 151;
+        let Some(result) = read_corrupt_save("squad", corrupt) else {
+            return;
+        };
+        assert_eq!(result, Err(LoadError::Corrupt));
+    }
+
+    /// Writes `CORRUPT.MAN` into `dir`: the first real save changed by `corrupt`
+    /// and with the copy-protection flag `ds_05fa[0]` cleared, so a successful
+    /// load would change `copy_protection_ok`. `None` without `BMP_DATA`.
+    fn write_corrupt_save(dir: &Path, corrupt: fn(&mut GameState)) -> Option<PathBuf> {
+        let path = bmp_formats::save_files().into_iter().next()?;
+        let save = SaveGame::parse(&std::fs::read(&path).unwrap()).unwrap();
+        let mut state = GameState::from_savegame(&save).unwrap();
+        corrupt(&mut state);
         state.ds_05fa[0] = 0;
         std::fs::create_dir_all(dir).unwrap();
         let file = dir.join("CORRUPT.MAN");
@@ -927,12 +959,9 @@ mod tests {
 
     #[test]
     fn save_with_an_out_of_range_position_code_is_corrupt() {
-        let dir = std::env::temp_dir().join(format!("bmp-corrupt-save-{}", std::process::id()));
-        let Some(file) = write_corrupt_save(&dir) else {
+        let Some(result) = read_corrupt_save("position", corrupt_position_code) else {
             return;
         };
-        let result = read_save(&mut SaveSession::default(), &file);
-        std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(result, Err(LoadError::Corrupt));
     }
 
@@ -982,7 +1011,7 @@ mod tests {
         };
         // A game directory holding the original data (linked) plus the corrupt save.
         let dir = std::env::temp_dir().join(format!("bmp-corrupt-load-{}", std::process::id()));
-        if write_corrupt_save(&dir).is_none() {
+        if write_corrupt_save(&dir, corrupt_position_code).is_none() {
             return;
         }
         for e in std::fs::read_dir(&data).unwrap().flatten() {

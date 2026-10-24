@@ -23,7 +23,7 @@ symbols, where the function is still called `FUN_xxxx_xxxx`.
 |---|---|---|
 | `trait Layout` (`LEN`, `read`, `write`, `zeroed`, `from_bytes`, `to_bytes`) | – | Fixed little-endian layout. It is implemented for `u8 i8 u16 i16 u32 i32`, for arrays of any `Layout`, and for every record. MSC tables are packed, so there is no padding |
 | `record!` macro | – | Declares a struct whose fields lie back to back. `LEN` is the sum of the field sizes |
-| `GameState::from_savegame(&SaveGame)` | 422b:120c `screen_load_game` | Decodes every block into its typed field. Header, string table and tail are kept. Rejects a save in which a player (index 1..) has a position code of 100 or more (`StateError::PositionCode`, §1.1) |
+| `GameState::from_savegame(&SaveGame)` | 422b:120c `screen_load_game` | Decodes every block into its typed field. Header, string table and tail are kept. Refuses a save with a value the port would hang on or index a fixed table with (`StateError::PositionCode`, `SquadPlayerId`, `SavedIndex`, §1.1) |
 | `GameState::to_savegame()` | 422b:07fe `screen_save_game` / `savegame_write_man` | Inverse of `from_savegame`. `SaveGame::to_bytes` then recomputes the cipher and checksums |
 | `GameState::zeroed()` | – | All blocks zero, empty message table, V2 header. Not the program-start state |
 | `GameState::program_start()` | DGROUP image (segment 5cb3) | `zeroed()` plus the initialised DGROUP blocks: #0, #5, #8, #24, #34, #36, #41, #42, #47, #50, #51, #54, #57..#59 (every far block starts zero) |
@@ -43,6 +43,10 @@ The tests check that:
 * `zeroed()` round-trips;
 * a shipped save with one squad player's, or one unowned pool player's, `position_value` patched to 100
   is rejected with `StateError::PositionCode`, and the same save patched to 99 loads;
+* a squad record with `player_id` 151 or 255 is rejected with `StateError::SquadPlayerId`, and 150 and 0
+  load;
+* for every guarded field of §1.1 the last game-written value (or sentinel) loads and the next one is
+  rejected with `StateError::SavedIndex`;
 * `manager_index_of_team` behaves as described;
 * `sort_league_table` applies the four keys in order (synthetic test), and re-sorting the full
   (view 1) table of every real save is a no-op;
@@ -57,22 +61,75 @@ The tests check that:
 Types follow the original: `char` is `i8`, `int` is `i16` and `long` is `i32`. The managers' `FAR:304a`
 and `FAR:5358` are `char`, because the code multiplies them signed (`*(char*)0x304a * 0x30a`).
 
-### 1.1 Deliberate deviation: the position-code guard
+### 1.1 Deliberate deviation: the load-time guards
 
-The original loads any save whose checksums match. It hangs once a player whose `Player::position_value`
-is 100 or more is available (`slot == 0`, status available) in records 0..23 of a manager's squad:
-`auto_lineup_pick_best` 2ecd:3635 maps the code to the position `value / 25`, which is never 0..3, and
-loops forever (squad.md §3.2). The game never generates such a code (§3.3: bands 0, 25+, 50+, 75+).
+The original loads any save whose checksums match. A corrupt save can make it hang or read past its
+tables; the port would hang or panic at the same places. The owner's rule (#114): a corrupt save may be
+refused at load time whenever the original would hang **or** read outside its tables; shipped and
+game-written saves must keep loading byte-exactly. `from_savegame` therefore checks the decoded state
+(code marker `// DEVIATION:`), and `screen_load_game` shows every such rejection as a `dialog_okay` box
+("Achtung ! / Spielstand / ist fehlerhaft ! / Vorgang abgebrochen.", a text the original does not have)
+and loads nothing. As with a checksum error, the save id is already in the session history, so picking
+the same file again in this session gives `LoadError::AlreadyLoaded`.
 
-The port's rule is stricter than that hang condition on purpose: the transfer market, purchases and
-slot shifts can move any player into those records later, so `from_savegame` rejects a save in which
-any real player (index 1..150, wherever he is held) has such a code, with
-`StateError::PositionCode { player }` (first offending player). `screen_load_game` shows it as a
-`dialog_okay` box ("Achtung ! / Spielstand / ist fehlerhaft ! / Vorgang abgebrochen.", a text the original
-does not have) and loads nothing.
-`auto_lineup_pick_best` itself stays as in the original, unbounded. Only this hang is guarded: a
-`player_id` past the 151-entry table is not checked. As with a checksum error, the save id is already in
-the session history, so picking the same file again in this session gives `LoadError::AlreadyLoaded`.
+**Position codes** (`StateError::PositionCode { player }`). The original hangs once a player whose
+`Player::position_value` is 100 or more is available (`slot == 0`, status available) in records 0..23 of
+a manager's squad: `auto_lineup_pick_best` 2ecd:3635 maps the code to the position `value / 25`, which is
+never 0..3, and loops forever (squad.md §3.2). The game never generates such a code (§3.3: bands 0, 25+,
+50+, 75+). The rule is stricter than that hang condition on purpose: the transfer market, purchases and
+slot shifts can move any player into those records later, so any real player (index 1..150, wherever he
+is held) with such a code is rejected (first offending player). `auto_lineup_pick_best` itself stays as
+in the original, unbounded.
+
+**Squad player ids** (`StateError::SquadPlayerId { squad, slot, player_id }`). A record of any of the
+five squads (the transfer pool included) whose `player_id` is 151..=255 is rejected: the original reads
+that player past the 151-entry table FAR:57dd (`board_auto_place_player` 2ecd:1266,
+`auto_lineup_pick_best` 2ecd:3635 and about 40 more readers). 0 (empty slot) and 1..=150 load.
+
+**Other saved indices** (`StateError::SavedIndex { field, index }`, `field` named after its table row, `index` the
+entry of the flattened field). The audit covered every saved value the port uses as a direct index into
+a fixed-size table (`bmp-game` and the screens in `bmp/src/game`). Each guard accepts every value the game
+writes, sentinels included: the shipped saves and new games load (tests), and so did the state at every
+office turn of a season played on from every shipped save (checked once when the guards were added).
+
+| Field | Table it indexes (port panic site) | Game writes | Guarded |
+|---|---|---|---|
+| `squads[..][..].player_id` | `players` (151): `squad.rs` lineup, board, matches, market, news | 0..=150 | yes, `SquadPlayerId` |
+| `Player::position_value` | position band 0..=3 (hang) | bands 0, 25+, 50+, 75+ | yes, `PositionCode` |
+| `manager_count` | `managers[..n]` (4) in `add_managers`, the scorers screen, `squads[m]` (5) | 1..=4 | yes, `<= 4` |
+| `current_manager` | `managers`, `lineup_state`, `manager_contracts` (4) after a resume or load | 0..=3 in an office turn | yes, `0..=3` |
+| `season_week` | `week_competitions` (95), first read on resume | 0..~92 | yes, `< 95` |
+| `logged_rounds` | `round_log` (50) through `as i16` (negative index) | +1 per season | yes, `<= 0x7fff` |
+| `winner_07ac..07af`, `dfb_cup_runner_up` (club + 1) | `clubs` (200) through the European draw rows | 0..=200 | yes, `<= 200` |
+| `event_state[0..4]` (cup round) | `CUP_ROUND_PAIRINGS` (6, explicit panic) | 0..=5 | yes, `< 6` |
+| `league_teams` | `team_tables` (64) in every table sort | ids 0..57, stale 0 | yes, `< 64` |
+| `cup_pairings` | `clubs` (200): match strength, AI, news, cup screens | 0..=199 | yes, `< 200` |
+| `rescheduled_matches` tier / pair bytes | `matchday_pairings` (3 x 10) | tier 0..=2, pair 0..=9 (stale entries too) | yes |
+| `match_history.record_opponents` | `clubs` (200) in the records screen | 0..=199 | yes, `< 200` |
+| `Manager::team`, every slot | `clubs` (200) | 0..63, `NO_TEAM` = 100 | yes, `< 200` |
+| `Manager::team`, active managers | `team_tables` (64) | 0..=63 | yes, `< 64` |
+| `Manager::league`, active managers | `competition_rounds`, tier tables (3) | 0..=2 | yes, `< 3` |
+| `Manager::values_13a[0]`, active managers | `home_attendance` (20) | 0..=19 | yes, `< 20` |
+| `Manager::credits[..][..].due_month` (loans with principal != 0), active managers | `DAYS_IN_MONTH` (12) | 0..=11 | yes, `< 12` |
+| `Manager::stadium[3..7]` built + ordered level | the size (`STADIUM_SIZE_LEVELS` = 4) / quality (`STADIUM_QUALITY_LEVELS` = 7) names `DS:2858` / `DS:283c`, read unclamped by the status panel (finance.md §3.4); the port's `choose_level` panics on a negative level | 0..=3 / 0..=6 | yes |
+| sponsor logo bytes (odd bytes of FAR:0000 and FAR:4b9a) | the `OFFERS_PER_KIND` (10) offers per kind in FAR:2ec2 / FAR:002e | 0..=9 | yes, `< 10` |
+| `Player::owner_manager` | `managers` (4) for a human seller, `group()` | 0..=3, `CLUB_LISTED` = 4, `NO_OWNER` = 5 | yes, `<= 5` |
+| `Player::team` | `clubs` (200) in the market refill and the market screen | 0..=199, 0xff = none | yes, `< 200` or 0xff |
+| `SquadPlayer::board_row` (records with a player) | `position_line` (board rows -6..=7, explicit panic) | 0..=7, -1 = unplaced | yes, `-1..=7` |
+| `SquadPlayer::sale_club` (records with a player) | `clubs` (200) when the player is sold | 0..=199 | yes, `< 200` |
+| `saved_manager` | – | | no: overwritten by the office turn before use; `message_post` bounds it |
+| `competition_rounds`, `matchday_pairings`, `competition_slots` | – | | no: read through `Option`/`.get`, or rebuilt before every use |
+| `month`, `day_of_month` | – | | no: `calendar_compute_date` rewrites both before any reader |
+| `message_counts`, `team_slots`, `event_state[4..]`, `lineup_state`, `Manager::league` in the screens | – | | no: bounded with `take`/`.get`/`.min`/`match` |
+| `SquadPlayer::injury`, `Club::crest`, `Manager::slot` | – | | no: `%`, a `match` with a default, or bit tests and clipped blits |
+| `event_state[0..4]` = 0 on a cup day | the 32-slot rows of `cup_goal_minutes` / `cup_pairings` | 0 at program start and inside `cup_draw_first_round` | no: a game-written value |
+| `winner_07ac` / `dfb_cup_runner_up` = 0 | `clubs` through holder - 1 = 0xff (cups.md §3.2) | 0 = none (the runner-up at program start) | no: a game-written value |
+| `Manager::round_log[..][3]` stage `& 7 == 7` | the port's `DFB_STAGES` (8) | stage 1..6 | no: the original reads the next UI string, inside its string table |
+| `league_teams` duplicates | `cups.rs` qualifier table | a permutation | no: not a range; each id is in range |
+
+Not table indices, so not part of this guard: `day_counter` (debug overflow, or a day of month 0 that
+divides by zero), `Manager::value_10a` = 0 (division in `finance_needed_attendance`) and a crest code
+without a `PIC` picture file.
 
 ## 2. The 61 save blocks
 

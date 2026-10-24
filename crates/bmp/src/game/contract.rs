@@ -12,7 +12,7 @@
 //!   kind 1 = boards, ten offers each, offer `i` shows logo `i`.
 
 use bmp_game::rng::{NumberFormat, format_long_thousands, ldiv, lmul};
-use bmp_game::state::GameState;
+use bmp_game::state::{GameState, OFFERS_PER_KIND};
 
 use super::widgets::ui_dialog_box;
 use super::{GAME_OPTION_A, GAME_OPTION_B, Session};
@@ -66,7 +66,7 @@ fn manager(state: &GameState) -> usize {
 /// Index of offer `i` of `kind` for manager `m` into `far_2ec2` (and, times
 /// 4, into `far_002e`).
 fn offer_index(m: usize, kind: u8, i: i8) -> usize {
-    (2 * m + usize::from(kind)) * 10 + i as usize
+    (2 * m + usize::from(kind)) * OFFERS_PER_KIND + i as usize
 }
 
 /// The offer amount `O(kind, i)` (0 = no interest).

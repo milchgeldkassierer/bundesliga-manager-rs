@@ -876,7 +876,40 @@ pub enum StateError {
         /// Index into [`GameState::players`].
         player: usize,
     },
+    /// Record `slot` of squad `squad` holds a `player_id` past the
+    /// [`PLAYER_COUNT`]-entry player table; the original reads whatever
+    /// follows the table (`state.md` §1.1).
+    SquadPlayerId {
+        /// Index into [`GameState::squads`] ([`TRANSFER_LIST`] = transfer pool).
+        squad: usize,
+        /// Record index within the squad.
+        slot: usize,
+        /// The saved [`SquadPlayer::player_id`].
+        player_id: u8,
+    },
+    /// Entry `index` of the saved field `field` holds a value the game never
+    /// writes and the port uses as an index past its table (`state.md` §1.1).
+    SavedIndex {
+        /// The field, named after its row of the guard table in `state.md` §1.1.
+        field: &'static str,
+        /// Entry of the (flattened) field; 0 for a scalar, the manager,
+        /// player or flattened squad record for a per-record field.
+        index: usize,
+    },
 }
+
+/// Size levels of the [`Manager::stadium`] items 3 and 4 (floodlight,
+/// scoreboard): the names `DS:2858` that `screen_stadium` 1000:0602 indexes
+/// with built + ordered.
+pub const STADIUM_SIZE_LEVELS: usize = 4;
+
+/// Quality levels of the [`Manager::stadium`] items 5 and 6 (condition,
+/// comfort): the names `DS:283c`, indexed like [`STADIUM_SIZE_LEVELS`].
+pub const STADIUM_QUALITY_LEVELS: usize = 7;
+
+/// Offers per sponsor kind and manager in FAR:2ec2; the logo bytes of the
+/// running contracts (FAR:0000 and FAR:4b9a, odd bytes) index them.
+pub const OFFERS_PER_KIND: usize = 10;
 
 /// Smallest [`Player::position_value`] that is no position:
 /// [`Player::position_band`] has to be 0 (GK) ..= 3 (ATT).
@@ -969,7 +1002,9 @@ macro_rules! decode_blocks {
         /// Builds the state from a decoded save game. The runtime globals the
         /// save lacks get their program-start values. Unlike the original it
         /// rejects a save with a player whose position code would hang the
-        /// lineup logic ([`StateError::PositionCode`], `state.md` §1).
+        /// lineup logic ([`StateError::PositionCode`]), a squad record past
+        /// the player table ([`StateError::SquadPlayerId`]) or another saved
+        /// index past its table ([`StateError::SavedIndex`]), `state.md` §1.1.
         ///
         /// Origin: BMMAIN.EXE 422b:120c (screen_load_game; block reads mirror
         /// savegame_write_man 422b:07fe)
@@ -994,6 +1029,8 @@ macro_rules! decode_blocks {
                 autosave_pending: 0,
             };
             state.check_position_codes()?;
+            state.check_squad_records()?;
+            state.check_saved_indices()?;
             Ok(state)
         }
 
@@ -1081,6 +1118,174 @@ impl GameState {
             Some(player) => Err(StateError::PositionCode { player }),
             None => Ok(()),
         }
+    }
+
+    /// The load-time guard of [`GameState::from_savegame`] for the squad
+    /// records: the first whose `player_id` is no index into
+    /// [`GameState::players`], or, holding a player, whose board row or sale
+    /// club is past its table.
+    // DEVIATION: the original loads such a save and reads the record's player
+    // past the 151-entry table FAR:57dd (`board_auto_place_player` 2ecd:1266,
+    // `auto_lineup_pick_best` 2ecd:3635, ...), or past the table its board row
+    // or sale club indexes (`state.md` §1.1); the port would panic there.
+    fn check_squad_records(&self) -> Result<(), StateError> {
+        for (squad, records) in self.squads.iter().enumerate() {
+            for (slot, rec) in records.iter().enumerate() {
+                if usize::from(rec.player_id) >= self.players.len() {
+                    return Err(StateError::SquadPlayerId {
+                        squad,
+                        slot,
+                        player_id: rec.player_id,
+                    });
+                }
+                if rec.player_id == 0 {
+                    continue;
+                }
+                let index = squad * SQUAD_SIZE + slot;
+                if !(BOARD_UNPLACED..=7).contains(&rec.board_row) {
+                    let field = "squads.board_row";
+                    return Err(StateError::SavedIndex { field, index });
+                }
+                if usize::from(rec.sale_club) >= self.clubs.len() {
+                    let field = "squads.sale_club";
+                    return Err(StateError::SavedIndex { field, index });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The load-time guard of [`GameState::from_savegame`] for the other
+    /// saved values the port uses as table indices: the first one outside
+    /// every value the game writes (sentinels included).
+    // DEVIATION: the original loads such a save and reads past the indexed
+    // table (`state.md` §1.1 lists the fields); the port would panic.
+    fn check_saved_indices(&self) -> Result<(), StateError> {
+        let clubs = self.clubs.len();
+        let german_clubs = self.team_tables.len();
+        let tiers = self.league_teams.len();
+        let check = |field: &'static str, index: usize, ok: bool| {
+            if ok {
+                Ok(())
+            } else {
+                Err(StateError::SavedIndex { field, index })
+            }
+        };
+        check(
+            "manager_count",
+            0,
+            usize::from(self.manager_count) <= MANAGER_SLOTS,
+        )?;
+        check(
+            "current_manager",
+            0,
+            self.current_index().is_some_and(|m| m < MANAGER_SLOTS),
+        )?;
+        check(
+            "season_week",
+            0,
+            usize::from(self.season_week) < self.week_competitions.len(),
+        )?;
+        check(
+            "logged_rounds",
+            0,
+            i16::try_from(self.logged_rounds).is_ok(),
+        )?;
+        let holders = [
+            self.winner_07ac,
+            self.winner_07ad,
+            self.winner_07ae,
+            self.winner_07af,
+            self.dfb_cup_runner_up,
+        ];
+        for (i, &h) in holders.iter().enumerate() {
+            check("cup holders + 1", i, usize::from(h) <= clubs)?;
+        }
+        for (i, &r) in self.event_state[..4].iter().enumerate() {
+            check(
+                "event_state cup round",
+                i,
+                usize::from(r) < crate::cups::CUP_ROUND_PAIRINGS.len(),
+            )?;
+        }
+        for (i, &t) in self.league_teams.as_flattened().iter().enumerate() {
+            check("league_teams", i, usize::from(t) < german_clubs)?;
+        }
+        for (i, &t) in self.cup_pairings.as_flattened().iter().enumerate() {
+            check("cup_pairings", i, usize::from(t) < clubs)?;
+        }
+        for (i, e) in self.rescheduled_matches.iter().enumerate() {
+            check(
+                "rescheduled_matches",
+                i,
+                usize::from(e[RESCHEDULED_TIER]) < tiers
+                    && usize::from(e[RESCHEDULED_PAIR]) < self.matchday_pairings[0].len(),
+            )?;
+        }
+        let opponents = self.match_history.record_opponents.as_flattened();
+        for (i, &t) in opponents.iter().enumerate() {
+            check("match_history.record_opponents", i, usize::from(t) < clubs)?;
+        }
+        for (m, man) in self.managers.iter().enumerate() {
+            check("managers.team", m, usize::from(man.team) < clubs)?;
+            for item in 3..man.stadium.len() {
+                let levels = if item < 5 {
+                    STADIUM_SIZE_LEVELS
+                } else {
+                    STADIUM_QUALITY_LEVELS
+                };
+                let [built, ordered] = man.stadium[item];
+                let level = (built as u16).wrapping_add(ordered as u16) as i16;
+                check(
+                    "managers.stadium level",
+                    m,
+                    usize::try_from(level).is_ok_and(|l| l < levels),
+                )?;
+            }
+        }
+        let logos = self
+            .far_0000
+            .iter()
+            .chain(&self.far_4b9a)
+            .skip(1)
+            .step_by(2);
+        for (i, &logo) in logos.enumerate() {
+            check("sponsor logos", i, usize::from(logo) < OFFERS_PER_KIND)?;
+        }
+        for (m, man) in self.active_managers().iter().enumerate() {
+            check(
+                "active managers.team",
+                m,
+                usize::from(man.team) < german_clubs,
+            )?;
+            check("active managers.league", m, usize::from(man.league) < tiers)?;
+            check(
+                "active managers.values_13a[0]",
+                m,
+                usize::from(man.values_13a[0]) < man.home_attendance.len(),
+            )?;
+            let due_months = man
+                .credits
+                .as_flattened()
+                .iter()
+                .filter(|c| c.principal != 0);
+            for c in due_months {
+                check(
+                    "active managers.credits.due_month",
+                    m,
+                    usize::from(c.due_month) < crate::finance::DAYS_IN_MONTH.len(),
+                )?;
+            }
+        }
+        for (p, player) in self.players.iter().enumerate().skip(1) {
+            check("players.owner_manager", p, player.owner_manager <= NO_OWNER)?;
+            check(
+                "players.team",
+                p,
+                usize::from(player.team) < clubs || player.team == 0xff,
+            )?;
+        }
+        Ok(())
     }
 
     // TODO(re): far globals the save does not store read as zero here; the
@@ -1621,6 +1826,147 @@ pub(crate) mod tests {
         s.players[0].position_value = 0xff;
         let save = SaveGame::parse(&s.to_savegame().to_bytes().unwrap()).unwrap();
         assert!(GameState::from_savegame(&save).is_ok());
+    }
+
+    /// [`GameState::from_savegame`] of `s` written out and parsed again.
+    fn reload(s: &GameState) -> Result<GameState, StateError> {
+        GameState::from_savegame(&SaveGame::parse(&s.to_savegame().to_bytes().unwrap()).unwrap())
+    }
+
+    #[test]
+    fn squad_player_id_past_the_player_table_is_rejected() {
+        for (squad, slot, player_id) in [(0, 0, 151), (TRANSFER_LIST, SQUAD_SIZE - 1, 0xff)] {
+            let mut s = GameState::zeroed();
+            s.squads[squad][slot].player_id = player_id;
+            assert_eq!(
+                reload(&s),
+                Err(StateError::SquadPlayerId {
+                    squad,
+                    slot,
+                    player_id
+                })
+            );
+        }
+        let mut s = GameState::zeroed();
+        s.squads[1][3].player_id = (PLAYER_COUNT - 1) as u8;
+        s.squads[1][4].player_id = 0;
+        assert!(reload(&s).is_ok());
+    }
+
+    /// One change per guarded field: the last value the game writes (or its
+    /// sentinel) loads, the next one is rejected naming the field and entry.
+    #[test]
+    fn saved_index_past_its_table_is_rejected() {
+        type Patch = fn(&mut GameState, bool);
+        let cases: [(&str, usize, Patch); 28] = [
+            ("manager_count", 0, |s, bad| {
+                s.manager_count = 4 + u8::from(bad)
+            }),
+            ("current_manager", 0, |s, bad| {
+                s.current_manager = if bad { -1 } else { 3 }
+            }),
+            ("current_manager", 0, |s, bad| {
+                s.current_manager = 3 + i8::from(bad)
+            }),
+            ("season_week", 0, |s, bad| {
+                s.season_week = 94 + u8::from(bad)
+            }),
+            ("logged_rounds", 0, |s, bad| {
+                s.logged_rounds = 0x7fff + u16::from(bad)
+            }),
+            ("cup holders + 1", 0, |s, bad| {
+                s.winner_07ac = 200 + u8::from(bad)
+            }),
+            ("cup holders + 1", 1, |s, bad| {
+                s.winner_07ad = 200 + u8::from(bad)
+            }),
+            ("cup holders + 1", 2, |s, bad| {
+                s.winner_07ae = 200 + u8::from(bad)
+            }),
+            ("cup holders + 1", 3, |s, bad| {
+                s.winner_07af = 200 + u8::from(bad)
+            }),
+            ("cup holders + 1", 4, |s, bad| {
+                s.dfb_cup_runner_up = 200 + u8::from(bad)
+            }),
+            ("event_state cup round", 2, |s, bad| {
+                s.event_state[2] = 5 + u8::from(bad)
+            }),
+            ("league_teams", 39, |s, bad| {
+                s.league_teams[1][19] = 63 + u8::from(bad)
+            }),
+            ("cup_pairings", 127, |s, bad| {
+                s.cup_pairings[63][1] = 199 + u8::from(bad)
+            }),
+            ("rescheduled_matches", 5, |s, bad| {
+                s.rescheduled_matches[5][RESCHEDULED_TIER] = 2 + u8::from(bad)
+            }),
+            ("rescheduled_matches", 6, |s, bad| {
+                s.rescheduled_matches[6][RESCHEDULED_PAIR] = 9 + u8::from(bad)
+            }),
+            ("match_history.record_opponents", 8, |s, bad| {
+                s.match_history.record_opponents[1][0] = 199 + u8::from(bad)
+            }),
+            ("managers.team", 3, |s, bad| {
+                s.managers[3].team = if bad { 200 } else { NO_TEAM }
+            }),
+            ("active managers.team", 0, |s, bad| {
+                s.manager_count = 1;
+                s.managers[0].team = 63 + u8::from(bad);
+            }),
+            ("active managers.league", 0, |s, bad| {
+                s.manager_count = 1;
+                s.managers[0].league = 2 + u8::from(bad);
+            }),
+            ("active managers.values_13a[0]", 0, |s, bad| {
+                s.manager_count = 1;
+                s.managers[0].values_13a[0] = 19 + u8::from(bad);
+            }),
+            ("active managers.credits.due_month", 0, |s, bad| {
+                s.manager_count = 1;
+                s.managers[0].credits[4][2].principal = 1;
+                s.managers[0].credits[4][2].due_month = 11 + u8::from(bad);
+            }),
+            ("managers.stadium level", 2, |s, bad| {
+                s.managers[2].stadium[6] = [4, 2 + i32::from(bad)]
+            }),
+            ("managers.stadium level", 1, |s, bad| {
+                s.managers[1].stadium[3] = [if bad { -1 } else { 3 }, 0]
+            }),
+            ("sponsor logos", 4 + 6 * 2 + 5, |s, bad| {
+                s.far_4b9a[2 * (6 * 2 + 5) + 1] = 9 + u8::from(bad)
+            }),
+            ("players.owner_manager", 150, |s, bad| {
+                s.players[150].owner_manager = NO_OWNER + u8::from(bad)
+            }),
+            ("players.team", 1, |s, bad| {
+                s.players[1].team = if bad { 200 } else { 0xff }
+            }),
+            ("squads.board_row", SQUAD_SIZE + 2, |s, bad| {
+                s.squads[1][2].player_id = 1;
+                s.squads[1][2].board_row = if bad { 8 } else { BOARD_UNPLACED };
+            }),
+            ("squads.sale_club", 0, |s, bad| {
+                s.squads[0][0].player_id = 1;
+                s.squads[0][0].sale_club = 199 + u8::from(bad);
+            }),
+        ];
+        // One (empty) message group per manager keeps the string table writable.
+        let reload = |s: &mut GameState| {
+            s.messages = vec![Vec::new(); usize::from(s.manager_count)];
+            reload(s)
+        };
+        for (field, index, patch) in cases {
+            let mut s = GameState::zeroed();
+            patch(&mut s, false);
+            assert!(reload(&mut s).is_ok(), "{field} {index}");
+            patch(&mut s, true);
+            assert_eq!(
+                reload(&mut s),
+                Err(StateError::SavedIndex { field, index }),
+                "{field} {index}"
+            );
+        }
     }
 
     /// Number of used entries of `league_teams[tier]`: the longest prefix

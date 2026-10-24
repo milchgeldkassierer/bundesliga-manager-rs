@@ -7,7 +7,7 @@
 //! construction progress is [`bmp_game::finance::stadium_construction_daily`].
 
 use bmp_game::rng::{format_long_thousands, ldiv, lmul};
-use bmp_game::state::{GameState, Manager};
+use bmp_game::state::{GameState, Manager, STADIUM_QUALITY_LEVELS, STADIUM_SIZE_LEVELS};
 
 use super::widgets::{TextButtons, ui_dialog_box, ui_value_spinner, ui_wait_right_click_button};
 use super::{GAME_OPTION_A, GAME_OPTION_B, Session};
@@ -30,7 +30,7 @@ const ROW_HELP: [&[u8]; 10] = [
     b"",
 ];
 /// `DS:283c`: condition / comfort levels 0..6.
-const QUALITY_NAMES: [&[u8]; 7] = [
+const QUALITY_NAMES: [&[u8]; STADIUM_QUALITY_LEVELS] = [
     b"",
     b"UNGENUEGEND",
     b"MANGELHAFT",
@@ -40,7 +40,7 @@ const QUALITY_NAMES: [&[u8]; 7] = [
     b"SEHR GUT",
 ];
 /// `DS:2858`: floodlight / scoreboard sizes 0..3.
-const SIZE_NAMES: [&[u8]; 4] = [b"IS NICH", b"KLEIN", b"MITTEL", b"GRO~"];
+const SIZE_NAMES: [&[u8]; STADIUM_SIZE_LEVELS] = [b"IS NICH", b"KLEIN", b"MITTEL", b"GRO~"];
 /// `DS:2868`: row labels of the status table.
 const ROW_LABELS: [&[u8]; 9] = [
     b"GESAMTKAPAZIT[T",
@@ -435,7 +435,7 @@ fn stadium_expansion_order(
     } else {
         (
             NEW_STATUS.to_vec(),
-            QUALITY_NAMES[(amount as usize).min(6)].to_vec(),
+            QUALITY_NAMES[(amount as usize).min(QUALITY_NAMES.len() - 1)].to_vec(),
         )
     };
     centered(host, &l1, 0x97, 0x120, 0x25, 2, 0xff);
@@ -612,7 +612,8 @@ fn choose_level(
     let [c, p] = m.stadium[aa - 1];
     let cur = (c as u16).wrapping_add(p as u16) as i16;
     let quality = aa > 5;
-    let top: i16 = if quality { 6 } else { 3 };
+    let names: &[&[u8]] = if quality { &QUALITY_NAMES } else { &SIZE_NAMES };
+    let top = names.len() as i16 - 1;
     if top == cur {
         ui_dialog_box(host, b"Was denn...?", b"NOCH besser ???")?;
         return Ok(-1);
@@ -627,11 +628,7 @@ fn choose_level(
         lim = i32::from(top);
     }
     host.number_pad = 9;
-    let (first, base_y, names): (i16, i16, &[&[u8]]) = if quality {
-        (2, 0x12, &QUALITY_NAMES)
-    } else {
-        (1, 0x19, &SIZE_NAMES)
-    };
+    let (first, base_y) = if quality { (2, 0x12) } else { (1, 0x19) };
     for l in first..=top {
         let y = 7 * l + base_y;
         let color = if l > cur && i32::from(l) <= lim { 1 } else { 3 };
