@@ -41,7 +41,7 @@ pub enum FinanceEvent {
         /// the inbox through [`message_queue_add`].
         shown: Option<Vec<u8>>,
     },
-    /// "Ihr Kredit von <lender> wurde heute fällig." The loan was repaid.
+    /// "Ihr Kredit von `<lender>` wurde heute fällig." The loan was repaid.
     LoanDue {
         /// Lender index: a human manager, or [`BANK`].
         lender: usize,

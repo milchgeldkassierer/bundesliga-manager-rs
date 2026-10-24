@@ -54,7 +54,7 @@ const LATE_SEASON_DAY: i32 = 0x141;
 /// random spread of an asking price; both only apply to the fee formula.
 /// Modes in use: 0 offer, 4 asking price, 1 and 3 salary of a new record,
 /// 5 salary demand. Random draws, all in the fee formula: 95..100 % when
-/// [`OFFER_FOR_LISTED_PLAYER`] is set and `sale_club <= 0x3f`, then the
+/// the `OFFER_FOR_LISTED_PLAYER` status bit (0x80) is set and `sale_club <= 0x3f`, then the
 /// spread for bit 2, then the loan factor for bit 1.
 ///
 /// # Panics

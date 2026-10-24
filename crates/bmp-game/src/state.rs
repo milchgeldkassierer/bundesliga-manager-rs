@@ -727,7 +727,7 @@ pub struct GameState {
     /// #28 FAR:76ca `cup_slots[4][32]` as pairs: club of each draw slot of cup row `c`
     /// (0 = DFB-Pokal, 1..3 = European cups); slot `2k` is the home club.
     pub cup_pairings: [[u8; 2]; 64],
-    /// #29 FAR:21e2 European first-leg goals, rows 1..3 of FAR:21c2[4][32] (row 0 is never
+    /// #29 FAR:21e2 European first-leg goals, rows 1..3 of `FAR:21c2[4][32]` (row 0 is never
     /// used), already re-oriented to the return-leg slot order (`cup_round_complete`
     /// 27c2:16dc).
     pub cup_first_leg_goals: [u8; 96],
@@ -1158,7 +1158,7 @@ impl GameState {
             .count() as u8
     }
 
-    /// Sorts the first `team_count` (DS:225e[tier]) entries of
+    /// Sorts the first `team_count` (`DS:225e[tier]`) entries of
     /// `league_teams[tier]` into table order and rewrites every club's
     /// [`TeamTable::table_position`].
     ///
