@@ -79,7 +79,7 @@ Everything else plays like version 1.0.0.
   - 8 real Regionalliga clubs of 2026/27, with squads and crests: the **clubs with the most fans,
     the most followers and the most relevance** (owner decision 2026-10-24). Candidates are the
     first teams that play in one of the five Regionalligen in 2026/27. **BFC Dynamo is excluded**
-    (owner decision). Each candidate is ranked in three measures:
+    (owner decision); it still appears in the ranked candidate list. Each candidate is ranked in three measures:
     - fans: average home attendance 2025/26;
     - followers: combined followers on Instagram, Facebook, X and TikTok as of October 2026;
     - relevance: league history (seasons in the Bundesliga, 2. Bundesliga, old Oberliga before
