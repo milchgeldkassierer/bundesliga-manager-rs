@@ -444,3 +444,206 @@ fn tables_2025_26_are_complete_seasons_of_the_named_league() {
         );
     }
 }
+
+/// Recorded outcomes of the 2025/26 play-off places (PRD R1): the 2025/26 league and rank of a
+/// play-off participant, whether it changed tier, and the source of the result. The pairings are
+/// Bundesliga 16th vs 2. Bundesliga 3rd, 2. Bundesliga 16th vs 3. Liga 3rd, and the promotion
+/// play-off of the Regionalliga Nordost champion against the Regionalliga Bayern champion.
+const PLAY_OFF_OUTCOMES: [(&str, i64, bool, &str); 5] = [
+    (
+        "bundesliga",
+        16,
+        true,
+        "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Bundesliga_2025/26",
+    ),
+    (
+        "2-bundesliga",
+        3,
+        true,
+        "https://de.wikipedia.org/wiki/2._Fu%C3%9Fball-Bundesliga_2025/26",
+    ),
+    (
+        "2-bundesliga",
+        16,
+        false,
+        "https://de.wikipedia.org/wiki/2._Fu%C3%9Fball-Bundesliga_2025/26",
+    ),
+    (
+        "3-liga",
+        3,
+        false,
+        "https://de.wikipedia.org/wiki/2._Fu%C3%9Fball-Bundesliga_2025/26",
+    ),
+    (
+        "regionalliga-nordost",
+        1,
+        false,
+        "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2025/26",
+    ),
+];
+
+/// Clubs whose real 2026/27 league is not the one their 2025/26 rank leads to: name, 2026/27
+/// league, reason, source. TSV 1860 München needs no entry: its official rank 20 is already the
+/// place it was put on after the refused 3. Liga licence (README of the data), so the rank rule
+/// relegates it and keeps TSV Havelse (16th) up.
+const RANK_RULE_EXCEPTIONS: [(&str, &str, &str, &str); 3] = [
+    (
+        "WÜRZBURGER KICKERS",
+        "3-liga",
+        "Regionalliga Bayern runner-up, played the promotion play-off as champion Nürnberg II \
+         applied for no licence, and won it",
+        "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Bayern_2025/26",
+    ),
+    (
+        "FC ERZGEBIRGE AUE",
+        "3-liga",
+        "relegated 17th, replaces the reserve team VfB Stuttgart II (PRD R3)",
+        "https://de.wikipedia.org/wiki/3._Fu%C3%9Fball-Liga_2026/27",
+    ),
+    (
+        "SSV ULM 1846",
+        "3-liga",
+        "relegated 18th, replaces the reserve team TSG Hoffenheim II (PRD R3)",
+        "https://de.wikipedia.org/wiki/3._Fu%C3%9Fball-Liga_2026/27",
+    ),
+];
+
+/// The 2026/27 tier the 2025/26 `table_league` and `rank` lead to under the promotion and
+/// relegation places of PRD R1, with the play-off places resolved by `PLAY_OFF_OUTCOMES`.
+/// Regionalliga champions go up, except the Nordost and Bayern champions, who play off.
+fn rank_rule_tier(from: &str, rank: i64) -> usize {
+    let (from_league, _) =
+        table_league(from).unwrap_or_else(|| panic!("table_league `{from}` unknown"));
+    let from_tier = tier(from_league);
+    // (promoted directly, promotion play-off, relegation play-off, first relegated rank)
+    let (up, up_play_off, down_play_off, first_down) = match from_league {
+        "bundesliga" => (0, None, Some(16), 17),
+        "2-bundesliga" => (2, Some(3), Some(16), 17),
+        "3-liga" => (2, Some(3), None, 17),
+        _ if matches!(from, "regionalliga-nordost" | "regionalliga-bayern") => {
+            (0, Some(1), None, i64::MAX)
+        }
+        _ => (1, None, None, i64::MAX),
+    };
+    let moved = || {
+        PLAY_OFF_OUTCOMES
+            .iter()
+            .find(|(league, place, _, _)| *league == from && *place == rank)
+            .unwrap_or_else(|| panic!("no recorded play-off outcome for rank {rank} of {from}"))
+            .2
+    };
+    if rank <= up || (up_play_off == Some(rank) && moved()) {
+        from_tier - 1
+    } else if rank >= first_down || (down_play_off == Some(rank) && moved()) {
+        from_tier + 1
+    } else {
+        from_tier
+    }
+}
+
+/// Whether a club's 2026/27 league is the one its rank leads to, or the one its exception names.
+fn placement_follows_rank_rule(club: &Value) -> Result<(), String> {
+    let name = text(club, "name");
+    let league = text(club, "league");
+    let expected = rank_rule_tier(
+        text(club, "table_league"),
+        int(&club["table_2025_26"], "rank"),
+    );
+    let exception = RANK_RULE_EXCEPTIONS
+        .iter()
+        .find(|(club_name, _, _, _)| *club_name == name);
+    match exception {
+        Some((_, _, _, _)) if tier(league) == expected => Err(format!(
+            "stale exception: {} follows the rank rule",
+            label(club)
+        )),
+        Some((_, exception_league, _, _)) if league != *exception_league => Err(format!(
+            "{} plays `{league}`, its exception names `{exception_league}`",
+            label(club)
+        )),
+        Some(_) => Ok(()),
+        None if tier(league) != expected => Err(format!(
+            "{} plays `{league}`, its 2025/26 rank leads to `{}`",
+            label(club),
+            LEAGUE_SLOTS[expected].0
+        )),
+        None => Ok(()),
+    }
+}
+
+#[test]
+fn leagues_2026_27_follow_the_2025_26_ranks() {
+    let clubs = clubs();
+    for club in &clubs {
+        if let Err(error) = placement_follows_rank_rule(club) {
+            panic!("{error}");
+        }
+    }
+    for (name, league, reason, url) in RANK_RULE_EXCEPTIONS {
+        assert!(
+            clubs
+                .iter()
+                .any(|club| text(club, "name") == name && text(club, "league") == league),
+            "exception for {name} names no club"
+        );
+        assert!(!reason.is_empty() && url.starts_with("https://"), "{name}");
+    }
+    for (from, rank, _, url) in PLAY_OFF_OUTCOMES {
+        assert!(url.starts_with("https://"), "{from} {rank}");
+        assert!(
+            clubs.iter().any(|club| text(club, "table_league") == from
+                && int(&club["table_2025_26"], "rank") == rank),
+            "play-off outcome for rank {rank} of {from} names no club"
+        );
+    }
+}
+
+/// Mutation check: every club moved to a neighbouring tier breaks the rank rule; an exception
+/// club moved back to its rank tier is a stale exception.
+#[test]
+fn a_club_in_a_neighbouring_tier_breaks_the_rank_rule() {
+    for club in &clubs() {
+        let own = tier(text(club, "league"));
+        for neighbour in [own.wrapping_sub(1), own + 1] {
+            let Some((league, _)) = LEAGUE_SLOTS.get(neighbour) else {
+                continue;
+            };
+            let mut moved = club.clone();
+            moved["league"] = Value::from(*league);
+            assert!(
+                placement_follows_rank_rule(&moved).is_err(),
+                "{} moved to `{league}` still passes",
+                label(club)
+            );
+        }
+    }
+}
+
+#[test]
+fn rank_rule_places_promoted_relegated_and_play_off_clubs() {
+    for (from, rank, expected) in [
+        ("bundesliga", 15, "bundesliga"),
+        ("bundesliga", 16, "2-bundesliga"),
+        ("bundesliga", 17, "2-bundesliga"),
+        ("2-bundesliga", 2, "bundesliga"),
+        ("2-bundesliga", 3, "bundesliga"),
+        ("2-bundesliga", 4, "2-bundesliga"),
+        ("2-bundesliga", 16, "2-bundesliga"),
+        ("2-bundesliga", 18, "3-liga"),
+        ("3-liga", 1, "2-bundesliga"),
+        ("3-liga", 3, "3-liga"),
+        ("3-liga", 16, "3-liga"),
+        ("3-liga", 17, "regionalliga"),
+        ("3-liga", 20, "regionalliga"),
+        ("regionalliga-west", 1, "3-liga"),
+        ("regionalliga-west", 2, "regionalliga"),
+        ("regionalliga-nordost", 1, "regionalliga"),
+        ("regionalliga-bayern", 2, "regionalliga"),
+    ] {
+        assert_eq!(
+            LEAGUE_SLOTS[rank_rule_tier(from, rank)].0,
+            expected,
+            "rank {rank} of {from}"
+        );
+    }
+}
