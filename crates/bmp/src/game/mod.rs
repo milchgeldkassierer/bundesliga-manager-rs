@@ -335,6 +335,29 @@ pub(crate) fn assert_mod_texts_narrower(pairs: &[(Vec<u8>, Vec<u8>)]) {
     }
 }
 
+/// Test support: the library font indices ([`crate::gfx::FONT_NAMES`]) of the glyph fonts.
+#[cfg(test)]
+pub(crate) const MICRO4: u16 = 1;
+#[cfg(test)]
+pub(crate) const FLOW: u16 = 2;
+#[cfg(test)]
+pub(crate) const NEWBOLD: u16 = 3;
+
+/// Test support: whether `text` in library font `font`, centred on `x0..x1` like
+/// [`crate::gfx::ui_draw_text_centered_shadow`], lies within the pixel columns `field`.
+#[cfg(test)]
+pub(crate) fn centered_fits(
+    g: &crate::gfx::Gfx,
+    font: u16,
+    text: &[u8],
+    (x0, x1): (i16, i16),
+    field: std::ops::RangeInclusive<i16>,
+) -> bool {
+    let w = g.text_width(font, text) as i16;
+    let x = (x1 - x0) / 2 - w / 2 + x0 + 1;
+    field.contains(&x) && field.contains(&(x + w - 1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,6 +380,24 @@ mod tests {
         let damage = |mod2026| hooligan_damage_line(22_000, NumberFormat::default(), mod2026);
         pairs.push((damage(true), damage(false)));
         assert_mod_texts_narrower(&pairs);
+    }
+
+    /// MOD2026: the Conference League lines of the season goal messages fit the message box
+    /// (`dialog_okay`: font 1, centred on 0x3c..0xf5 in its panel; skipped without `BMP_DATA`).
+    #[test]
+    fn the_conference_league_goal_lines_fit_the_message_box() {
+        use bmp_game::finance::{MOD2026_CONFERENCE_LOST, MOD2026_CONFERENCE_SECURED};
+        let Some(g) = euro_gfx() else {
+            eprintln!("skipped: no BMP_DATA");
+            return;
+        };
+        for line in MOD2026_CONFERENCE_LOST
+            .iter()
+            .chain([&MOD2026_CONFERENCE_SECURED])
+        {
+            let fits = centered_fits(&g, FLOW, line, (0x3c, 0xf5), 0x3d..=0xf4);
+            assert!(fits, "{:?}", String::from_utf8_lossy(line));
+        }
     }
 
     #[test]

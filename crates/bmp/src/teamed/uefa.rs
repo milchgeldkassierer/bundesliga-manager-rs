@@ -41,6 +41,19 @@ const HEADERS: [(i16, &[u8]); 6] = [
 const REFUSED_1: &[u8] = b"EINGABE NICHT ANGENOMMEN,";
 /// "UEFA-CUP SONST ZU LEICHT." (`DS:042E`).
 const REFUSED_2: &[u8] = b"UEFA-CUP SONST ZU LEICHT.";
+/// MOD2026: [`REFUSED_2`] with the Conference League, which replaces the UEFA cup; the full
+/// name does not fit the message box.
+const MOD2026_REFUSED_2: &[u8] = b"CONFERENCE L. SONST ZU LEICHT.";
+
+/// The second line of the refusal of a too low strength.
+fn refused_2(mod2026: bool) -> &'static [u8] {
+    // MOD2026: a mod game names the Conference League.
+    if mod2026 {
+        MOD2026_REFUSED_2
+    } else {
+        REFUSED_2
+    }
+}
 
 /// Whether the foreign clubs are strong enough: the average of the 408 strength bytes
 /// of clubs 64..199 (signed, MSC long division) is at least 79. A negative sum also
@@ -236,7 +249,7 @@ fn edit_club(
             ed.mana.strength[club][part] = value as u8;
             if !strength_ok(&ed.mana) {
                 ed.mana.strength[club][part] = old;
-                message(host, ed, REFUSED_1, REFUSED_2)?;
+                message(host, ed, REFUSED_1, refused_2(host.mod2026))?;
             }
         }
         gfx::ui_fill_rect(&mut host.g, &mut ed.grid, x + dx, y, x + clear_to, y + 5, 0);
@@ -276,6 +289,28 @@ mod tests {
         // Bytes >= 0x80 are negative; a negative average has a non-zero high word.
         assert!(strength_ok(&mana_with_strength(0xf0)));
         assert!(!strength_ok(&mana_with_strength(0)));
+    }
+
+    /// MOD2026: the refusal names the Conference League in a mod game and fits the message
+    /// box (font 3, centred on 1..0x77 in its frame; skipped without `BMP_DATA`).
+    #[test]
+    fn the_refusal_names_the_conference_league_in_the_mod() {
+        use crate::game::{MICRO4, centered_fits, euro_gfx};
+        assert_eq!(refused_2(false), b"UEFA-CUP SONST ZU LEICHT.");
+        assert_eq!(refused_2(true), b"CONFERENCE L. SONST ZU LEICHT.");
+        let Some(g) = euro_gfx() else {
+            eprintln!("skipped: no BMP_DATA");
+            return;
+        };
+        assert!(centered_fits(
+            &g,
+            MICRO4,
+            refused_2(true),
+            (1, 0x77),
+            2..=0x76
+        ));
+        let full = b"CONFERENCE LEAGUE SONST ZU LEICHT.";
+        assert!(!centered_fits(&g, MICRO4, full, (1, 0x77), 2..=0x76));
     }
 
     #[test]

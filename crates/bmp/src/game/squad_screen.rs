@@ -16,6 +16,7 @@ use bmp_game::stats::INJURY_NAMES;
 use bmp_game::transfer::player_value_of;
 
 use super::negotiation::{Browse, contract_negotiation_browse};
+use super::stats_screens::cup_names;
 use super::widgets::{ui_dialog_box, ui_wait_right_click_button};
 use super::{GAME_OPTION_A, GAME_OPTION_B, Session, currency, text_to_upper_de};
 use crate::gfx::{
@@ -105,9 +106,7 @@ pub(super) fn ui_string(k: i16) -> &'static [u8] {
         40 => b"MITTELFELDSPIELER",
         41 => b"ANGREIFER",
         53..=70 => INJURY_NAMES[(k - 53) as usize],
-        128 => b"Pokal der Landesmeister",
-        129 => b"Pokal der Pokalsieger",
-        130 => b"UEFA-Pokal",
+        128..=130 => cup_names()[(k - 127) as usize],
         131 => b"VERLETZT ",
         132 => b"GESPERRT.",
         133 => b"FALLEND.",
@@ -1511,6 +1510,47 @@ pub fn screen_squad_lineup(
 mod tests {
     use super::*;
     use crate::game::assert_mod_texts_narrower;
+
+    /// MOD2026: the competition names of the string table are the running game's.
+    #[test]
+    fn the_competition_names_are_the_running_games() {
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        let names = || [ui_string(128), ui_string(129), ui_string(130)];
+        set_layout(&MOD2026);
+        let modded = names();
+        set_layout(&ORIGINAL);
+        assert_eq!(
+            modded,
+            [
+                b"Champions League".as_slice(),
+                b"Europa League",
+                b"Conference League"
+            ]
+        );
+        assert_eq!(
+            names(),
+            [
+                b"Pokal der Landesmeister".as_slice(),
+                b"Pokal der Pokalsieger",
+                b"UEFA-Pokal"
+            ]
+        );
+    }
+
+    /// MOD2026: the hover line of a player with status 3, which shows `UI[130]`, is no wider
+    /// with the Conference League than the contract column's hover text in the same line
+    /// (font 2; skipped without `BMP_DATA`).
+    #[test]
+    fn status_3_with_the_conference_league_fits_the_hover_line() {
+        use crate::game::{MICRO4, euro_gfx};
+        let Some(g) = euro_gfx() else {
+            eprintln!("skipped: no BMP_DATA");
+            return;
+        };
+        let mut status = ui_string(304).to_vec();
+        status.extend_from_slice(b"Conference League");
+        assert!(g.text_width(MICRO4, &status) <= g.text_width(MICRO4, ui_string(36)));
+    }
 
     /// MOD2026: the value column in euros, padded like v1.0.0's.
     #[test]

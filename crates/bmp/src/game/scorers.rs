@@ -162,7 +162,7 @@ pub fn screen_player_info(
             buf.extend(num(host, i32::from(r.suspended)));
             buf.extend_from_slice(b" SPIELE ");
         }
-        // Status 3 shows UI[130], "UEFA-Pokal" (a quirk of the original).
+        // Status 3 shows UI[130], the name of the UEFA-Pokal (a quirk of the original).
         buf.extend_from_slice(ui_string(133 - i16::from(st)));
         if st == 2 {
             buf.push(b'(');
@@ -510,6 +510,25 @@ mod tests {
         assert_eq!(modded, b"1.250.000 \xd5");
         assert_eq!(data_text(8, 2, fmt, true), b"2 JAHRE");
         assert_mod_texts_narrower(&[(modded, original)]);
+    }
+
+    /// MOD2026: the status line of status 3, which shows `UI[130]`, fits the info window with
+    /// the Conference League (font 2 from 0x5c, the panel 0x59..0x139; skipped without
+    /// `BMP_DATA`).
+    #[test]
+    fn status_3_with_the_conference_league_fits_the_info_window() {
+        use crate::game::{MICRO4, euro_gfx};
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        set_layout(&MOD2026);
+        let mut line = b"STATUS: ".to_vec();
+        line.extend_from_slice(ui_string(130));
+        set_layout(&ORIGINAL);
+        assert_eq!(line, b"STATUS: Conference League");
+        let Some(g) = euro_gfx() else {
+            eprintln!("skipped: no BMP_DATA");
+            return;
+        };
+        assert!(0x5c + g.text_width(MICRO4, &line) as i16 - 1 <= 0x138);
     }
 
     #[test]

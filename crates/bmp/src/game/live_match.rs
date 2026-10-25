@@ -4,6 +4,7 @@
 //! itself is played by [`bmp_game::matchsim`]; these functions are its display hooks.
 //! Spec: `docs/re/logic/match.md` §2 and `docs/re/logic/season.md` §3.7-3.10.
 
+use bmp_game::league_layout::is_mod2026;
 use bmp_game::matchsim::TickerEvent;
 use bmp_game::news::{EVENT_CHANCE, EVENT_GOAL, EVENT_RED_CARD, EVENT_YELLOW_CARD, OPPONENT};
 use bmp_game::rng::{NumberFormat, Rng, format_long_thousands};
@@ -15,7 +16,7 @@ use bmp_game::stats::INJURY_NAMES;
 use super::cup_screens::screen_cup_matches;
 use super::season::ScreenSeason;
 use super::squad_screen::{MatchSubs, screen_squad_lineup};
-use super::stats_screens::CUP_NAMES;
+use super::stats_screens::cup_names;
 use super::tables::{screen_fixtures, screen_league_table};
 use super::widgets::dialog_okay_auto;
 use super::{GAME_OPTION_A, GAME_OPTION_B, append_ordinal_suffix, office_show_cached_background};
@@ -1303,6 +1304,17 @@ const CHAMPIONSHIP: &[u8] = b"Deutsche Meisterschaft";
 const WINS_THE_F: &[u8] = b"gewinnt die";
 const WINS_THE_M: &[u8] = b"gewinnt den";
 
+/// The competition name and the "gewinnt die"/"gewinnt den" line of the title screen for
+/// competition `comp` (see [`screen_title_winner`]).
+fn title_winner_texts(comp: u8) -> (&'static [u8], &'static [u8]) {
+    match comp {
+        0 => (CHAMPIONSHIP, WINS_THE_F),
+        // MOD2026: the leagues that replace the European cups are feminine: "gewinnt die".
+        2..=4 if is_mod2026() => (cup_names()[usize::from(comp - 1)], WINS_THE_F),
+        _ => (cup_names()[usize::from(comp - 1) & 3], WINS_THE_M),
+    }
+}
+
 /// The title screen of manager `m`'s club winning competition `comp` (0 = the German
 /// championship, 1 = the DFB-Pokal, 2..4 = the European cups 1..3): the club name on the
 /// flag, "gewinnt die"/"gewinnt den", the trophy (`PIC\50..54.VGA`) and the competition name
@@ -1321,11 +1333,7 @@ pub fn screen_title_winner(
     let team = state.managers[usize::from(m) & 3].team;
     let name = state.clubs[usize::from(team)].name().to_vec();
     centered(host, &name, 0, 0x13f, 0x21, 0x1d, 0);
-    let (title, wins) = if comp == 0 {
-        (CHAMPIONSHIP, WINS_THE_F)
-    } else {
-        (CUP_NAMES[usize::from(comp - 1) & 3], WINS_THE_M)
-    };
+    let (title, wins) = title_winner_texts(comp);
     centered(host, title, 0, 0x13f, 0xdd, 0x1d, 0);
     host.set_font(1);
     centered(host, wins, 0, 0x13f, 0x3c, 0x1d, 0);
@@ -1346,6 +1354,56 @@ pub fn screen_title_winner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// MOD2026: the title screen of a mod game names the real European cups, which a club
+    /// wins as "die"; the Conference League fits the screen in font 3 (skipped without
+    /// `BMP_DATA` from there on).
+    #[test]
+    fn the_title_screen_names_the_real_european_cups() {
+        use crate::game::{FLOW, NEWBOLD, centered_fits, euro_gfx};
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        set_layout(&MOD2026);
+        let modded: Vec<_> = (0..5).map(title_winner_texts).collect();
+        set_layout(&ORIGINAL);
+        let original: Vec<_> = (0..5).map(title_winner_texts).collect();
+        let the = |name: &'static [u8], wins: &'static [u8]| (name, wins);
+        assert_eq!(
+            modded,
+            [
+                the(b"Deutsche Meisterschaft", b"gewinnt die"),
+                the(b"DfB-Pokal", b"gewinnt den"),
+                the(b"Champions League", b"gewinnt die"),
+                the(b"Europa League", b"gewinnt die"),
+                the(b"Conference League", b"gewinnt die"),
+            ]
+        );
+        assert_eq!(
+            original,
+            [
+                the(b"Deutsche Meisterschaft", b"gewinnt die"),
+                the(b"DfB-Pokal", b"gewinnt den"),
+                the(b"Pokal der Landesmeister", b"gewinnt den"),
+                the(b"Pokal der Pokalsieger", b"gewinnt den"),
+                the(b"UEFA-Pokal", b"gewinnt den"),
+            ]
+        );
+        let Some(g) = euro_gfx() else {
+            eprintln!("skipped: no BMP_DATA");
+            return;
+        };
+        for c in 2..4 {
+            assert!(g.text_width(NEWBOLD, modded[c].0) <= g.text_width(NEWBOLD, original[c].0));
+            assert!(g.text_width(FLOW, modded[c].1) <= g.text_width(FLOW, original[c].1));
+        }
+        assert!(centered_fits(
+            &g,
+            NEWBOLD,
+            modded[4].0,
+            (0, 0x13f),
+            0..=0x13f
+        ));
+        assert!(centered_fits(&g, FLOW, modded[4].1, (0, 0x13f), 0..=0x13f));
+    }
 
     #[test]
     fn period_end_shows_the_relegation_list_without_the_option() {

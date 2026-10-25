@@ -16,7 +16,7 @@ use bmp_game::rng::NumberFormat;
 use bmp_game::season::calendar_compute_date;
 use bmp_game::state::GameState;
 
-use super::stats_screens::{CUP_NAMES, DFB_STAGES};
+use super::stats_screens::{DFB_STAGES, cup_names};
 use super::tables::{
     cat, centered, club_name, icon, league_names, league_tier_of_team, line, num, panel,
     screen_opponent_info, text_at,
@@ -283,7 +283,7 @@ pub fn screen_cup_matches(
     if !late || minute == 0 {
         let round = usize::from(state.event_state[usize::from(c)]);
         head = DFB_STAGES.get(round + 1).copied().unwrap_or(b"").to_vec();
-        cat(&mut head, CUP_NAMES[usize::from(c & 3)]);
+        cat(&mut head, cup_names()[usize::from(c & 3)]);
     } else {
         head = RELEGATION.to_vec();
     }
@@ -441,7 +441,7 @@ impl DrawBoard {
         host.set_font(3);
         centered(
             host,
-            CUP_NAMES[usize::from(cup & 3)],
+            cup_names()[usize::from(cup & 3)],
             0,
             0x140,
             0x14,
@@ -722,6 +722,40 @@ impl CupDrawUi for DrawScreens<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// MOD2026: the Champions and the Europa League are no wider than the names they replace
+    /// in the fonts of the match list's title (1) and the draw's question (3), and the
+    /// Conference League fits the panel and the screen there (skipped without `BMP_DATA`).
+    #[test]
+    fn the_real_european_cup_names_fit_the_match_list_and_the_draw() {
+        use crate::game::{FLOW, NEWBOLD, centered_fits, euro_gfx};
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        let Some(g) = euro_gfx() else {
+            eprintln!("skipped: no BMP_DATA");
+            return;
+        };
+        set_layout(&MOD2026);
+        let modded = cup_names();
+        set_layout(&ORIGINAL);
+        let original = cup_names();
+        for font in [FLOW, NEWBOLD] {
+            for c in 1..3 {
+                assert!(g.text_width(font, modded[c]) <= g.text_width(font, original[c]));
+            }
+        }
+        // The match list's title, centred on 5..0x139 in its panel: every stage, the
+        // competition and the widest minute.
+        for stage in &DFB_STAGES[2..7] {
+            let mut head = stage.to_vec();
+            head.extend_from_slice(modded[3]);
+            head.extend_from_slice(b"    120.");
+            head.extend_from_slice(MINUTE);
+            let fits = centered_fits(&g, FLOW, &head, (5, 0x139), 6..=0x138);
+            assert!(fits, "{:?}", String::from_utf8_lossy(&head));
+        }
+        // The draw's question, centred on the screen.
+        assert!(centered_fits(&g, NEWBOLD, modded[3], (0, 0x140), 0..=0x13f));
+    }
 
     #[test]
     fn draw_label_positions() {

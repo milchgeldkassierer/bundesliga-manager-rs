@@ -95,6 +95,31 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   narrower than the original in all three fonts, so no short form is used. The newspaper, the
   offers and the start menu name no tier; the settings screen already reads `3.Liga`. The
   office's button captions are pictures, which the generator changes (see "Office captions").
+- **European cups** (`crates/bmp/src/game/stats_screens.rs` `cup_names`, `trophies`,
+  `history_cup_texts`, `crates/bmp/src/game/live_match.rs` `title_winner_texts`,
+  `crates/bmp-game/src/finance.rs` `season_goal_messages`, `crates/bmp/src/teamed/uefa.rs`,
+  PRD R1c): a mod game names the Pokal der Landesmeister `Champions League`, the Pokal der
+  Pokalsieger `Europa League` and the UEFA-Pokal `Conference League` (`UI[128..130]`), in
+  upper case where the original upper-cases. Format, qualification and draws are unchanged.
+  The sites: the match list's title and the draw's question (`cup_screens.rs`), the title
+  screen of a won cup, which reads "gewinnt die" for the three leagues instead of "gewinnt
+  den", the manager history, the eternal table's trophy rows (`CHAMPIONS LEAGUE`, `EUROPA
+  LEAGUE`, `CONFERENCE LEAGUE` for `LANDESMEISTER-POKALE` etc.), the Bundesliga's season goal
+  messages for the UEFA cup places, the team editor's refusal of too weak foreign clubs, and
+  the status line of a player with status 3 in the player info and the squad list, which shows
+  `UI[130]` (a quirk of the original: "STATUS: UEFA-Pokal", now "STATUS: Conference League").
+  The Champions and the Europa League are narrower than the original names in every font; the
+  history, which shortens two original names to `POKAL DER LANDESM.` and `POKAL DER POKALS.`,
+  shows them whole because they are still narrower. The full `Conference League` fits the
+  panel or screen at every site but these (owner decision of 2026-10-25, #190):
+  - **Short form**: the team editor's refusal reads `CONFERENCE L. SONST ZU LEICHT.`; the
+    full name would not fit its 118 px message box.
+  - **Reworded**: "die letzte Chance verspielt, / die CONFERENCE L. zu erreichen." would not
+    fit the message box of the season goals even in the short form, so the mod's message
+    reads "die letzte Chance auf die / CONFERENCE LEAGUE verspielt."; the secured place is
+    "den CONFERENCE-LEAGUE-PLATZ".
+  The newspaper and the offers name no European cup by name ("EUROPAPOKAL", "EUROPA-POKAL"
+  stay).
 
 ## Three-point rule
 

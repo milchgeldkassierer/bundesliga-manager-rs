@@ -5,7 +5,7 @@
 use bmp_game::finance::{
     CreditField, credit_sum, finance_monthly_expenses, finance_monthly_income,
 };
-use bmp_game::league_layout::layout;
+use bmp_game::league_layout::{is_mod2026, layout};
 use bmp_game::newgame::first_season_year;
 use bmp_game::rng::NumberFormat;
 use bmp_game::state::{GameState, Manager};
@@ -91,6 +91,24 @@ const TROPHIES: [&[u8]; 5] = [
     b"POKALSIEGER-POKALE",
     b"UEFA-POKALE",
 ];
+/// MOD2026: the trophy texts of a mod game, with the European cups' real names (PRD R1c).
+const MOD2026_TROPHIES: [&[u8]; 5] = [
+    b"MEISTERSCHAFTEN",
+    b"DFB-POKALE",
+    b"CHAMPIONS LEAGUE",
+    b"EUROPA LEAGUE",
+    b"CONFERENCE LEAGUE",
+];
+
+/// The trophy texts of the eternal table (`LBL[1..5]`) of the running game.
+fn trophies() -> [&'static [u8]; 5] {
+    // MOD2026: a mod game names the European cups' trophies by the cups' real names.
+    if is_mod2026() {
+        MOD2026_TROPHIES
+    } else {
+        TROPHIES
+    }
+}
 const CAREER_ROWS: [&[u8]; 5] = [b"PUN.", b"TORE", b"SIEGE", b"NIED.", b"UNEN."];
 const ETERNAL_TITLE: &[u8] = b"Ewige Tabelle";
 const CAREER_TITLE: &[u8] = b"Ewige Bilanz";
@@ -121,12 +139,30 @@ pub(crate) const DFB_STAGES: [&[u8]; 8] = [
     b"DfB-Pokal",
 ];
 /// `UI[127..130]` (`DS:24dc`): competition names by `(stage >> 3) & 3`.
-pub(crate) const CUP_NAMES: [&[u8]; 4] = [
+const CUP_NAMES: [&[u8]; 4] = [
     b"DfB-Pokal",
     b"Pokal der Landesmeister",
     b"Pokal der Pokalsieger",
     b"UEFA-Pokal",
 ];
+/// MOD2026: the competition names of a mod game, the European cups by their real names
+/// (PRD R1c).
+const MOD2026_CUP_NAMES: [&[u8]; 4] = [
+    b"DfB-Pokal",
+    b"Champions League",
+    b"Europa League",
+    b"Conference League",
+];
+
+/// The competition names (`UI[127..130]`) of the running game.
+pub(crate) fn cup_names() -> [&'static [u8]; 4] {
+    // MOD2026: a mod game names the European cups by their real names.
+    if is_mod2026() {
+        MOD2026_CUP_NAMES
+    } else {
+        CUP_NAMES
+    }
+}
 
 /// `UI[120..131)`: the stage texts followed by the competition names, as
 /// one run of the string table. `UI[127]` is both the last stage text and
@@ -135,7 +171,7 @@ pub(crate) const CUP_NAMES: [&[u8]; 4] = [
 fn ui_stage_text(index: usize) -> &'static [u8] {
     match index.checked_sub(120) {
         Some(i) if i < DFB_STAGES.len() => DFB_STAGES[i],
-        Some(i) => CUP_NAMES
+        Some(i) => cup_names()
             .get(i + 1 - DFB_STAGES.len())
             .copied()
             .unwrap_or(b""),
@@ -651,7 +687,7 @@ pub fn screen_eternal_table(
     host.set_font(2);
     let m = current(state);
     let mgr = state.managers[m].clone();
-    for (si, (&trophy, &row)) in TROPHIES.iter().zip(&CAREER_ROWS).enumerate() {
+    for (si, (&trophy, &row)) in trophies().iter().zip(&CAREER_ROWS).enumerate() {
         let k = si as i16;
         centered(host, trophy, 0xb0, 0x11e, 0x17 * k + 0x1e, 1, 0);
         // M(m)[0x39 + si]: titles won.
@@ -753,8 +789,9 @@ pub fn history_cup_texts(league: u8, dfb: u8, euro: u8) -> ((Vec<u8>, u8), (Vec<
         scratch = NOT_TAKING_PART.to_vec();
     } else {
         let comp = usize::from((euro & 0x18) >> 3);
-        let mut name = CUP_NAMES[comp].to_vec();
-        if (comp == 1 || comp == 2) && GAME_OPTION_A == GAME_OPTION_B {
+        let mut name = cup_names()[comp].to_vec();
+        // MOD2026: the real names are narrower than the original's shortened ones and stay whole.
+        if (comp == 1 || comp == 2) && GAME_OPTION_A == GAME_OPTION_B && !is_mod2026() {
             name.truncate(18 - comp);
             name.push(b'.');
         }
@@ -1123,8 +1160,120 @@ mod tests {
         let (_, (modded, _)) = history_cup_texts(2, 0x80, 0x18);
         set_layout(&ORIGINAL);
         let (_, (original, _)) = history_cup_texts(2, 0x80, 0x18);
-        assert_eq!(modded, b"3. LIGAUEFA-POKAL");
+        assert_eq!(modded, b"3. LIGACONFERENCE LEAGUE");
         assert_eq!(original, b"AM.-OBERLIGAUEFA-POKAL");
+    }
+
+    /// MOD2026: a mod game calls the European cups by their real names, any other game by the
+    /// original's.
+    #[test]
+    fn a_mod_game_names_the_real_european_cups() {
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        let names = || {
+            let stages = [ui_stage_text(128), ui_stage_text(129), ui_stage_text(130)];
+            (trophies(), cup_names(), stages)
+        };
+        set_layout(&MOD2026);
+        let modded = names();
+        set_layout(&ORIGINAL);
+        let original = names();
+        let real: [&[u8]; 3] = [b"Champions League", b"Europa League", b"Conference League"];
+        assert_eq!(
+            modded.0[2..],
+            [
+                b"CHAMPIONS LEAGUE".as_slice(),
+                b"EUROPA LEAGUE",
+                b"CONFERENCE LEAGUE"
+            ]
+        );
+        assert_eq!(
+            modded.1,
+            [b"DfB-Pokal".as_slice(), real[0], real[1], real[2]]
+        );
+        assert_eq!(modded.2, real);
+        let original_names: [&[u8]; 3] = [
+            b"Pokal der Landesmeister",
+            b"Pokal der Pokalsieger",
+            b"UEFA-Pokal",
+        ];
+        assert_eq!(
+            original.0,
+            [
+                b"MEISTERSCHAFTEN".as_slice(),
+                b"DFB-POKALE",
+                b"LANDESMEISTER-POKALE",
+                b"POKALSIEGER-POKALE",
+                b"UEFA-POKALE"
+            ]
+        );
+        assert_eq!(modded.0[..2], original.0[..2]);
+        assert_eq!(original.1[1..], original_names);
+        assert_eq!(original.2, original_names);
+    }
+
+    /// MOD2026: the history names the real cups whole; the original shortens two of its names.
+    #[test]
+    fn a_mod_game_names_the_real_european_cups_in_the_history() {
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        set_layout(&MOD2026);
+        let euro = |stage| history_cup_texts(0, 3, stage).1.0;
+        let modded = [euro(0x8a), euro(0x13), euro(0x1c), euro(0x0f)];
+        set_layout(&ORIGINAL);
+        assert_eq!(
+            modded,
+            [
+                b"SIEGER CHAMPIONS LEAGUE".as_slice(),
+                b"VIERTELFINALE EUROPA LEAGUE",
+                b"HALBFINALE CONFERENCE LEAGUE",
+                b"CHAMPIONS LEAGUECHAMPIONS LEAGUE"
+            ]
+        );
+    }
+
+    /// MOD2026: in the eternal table and the history (font 2) the Champions and the Europa
+    /// League are no wider than the texts they replace, and the Conference League fits the
+    /// panel it is drawn in (skipped without `BMP_DATA`).
+    #[test]
+    fn the_real_european_cup_names_fit_the_eternal_table_and_the_history() {
+        use crate::game::{MICRO4, centered_fits, euro_gfx};
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        let Some(g) = euro_gfx() else {
+            eprintln!("skipped: no BMP_DATA");
+            return;
+        };
+        let width = |text: &[u8]| g.text_width(MICRO4, text);
+        for i in 2..4 {
+            assert!(width(MOD2026_TROPHIES[i]) <= width(TROPHIES[i]));
+        }
+        // Centred on 0xb0..0x11e in the panel 0x91..0x139.
+        assert!(centered_fits(
+            &g,
+            MICRO4,
+            MOD2026_TROPHIES[4],
+            (0xb0, 0x11e),
+            0x92..=0x138
+        ));
+        // Every European cup text of a history line: the win and the stages 1..5.
+        let texts = |comp: u8| -> Vec<Vec<u8>> {
+            [0x80, 1, 2, 3, 4, 5]
+                .iter()
+                .map(|&stage| history_cup_texts(0, 3, comp << 3 | stage).1.0)
+                .collect()
+        };
+        set_layout(&MOD2026);
+        let modded: Vec<_> = (1..4).map(texts).collect();
+        set_layout(&ORIGINAL);
+        let original: Vec<_> = (1..4).map(texts).collect();
+        for comp in 0..2 {
+            for (m, o) in modded[comp].iter().zip(&original[comp]) {
+                assert!(width(m) <= width(o), "{:?}", String::from_utf8_lossy(m));
+            }
+        }
+        // Centred on 0xb4..0x139 in the list panel 5..0x139.
+        for text in &modded[2] {
+            let fits = centered_fits(&g, MICRO4, text, (0xb4, 0x139), 6..=0x138);
+            assert!(fits, "{:?}", String::from_utf8_lossy(text));
+        }
     }
 
     #[test]

@@ -525,6 +525,18 @@ fn round_position(m: &Manager, r: u8) -> u8 {
 /// The four lines of a `dialog_okay` box.
 pub type DialogLines = [Vec<u8>; 4];
 
+/// The third line of the messages that a season goal is out of reach.
+const CHANCE_LOST: &[u8] = b"die letzte Chance verspielt,";
+/// MOD2026: the last two lines of the message that the Bundesliga's Conference League places
+/// are out of reach. "die CONFERENCE L. zu erreichen." after [`CHANCE_LOST`] would be wider
+/// than the message box, so the sentence puts the cup into the fourth line.
+pub const MOD2026_CONFERENCE_LOST: [&[u8]; 2] = [
+    b"die letzte Chance auf die",
+    b"CONFERENCE LEAGUE verspielt.",
+];
+/// MOD2026: the third line of the message that a Conference League place is secured.
+pub const MOD2026_CONFERENCE_SECURED: &[u8] = b"den CONFERENCE-LEAGUE-PLATZ";
+
 /// The messages about the season goals the office shows once per turn of the current
 /// manager: the relegation play-off ahead, the last match day before the winter break (2
 /// December), and per goal (title, promotion or UEFA cup place, staying up) once a season
@@ -536,6 +548,7 @@ pub fn season_goal_messages(state: &GameState, rt: &mut Runtime) -> Vec<DialogLi
     // DS:224e is 1 and DS:2252 == DS:224e in the shipped data: `flag4` is false, no swap.
     let flag4 = 0;
     let line = |t: &[u8]| t.to_vec();
+    let mod2026 = rt.mod2026;
     let m = current_index(state);
     let mgr = &state.managers[m];
     let league = usize::from(mgr.league).min(2);
@@ -594,19 +607,16 @@ pub fn season_goal_messages(state: &GameState, rt: &mut Runtime) -> Vec<DialogLi
         let flags = &mut rt.goal_message_flags[m];
         if pts(rank(rk_k)) > own_left + mine && *flags & (1 << k) == 0 {
             *flags |= 1 << k;
-            let goal: &[u8] = match (k, league) {
-                (0, _) => b"MEISTER zu werden.",
-                (1, 0) => b"den UEFA-CUP zu erreichen.",
-                (1, _) => b"AUFZUSTEIGEN.",
-                _ => b"DIE KLASSE ZU ERHALTEN.",
+            let [chance, goal]: [&[u8]; 2] = match (k, league) {
+                (0, _) => [CHANCE_LOST, b"MEISTER zu werden."],
+                // MOD2026: the UEFA cup places are the Conference League's.
+                (1, 0) if mod2026 => MOD2026_CONFERENCE_LOST,
+                (1, 0) => [CHANCE_LOST, b"den UEFA-CUP zu erreichen."],
+                (1, _) => [CHANCE_LOST, b"AUFZUSTEIGEN."],
+                _ => [CHANCE_LOST, b"DIE KLASSE ZU ERHALTEN."],
             };
             if league == 0 || k != 0 {
-                out.push([
-                    mgr.name().to_vec(),
-                    has.clone(),
-                    line(b"die letzte Chance verspielt,"),
-                    line(goal),
-                ]);
+                out.push([mgr.name().to_vec(), has.clone(), line(chance), line(goal)]);
             }
         }
         let best = ((rk_k + 1)..n)
@@ -617,6 +627,8 @@ pub fn season_goal_messages(state: &GameState, rt: &mut Runtime) -> Vec<DialogLi
             *flags |= 1 << (k + 3);
             let goal: &[u8] = match (k, league) {
                 (0, _) => b"die MEISTERSCHAFT",
+                // MOD2026: the UEFA cup places are the Conference League's.
+                (1, 0) if mod2026 => MOD2026_CONFERENCE_SECURED,
                 (1, 0) => b"den UEFA-CUP-PLATZ",
                 (1, _) => b"den AUFSTIEG",
                 _ => b"den KLASSENERHALT",
@@ -746,6 +758,53 @@ mod tests {
         let goals: Vec<&[u8]> = msgs.iter().map(|m| &m[2][..]).collect();
         assert_eq!(goals, [&b"den AUFSTIEG"[..], b"den KLASSENERHALT"]);
         assert_eq!(rt.goal_message_flags[0], 0b111000);
+    }
+
+    /// The goal messages of manager 0 coaching club 0 at rank `own_rank` of the Bundesliga with
+    /// `own` points, the other clubs with `others`, all after `played` rounds.
+    fn bundesliga_goal_messages(
+        own_rank: usize,
+        own: u8,
+        others: u8,
+        played: u8,
+        mod2026: bool,
+    ) -> Vec<DialogLines> {
+        let mut s = goal_state(0);
+        s.managers[0].league = 0;
+        s.managers[0].team = 0;
+        s.clubs[0].name[..5].copy_from_slice(b"KICKS");
+        let mut ids: Vec<u8> = (1..18).collect();
+        ids.insert(own_rank, 0);
+        s.league_teams[0][..18].copy_from_slice(&ids);
+        for t in 0..18 {
+            s.team_tables[t].played = [played, 0, 0, 0];
+            s.team_tables[t].points = [others, 0, 0, 0];
+        }
+        s.team_tables[0].points = [own, 0, 0, 0];
+        let mut rt = Runtime {
+            mod2026,
+            ..Runtime::default()
+        };
+        season_goal_messages(&s, &mut rt)
+    }
+
+    /// MOD2026: the UEFA cup goal names the Conference League in a mod game.
+    #[test]
+    fn the_uefa_cup_goal_names_the_conference_league_in_the_mod() {
+        // Out of reach: every other club has more points than the last can still get.
+        let lost = |mod2026| bundesliga_goal_messages(17, 0, 100, 0, mod2026)[1][2..].to_vec();
+        assert_eq!(
+            lost(false),
+            [
+                &b"die letzte Chance verspielt,"[..],
+                b"den UEFA-CUP zu erreichen."
+            ]
+        );
+        assert_eq!(lost(true), MOD2026_CONFERENCE_LOST);
+        // Secured: the season is over and the leader has the most points.
+        let secured = |mod2026| bundesliga_goal_messages(0, 100, 0, 34, mod2026)[1][2].clone();
+        assert_eq!(secured(false), b"den UEFA-CUP-PLATZ");
+        assert_eq!(secured(true), MOD2026_CONFERENCE_SECURED);
     }
 
     fn state_on(day: i32, month: i32, year: i32) -> GameState {
