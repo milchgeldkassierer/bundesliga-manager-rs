@@ -845,7 +845,9 @@ pub struct GameState {
     pub ds_05d6: [u8; 4],
     /// #58 DS:061c (no code reference found).
     pub ds_061c: [u8; 4],
-    /// #59 DS:05b8 (no code reference found).
+    /// #59 DS:05b8 (no code reference found). MOD2026: with the mod layout, the 2. Bundesliga /
+    /// 3. Liga play-off (`cups::matchday_second_relegation_match`): first-leg goals, result,
+    /// return leg next.
     pub ds_05b8: [u8; 4],
     /// #60 FAR:3060 relegation play-off result `cup_tie_winner(1, 0)`: 0 = the Bundesliga club
     /// won, 1 = the 2. Bundesliga club won, 0x1e = undecided (`matchday_relegation_match`

@@ -38,6 +38,11 @@ pub struct LeagueLayout {
     pub week_competitions: [u8; 95],
 }
 
+/// The table index of a tier's play-off place: the 16th.
+pub const PLAYOFF_UPPER_POSITION: usize = 15;
+/// The table index of the club that plays the tier above's play-off place: the 3rd.
+pub const PLAYOFF_LOWER_POSITION: usize = 2;
+
 impl LeagueLayout {
     /// The club ids of league tier `tier` (the original also keeps them as a first/last table
     /// at DS:2272).
@@ -63,6 +68,15 @@ impl LeagueLayout {
             0 => 0,
             _ => self.relegation_places(tier - 1),
         }
+    }
+
+    /// MOD2026: whether the club at table index `position` of league tier `tier` plays a
+    /// relegation play-off (the original has only the Bundesliga's).
+    pub fn plays_relegation_playoff(&self, tier: usize, position: usize) -> bool {
+        (tier < 3 && self.relegation_playoff[tier] && position == PLAYOFF_UPPER_POSITION)
+            || ((1..3).contains(&tier)
+                && self.relegation_playoff[tier - 1]
+                && position == PLAYOFF_LOWER_POSITION)
     }
 
     /// DS:2278: the number of clubs that play in a league tier.
@@ -99,10 +113,8 @@ pub const ORIGINAL: LeagueLayout = LeagueLayout {
 
 /// MOD2026: the club slots table of `docs/mod2026/PRD.md` R1: 18 / 18 / 20 clubs with the ids
 /// 0..=17, 18..=35 and 36..=55, the pool 56..=63, 34 / 34 / 38 rounds, 2 / 2 / 4 clubs relegated
-/// directly and a play-off place in the Bundesliga and the 2. Bundesliga.
-///
-/// The play-off of the 2. Bundesliga is not played yet (only the Bundesliga play-off is ported),
-/// so its play-off place goes down directly, and three clubs of the 3. Liga go up.
+/// directly and a play-off place in the Bundesliga and the 2. Bundesliga: each tier's 16th plays
+/// the 3rd of the tier below.
 ///
 /// A win gives 3 points (PRD R1b).
 pub const MOD2026: LeagueLayout = LeagueLayout {
@@ -210,6 +222,18 @@ mod tests {
         assert_eq!(l.league_club_count()..GERMAN_CLUBS as u8, 56..64);
         assert_eq!(l.points_per_win, 3);
         assert!(l.single_points_column());
+    }
+
+    #[test]
+    fn playoff_positions_follow_the_layout() {
+        let playing = |l: &LeagueLayout| -> Vec<(usize, usize)> {
+            (0..3)
+                .flat_map(|t| (0..20).map(move |p| (t, p)))
+                .filter(|&(t, p)| l.plays_relegation_playoff(t, p))
+                .collect()
+        };
+        assert_eq!(playing(&ORIGINAL), [(0, 15), (1, 2)]);
+        assert_eq!(playing(&MOD2026), [(0, 15), (1, 2), (1, 15), (2, 2)]);
     }
 
     #[test]

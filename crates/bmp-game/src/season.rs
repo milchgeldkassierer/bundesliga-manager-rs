@@ -1966,6 +1966,11 @@ fn play_slot_matches<U: SeasonUi + ?Sized>(
     if wf & 0x70 == 0x10 {
         ui.title(state, Title::Relegation)?;
         cups::matchday_relegation_match(state, rt, rng, &mut SeasonHooks(ui));
+        // MOD2026: the 2. Bundesliga's play-off right after the Bundesliga's.
+        if layout().relegation_playoff[1] {
+            ui.title(state, Title::Relegation)?;
+            cups::matchday_second_relegation_match(state, rt, rng, &mut SeasonHooks(ui));
+        }
     } else if wf & 0x70 != 0 {
         ui.title(state, Title::EuropeanCup)?;
         matchday_play(state, rt, rng, &mut SeasonHooks(ui), 0, 0x0e);
@@ -4598,14 +4603,70 @@ mod tests {
         LeagueDay(u8),
         CupDay(u8),
         RelegationDay,
+        SecondRelegationDay,
         RescheduledDay,
+    }
+
+    /// The slot [`assert_slot_runs`] plays.
+    const WEEK: u8 = 0x2c;
+
+    /// Plays the slot `wf` and asserts it shows `titles` and leaves the state, runtime and
+    /// generator as `calls` called directly do.
+    fn assert_slot_runs(wf: u8, titles: &[Title], calls: &[SlotCall]) {
+        use SlotCall::*;
+        let mut s = league_season(10);
+        s.event_state[..2].copy_from_slice(&[3, 3]);
+        // A winter slot, where the weather may postpone matches.
+        s.season_week = WEEK;
+        s.lineup_state = [[2, 4], [3, 1], [0, 0], [0, 0]];
+        if wf & RESCHEDULED_GAMES_DAY != 0 {
+            s.rescheduled_matches[2] = [0, WEEK, 1, 0, 3];
+        }
+        let mut rt = Runtime {
+            manager_plays_now: [1; MANAGER_SLOTS],
+            lineup_change_count: [2; MANAGER_SLOTS],
+            ..Runtime::default()
+        };
+        let mut rng = Rng::new(29);
+        let mut ui = Headless::new(&s);
+        let (mut want, mut want_rt, mut want_rng) = (s.clone(), rt.clone(), rng);
+        let mut want_ui = Headless::new(&s);
+        play_slot_matches(&mut s, &mut rt, &mut rng, &mut ui, wf).unwrap();
+        assert_eq!(ui.titles, titles, "wf {wf:#x}");
+
+        for m in 0..2u8 {
+            want.current_manager = m as i8;
+            squad_recalc_team_strength(&mut want, &want_rt, &mut want_rng, m, true);
+        }
+        want.lineup_state[0] = [1, 2];
+        want.lineup_state[1] = [1, 3];
+        want_rt.manager_plays_now = [0, 0, 1, 1];
+        want_rt.lineup_change_count = [0, 0, 2, 2];
+        want.current_manager = MATCH_DAY_MANAGER;
+        let (st, r, g) = (&mut want, &mut want_rt, &mut want_rng);
+        for &call in calls {
+            let hooks = &mut SeasonHooks(&mut want_ui);
+            match call {
+                Postpone(tier) => league_postpone_matches_weather(st, r, g, WEEK, tier),
+                LeagueDay(mask) => {
+                    matchday_play(st, r, g, hooks, mask, 0);
+                    st.current_manager = MATCH_DAY_MANAGER;
+                }
+                CupDay(cup) => matchday_play(st, r, g, hooks, 0, cup),
+                RelegationDay => cups::matchday_relegation_match(st, r, g, hooks),
+                SecondRelegationDay => cups::matchday_second_relegation_match(st, r, g, hooks),
+                RescheduledDay => matchday_play_rescheduled(st, r, g, hooks, WEEK),
+            }
+        }
+        assert!(s == want, "wf {wf:#x}");
+        assert!(rt == want_rt, "wf {wf:#x}");
+        assert_eq!(rng, want_rng, "wf {wf:#x}");
     }
 
     #[test]
     fn slot_matches_run_by_the_competition_bits() {
         use SlotCall::*;
         use Title::*;
-        const WEEK: u8 = 0x2c;
         let cases: [(u8, &[Title], &[SlotCall]); 10] = [
             (0x00, &[], &[]),
             (
@@ -4645,52 +4706,7 @@ mod tests {
             ),
         ];
         for (wf, titles, calls) in cases {
-            let mut s = league_season(10);
-            s.event_state[..2].copy_from_slice(&[3, 3]);
-            // A winter slot, where the weather may postpone matches.
-            s.season_week = WEEK;
-            s.lineup_state = [[2, 4], [3, 1], [0, 0], [0, 0]];
-            if wf & RESCHEDULED_GAMES_DAY != 0 {
-                s.rescheduled_matches[2] = [0, WEEK, 1, 0, 3];
-            }
-            let mut rt = Runtime {
-                manager_plays_now: [1; MANAGER_SLOTS],
-                lineup_change_count: [2; MANAGER_SLOTS],
-                ..Runtime::default()
-            };
-            let mut rng = Rng::new(29);
-            let mut ui = Headless::new(&s);
-            let (mut want, mut want_rt, mut want_rng) = (s.clone(), rt.clone(), rng);
-            let mut want_ui = Headless::new(&s);
-            play_slot_matches(&mut s, &mut rt, &mut rng, &mut ui, wf).unwrap();
-            assert_eq!(ui.titles, titles, "wf {wf:#x}");
-
-            for m in 0..2u8 {
-                want.current_manager = m as i8;
-                squad_recalc_team_strength(&mut want, &want_rt, &mut want_rng, m, true);
-            }
-            want.lineup_state[0] = [1, 2];
-            want.lineup_state[1] = [1, 3];
-            want_rt.manager_plays_now = [0, 0, 1, 1];
-            want_rt.lineup_change_count = [0, 0, 2, 2];
-            want.current_manager = MATCH_DAY_MANAGER;
-            let (st, r, g) = (&mut want, &mut want_rt, &mut want_rng);
-            for &call in calls {
-                let hooks = &mut SeasonHooks(&mut want_ui);
-                match call {
-                    Postpone(tier) => league_postpone_matches_weather(st, r, g, WEEK, tier),
-                    LeagueDay(mask) => {
-                        matchday_play(st, r, g, hooks, mask, 0);
-                        st.current_manager = MATCH_DAY_MANAGER;
-                    }
-                    CupDay(cup) => matchday_play(st, r, g, hooks, 0, cup),
-                    RelegationDay => cups::matchday_relegation_match(st, r, g, hooks),
-                    RescheduledDay => matchday_play_rescheduled(st, r, g, hooks, WEEK),
-                }
-            }
-            assert!(s == want, "wf {wf:#x}");
-            assert!(rt == want_rt, "wf {wf:#x}");
-            assert_eq!(rng, want_rng, "wf {wf:#x}");
+            assert_slot_runs(wf, titles, calls);
         }
 
         // The rescheduled bit without a game rescheduled to this slot plays nothing.
@@ -4703,6 +4719,20 @@ mod tests {
         play_slot_matches(&mut s, &mut rt, &mut rng, &mut ui, RESCHEDULED_GAMES_DAY).unwrap();
         assert!(ui.titles.is_empty());
         assert_eq!(s.rescheduled_matches, want.rescheduled_matches);
+    }
+
+    #[test]
+    fn mod_relegation_slot_plays_both_playoffs() {
+        use crate::league_layout::{MOD2026, with_layout};
+        use SlotCall::*;
+        use Title::*;
+        with_layout(&MOD2026, || {
+            assert_slot_runs(
+                0x10,
+                &[Relegation, Relegation],
+                &[RelegationDay, SecondRelegationDay],
+            );
+        });
     }
 
     #[test]
@@ -5299,6 +5329,26 @@ mod tests {
                     "club {c}"
                 );
             }
+        });
+    }
+
+    #[test]
+    fn mod_season_plays_both_playoffs() {
+        use crate::league_layout::{MOD2026, with_layout};
+        with_layout(&MOD2026, || {
+            let mut ui = Headless::new(&GameState::zeroed());
+            ui.stop_at_season_end = true;
+            let (s, end) = play_mod_game(&mut ui);
+            assert_eq!(end, Err(Done));
+            let legs = ui
+                .titles
+                .iter()
+                .filter(|&&t| t == Title::Relegation)
+                .count();
+            assert_eq!(legs, 4, "two legs of two play-offs");
+            assert!([0, 1].contains(&s.relegation_result));
+            assert!([0, 1].contains(&s.ds_05b8[cups::SECOND_PLAYOFF_RESULT]));
+            assert_eq!(s.ds_05b8[cups::SECOND_PLAYOFF_RETURN_LEG], 0);
         });
     }
 

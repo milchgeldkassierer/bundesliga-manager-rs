@@ -9,7 +9,8 @@
 //!   decision part of the draw screen, [`cup_draw_screen_open`].
 //! * Match-day processing (§4): [`cup_check_ties_extra_time`], [`cup_round_complete`],
 //!   [`cup_draw_next_round`].
-//! * Relegation play-off (§8): [`matchday_relegation_match`].
+//! * Relegation play-off (§8): [`matchday_relegation_match`]; with the Mod 2026 layout also
+//!   [`matchday_second_relegation_match`].
 //! * Season rollover (§9.1, §9.2): [`season_promotion_relegation`], [`league_shuffle_teams`];
 //!   the fixtures (§9.3) are [`crate::league::fixtures_build_round_pairings`].
 //!
@@ -41,7 +42,7 @@
 //! qualifiers, the goal clearing and the draws `(c, false)` for c = 1..=3, and later
 //! `(0, false)` and `(c, true)` for c = 1..=3 (§9.4).
 
-use crate::league_layout::layout;
+use crate::league_layout::{PLAYOFF_LOWER_POSITION, PLAYOFF_UPPER_POSITION, layout};
 use crate::matchsim::{CUP_ROW_CELLS, MatchHooks, cup_row, match_penalty_shootout, matchday_play};
 use crate::rng::Rng;
 use crate::runtime::Runtime;
@@ -711,6 +712,73 @@ pub fn matchday_relegation_match<H: MatchHooks + ?Sized>(
     rng: &mut Rng,
     hooks: &mut H,
 ) {
+    relegation_match(state, rt, rng, hooks, 0);
+}
+
+/// MOD2026: index of the second play-off's first-leg goals in [`GameState::ds_05b8`], which
+/// holds the second play-off with the mod layout (the original never reads the block).
+pub const SECOND_PLAYOFF_FIRST_LEG: usize = 0;
+/// MOD2026: index of the second play-off's result in [`GameState::ds_05b8`] (as
+/// [`GameState::relegation_result`]: 0 = the 2. Bundesliga club stays up).
+pub const SECOND_PLAYOFF_RESULT: usize = 2;
+/// MOD2026: index of the second play-off's "return leg next" flag in [`GameState::ds_05b8`]
+/// (1 = the return leg; the program-start value 7 means the first leg).
+pub const SECOND_PLAYOFF_RETURN_LEG: usize = 3;
+
+/// MOD2026: plays one leg of the play-off between the 16th of the 2. Bundesliga and the 3rd of
+/// the 3. Liga with the logic of [`matchday_relegation_match`]. It has no original
+/// counterpart: it lends that play-off's leg flag, first-leg goals and result to the second
+/// play-off's cells in [`GameState::ds_05b8`] for the leg, and takes them back afterwards.
+pub fn matchday_second_relegation_match<H: MatchHooks + ?Sized>(
+    state: &mut GameState,
+    rt: &mut Runtime,
+    rng: &mut Rng,
+    hooks: &mut H,
+) {
+    let first = (
+        state.euro_second_leg_pending[0],
+        state.relegation_first_leg,
+        state.relegation_result,
+    );
+    let cells = state.ds_05b8;
+    state.euro_second_leg_pending[0] = u8::from(cells[SECOND_PLAYOFF_RETURN_LEG] == 1);
+    state
+        .relegation_first_leg
+        .copy_from_slice(&cells[SECOND_PLAYOFF_FIRST_LEG..SECOND_PLAYOFF_FIRST_LEG + 2]);
+    state.relegation_result = cells[SECOND_PLAYOFF_RESULT];
+
+    relegation_match(state, rt, rng, hooks, 1);
+
+    state.ds_05b8[SECOND_PLAYOFF_FIRST_LEG..SECOND_PLAYOFF_FIRST_LEG + 2]
+        .copy_from_slice(&state.relegation_first_leg);
+    state.ds_05b8[SECOND_PLAYOFF_RESULT] = state.relegation_result;
+    state.ds_05b8[SECOND_PLAYOFF_RETURN_LEG] = state.euro_second_leg_pending[0];
+    (
+        state.euro_second_leg_pending[0],
+        state.relegation_first_leg,
+        state.relegation_result,
+    ) = first;
+}
+
+/// The play-off pairing of league tier `tier`'s play-off place: its 16th and the 3rd of the
+/// tier below.
+pub fn relegation_playoff_pairing(state: &GameState, tier: usize) -> [u8; 2] {
+    [
+        state.league_teams[tier][PLAYOFF_UPPER_POSITION],
+        state.league_teams[tier + 1][PLAYOFF_LOWER_POSITION],
+    ]
+}
+
+/// One leg of the play-off of league tier `tier` (the body of [`matchday_relegation_match`]).
+///
+/// Origin: BMMAIN.EXE 1310:02bf (matchday_relegation_match)
+fn relegation_match<H: MatchHooks + ?Sized>(
+    state: &mut GameState,
+    rt: &mut Runtime,
+    rng: &mut Rng,
+    hooks: &mut H,
+    tier: usize,
+) {
     state.event_state[1] = 5;
     rt.relegation_mode = 1;
     // UI: the title "Relegationsspiel" and, without automatic play, delay_ticks(50).
@@ -724,11 +792,12 @@ pub fn matchday_relegation_match<H: MatchHooks + ?Sized>(
     } else {
         [0; 2]
     });
-    let (bundesliga, second_tier) = (state.league_teams[0][15], state.league_teams[1][2]);
+    // MOD2026: the pairing of `tier`; tier 0 is the original's.
+    let [upper, lower] = relegation_playoff_pairing(state, tier);
     let pairing = if return_leg {
-        [bundesliga, second_tier]
+        [upper, lower]
     } else {
-        [second_tier, bundesliga]
+        [lower, upper]
     };
     slots_mut(state, 1)[..2].copy_from_slice(&pairing);
 
@@ -777,11 +846,12 @@ pub fn league_shuffle_teams(state: &mut GameState, rt: &Runtime, rng: &mut Rng) 
 /// top clubs of the tier below; the amateur tier swaps with the reserve clubs after the `n`
 /// league clubs (58 in the original): `n + 3` or `n + 4` (`random_range(n + 3, n + 4)`, the
 /// season's only random number), `n + 2`, `n + 1` and `n`. A Bundesliga
-/// club that won the play-off ([`GameState::relegation_result`] 0) keeps its slot. The tier
-/// relegates its places plus the licence withdrawals (in the Bundesliga plus one for a
-/// play-off it won) that exceed those places. A human manager going down gets status 2
-/// (status 8 and 500 000 DM when dropping out of the amateur tier, whose two swaps cancel),
-/// one coming up status 1. Every league round counter restarts at 1.
+/// club that won the play-off ([`GameState::relegation_result`] 0) keeps its slot; with the
+/// Mod 2026 layout so does a 2. Bundesliga club that won the second play-off
+/// ([`matchday_second_relegation_match`]). The tier relegates its places plus the licence
+/// withdrawals (plus one for a play-off its club won) that exceed those places. A human
+/// manager going down gets status 2 (status 8 and 500 000 DM when dropping out of the amateur
+/// tier, whose two swaps cancel), one coming up status 1. Every league round counter restarts at 1.
 ///
 /// Origin: BMMAIN.EXE 2a58:3d99 (season_main_loop, promotion and relegation)
 pub fn season_promotion_relegation(state: &mut GameState, rt: &Runtime, rng: &mut Rng) {
@@ -808,8 +878,9 @@ pub fn season_promotion_relegation(state: &mut GameState, rt: &Runtime, rng: &mu
 
     for l in 0..3 {
         let places = layout().relegation_places(l) as i8;
-        if l == 0 && state.relegation_result == 0 {
-            extra[0] += 1;
+        // MOD2026: per tier with a play-off place (the original's is tier 0's).
+        if playoff_upper_club_won(state, l) {
+            extra[l] += 1;
         }
         extra[l] = if extra[l] > places {
             extra[l] - places
@@ -837,10 +908,10 @@ pub fn season_promotion_relegation(state: &mut GameState, rt: &Runtime, rng: &mu
                     n.wrapping_add(3).wrapping_sub(k)
                 }
             };
-            let playoff_slot = l == 0
+            // MOD2026: per tier with a play-off place (the original's is tier 0's).
+            let playoff_slot = layout().relegation_playoff[l]
                 && relegated - i16::from(k) == 1
-                && state.relegation_result == 0
-                && layout().relegation_playoff[0];
+                && playoff_upper_club_won(state, l);
             if !playoff_slot {
                 let r = state.manager_index_of_team(down, 0xff);
                 if r != 0 && state.managers[usize::from(r - 1)].value_140 == 0 {
@@ -864,6 +935,16 @@ pub fn season_promotion_relegation(state: &mut GameState, rt: &Runtime, rng: &mu
             }
             k += 1;
         }
+    }
+}
+
+/// Whether the club at league tier `tier`'s play-off place won its play-off.
+fn playoff_upper_club_won(state: &GameState, tier: usize) -> bool {
+    match tier {
+        0 => state.relegation_result == 0,
+        // MOD2026: the second play-off ([`matchday_second_relegation_match`]).
+        1 => layout().relegation_playoff[1] && state.ds_05b8[SECOND_PLAYOFF_RESULT] == 0,
+        _ => false,
     }
 }
 
@@ -1715,46 +1796,191 @@ mod tests {
         });
     }
 
+    /// Mod final tables in reverse id order (the Bundesliga's 1st is club 17, its 18th club 0;
+    /// the 2. Bundesliga runs 35..=18, the 3. Liga 55..=36), club records marked with their id.
+    fn reversed_mod_state() -> GameState {
+        let mut s = identity_state();
+        for t in 0..3 {
+            let ids = layout().team_ids(t);
+            for (i, id) in ids.rev().enumerate() {
+                s.league_teams[t][i] = id;
+            }
+        }
+        s
+    }
+
+    /// The slot that holds the record marked `id`.
+    fn slot_of(s: &GameState, id: u8) -> u8 {
+        (0..64).find(|&slot| marker(s, slot) == id).unwrap()
+    }
+
+    /// The league tier of slot `slot` (3 for the pool).
+    fn tier_of(slot: u8) -> usize {
+        (0..3)
+            .find(|&t| layout().team_ids(t).contains(&slot))
+            .unwrap_or(3)
+    }
+
     #[test]
-    fn mod_promotion_relegation_swaps_the_right_slots() {
+    fn mod_promotion_relegation_applies_the_2026_rules() {
         use crate::league_layout::{MOD2026, with_layout};
         with_layout(&MOD2026, || {
             let rt = Runtime::default();
-            let start = Rng::new(4);
-            let reserve = Rng::new(4).random_range(59, 60) as u8;
-            let mut s = identity_state();
-            season_promotion_relegation(&mut s, &rt, &mut start.clone());
-            let swaps = [
-                (17, 18),
-                (16, 19),
-                (35, 36),
-                (34, 37),
-                (33, 38),
-                (55, reserve),
-                (54, 58),
-                (53, 57),
-                (52, 56),
-            ];
-            for (down, up) in swaps {
-                assert_eq!(
-                    (marker(&s, down), marker(&s, up)),
-                    (up, down),
-                    "{down}/{up}"
-                );
-            }
-            assert_eq!(marker(&s, 15), 15, "the play-off winner stays up");
+            let ends_in = |s: &GameState, ids: &[u8]| -> Vec<usize> {
+                ids.iter().map(|&id| tier_of(slot_of(s, id))).collect()
+            };
+            let unchanged_clubs = |s: &GameState| {
+                let mut markers: Vec<u8> = (0..64).map(|slot| marker(s, slot)).collect();
+                markers.sort_unstable();
+                assert!(markers.iter().copied().eq(0..64));
+            };
+
+            // Both play-offs won by the lower club.
+            let mut s = reversed_mod_state();
+            s.relegation_result = 1;
+            s.ds_05b8[SECOND_PLAYOFF_RESULT] = 1;
+            season_promotion_relegation(&mut s, &rt, &mut Rng::new(4));
+            // Bundesliga 16th..18th, 2. Bundesliga 1st..3rd.
+            assert_eq!(ends_in(&s, &[2, 1, 0]), [1; 3]);
+            assert_eq!(ends_in(&s, &[35, 34, 33]), [0; 3]);
+            // 2. Bundesliga 16th..18th, 3. Liga 1st..3rd.
+            assert_eq!(ends_in(&s, &[20, 19, 18]), [2; 3]);
+            assert_eq!(ends_in(&s, &[55, 54, 53]), [1; 3]);
+            // 3. Liga 17th..20th and four pool clubs swap.
+            assert_eq!(ends_in(&s, &[39, 38, 37, 36]), [3; 4]);
             assert_eq!(
-                marker(&s, 32),
-                32,
-                "three clubs go down from the 2. Bundesliga"
+                ends_in(&s, &[56, 57, 58, 59, 60, 61, 62, 63])
+                    .iter()
+                    .filter(|&&t| t == 2)
+                    .count(),
+                4
             );
-            assert_eq!(marker(&s, 51), 51, "four clubs go down from the 3. Liga");
+            assert_eq!(ends_in(&s, &[3, 32, 52, 40]), [0, 1, 2, 2]);
+            unchanged_clubs(&s);
             assert_eq!(s.competition_rounds, [1, 1, 1]);
 
+            // Both play-offs won by the higher club.
+            let mut s = reversed_mod_state();
+            (s.relegation_result, s.ds_05b8[SECOND_PLAYOFF_RESULT]) = (0, 0);
+            season_promotion_relegation(&mut s, &rt, &mut Rng::new(4));
+            assert_eq!(ends_in(&s, &[2, 1, 0]), [0, 1, 1]);
+            assert_eq!(ends_in(&s, &[35, 34, 33]), [0, 0, 1]);
+            assert_eq!(ends_in(&s, &[20, 19, 18]), [1, 2, 2]);
+            assert_eq!(ends_in(&s, &[55, 54, 53]), [1, 1, 2]);
+            unchanged_clubs(&s);
+        });
+    }
+
+    #[test]
+    fn mod_pool_clubs_follow_the_original_replacement_rule() {
+        use crate::league_layout::{MOD2026, with_layout};
+        const SEED: u16 = 2026;
+        with_layout(&MOD2026, || {
+            let rt = Runtime::default();
+            let mut s = reversed_mod_state();
+            let start = Rng::new(SEED);
+            let mut rng = start;
+            season_promotion_relegation(&mut s, &rt, &mut rng);
+            assert_eq!(draws(start, rng), 1);
+            // The 3. Liga's 20th..17th (clubs 36..=39) swap with 59 or 60 (the draw; 59 with
+            // this seed), 58, 57 and 56 (`docs/mod2026/relegation-replacement.md`).
+            let promoted = [36, 37, 38, 39].map(|slot| marker(&s, slot));
+            assert_eq!(promoted, [59, 58, 57, 56]);
+            for id in [60, 61, 62, 63] {
+                assert_eq!(marker(&s, id), id, "club {id} stays in the pool");
+            }
+        });
+    }
+
+    #[test]
+    fn mod_both_playoffs_play_their_pairings() {
+        use crate::league_layout::{MOD2026, with_layout};
+        with_layout(&MOD2026, || {
             let mut s = identity_state();
-            s.relegation_result = 1;
-            season_promotion_relegation(&mut s, &rt, &mut start.clone());
-            assert_eq!((marker(&s, 15), marker(&s, 20)), (20, 15));
+            s.day_counter = 320;
+            s.ds_05b8 = [7; 4];
+            let (first, second) = ([15, 20], [33, 38]);
+            assert_eq!(
+                [0, 1].map(|t| relegation_playoff_pairing(&s, t)),
+                [first, second]
+            );
+            for club in [first, second].concat() {
+                let c = &mut s.clubs[usize::from(club)];
+                c.strength = [60; 3];
+                c.base_strength = [50; 3];
+                c.strength_1e = [50; 3];
+                c.morale = 44;
+            }
+            slots_mut(&mut s, 1)[..2].copy_from_slice(&[100, 101]);
+            goals_mut(&mut s, 1)[..2].copy_from_slice(&[3, 4]);
+            s.cup_first_leg_goals[..2].copy_from_slice(&[5, 6]);
+            let borrowed = |s: &GameState| {
+                (
+                    [slots(s, 1)[0], slots(s, 1)[1]],
+                    [goals(s, 1)[0], goals(s, 1)[1]],
+                    [s.cup_first_leg_goals[0], s.cup_first_leg_goals[1]],
+                )
+            };
+            let before = borrowed(&s);
+            let mut rt = Runtime::default();
+            let mut rng = Rng::new(21);
+
+            // First legs: the lower club at home.
+            let mut hooks = CupHooks::default();
+            matchday_relegation_match(&mut s, &mut rt, &mut rng, &mut hooks);
+            assert_eq!(hooks.gates, [(20, 15)]);
+            let first_play_off = (s.relegation_first_leg, s.relegation_result);
+            let mut hooks = CupHooks::default();
+            matchday_second_relegation_match(&mut s, &mut rt, &mut rng, &mut hooks);
+            assert_eq!(hooks.gates, [(38, 33)]);
+            let after = &hooks.after_round[0];
+            assert_eq!(
+                s.ds_05b8[SECOND_PLAYOFF_FIRST_LEG..SECOND_PLAYOFF_FIRST_LEG + 2],
+                after.cup_first_leg_goals[..2]
+            );
+            assert_eq!(s.ds_05b8[SECOND_PLAYOFF_RESULT], 7);
+            assert_eq!(s.ds_05b8[SECOND_PLAYOFF_RETURN_LEG], 1);
+            assert_eq!(s.euro_second_leg_pending[0], 1);
+            assert_eq!(
+                (s.relegation_first_leg, s.relegation_result),
+                first_play_off
+            );
+            assert_eq!(borrowed(&s), before);
+
+            // Return legs: the higher club at home.
+            let mut hooks = CupHooks::default();
+            matchday_relegation_match(&mut s, &mut rt, &mut rng, &mut hooks);
+            assert_eq!(hooks.gates, [(15, 20)]);
+            let mut hooks = CupHooks::default();
+            matchday_second_relegation_match(&mut s, &mut rt, &mut rng, &mut hooks);
+            assert_eq!(hooks.gates, [(33, 38)]);
+            let after = &hooks.after_round[0];
+            assert_eq!(
+                s.ds_05b8[SECOND_PLAYOFF_RESULT],
+                cup_tie_winner(after, 1, 0)
+            );
+            assert!([0, 1].contains(&s.relegation_result));
+            assert!([0, 1].contains(&s.ds_05b8[SECOND_PLAYOFF_RESULT]));
+            assert_eq!(s.ds_05b8[SECOND_PLAYOFF_RETURN_LEG], 0);
+            assert_eq!(s.euro_second_leg_pending[0], 0);
+            assert_eq!(borrowed(&s), before);
+
+            // The winner of each play-off plays in the higher tier.
+            let results = [s.relegation_result, s.ds_05b8[SECOND_PLAYOFF_RESULT]];
+            season_promotion_relegation(&mut s, &rt, &mut rng);
+            for (t, (pairing, result)) in [(first, results[0]), (second, results[1])]
+                .into_iter()
+                .enumerate()
+            {
+                let [upper, lower] = pairing;
+                let (winner, loser) = if result == 0 {
+                    (upper, lower)
+                } else {
+                    (lower, upper)
+                };
+                assert_eq!(tier_of(slot_of(&s, winner)), t, "play-off {t}");
+                assert_eq!(tier_of(slot_of(&s, loser)), t + 1, "play-off {t}");
+            }
         });
     }
 

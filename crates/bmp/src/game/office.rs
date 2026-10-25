@@ -3,6 +3,7 @@
 //! six main icons with their 3x3 submenus. Spec: `docs/re/logic/flow.md` §6.
 
 use bmp_formats::vga;
+use bmp_game::cups::relegation_playoff_pairing;
 use bmp_game::finance::season_goal_messages;
 use bmp_game::league::{RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort};
 use bmp_game::league_layout::layout;
@@ -157,8 +158,10 @@ pub fn office_banner(
     } else if state.event_state[0] == m.values_132[0] && wk == 8 {
         cup_day = true;
         CUP.to_vec()
-    } else if (m.team == state.league_teams[0][15] || m.team == state.league_teams[1][2])
-        && wk == 0x10
+    } else if (0..2).any(|t| {
+        // MOD2026: every play-off of the layout (the original's is the Bundesliga's).
+        layout().relegation_playoff[t] && relegation_playoff_pairing(state, t).contains(&m.team)
+    }) && wk == 0x10
     {
         RELEGATION.to_vec()
     } else {
@@ -898,6 +901,24 @@ mod tests {
         assert_eq!(
             banner(&state_with(RESCHEDULED_GAMES_DAY, 1), 0, false).text,
             NO_MATCH_TODAY
+        );
+    }
+
+    #[test]
+    fn mod_banner_shows_the_second_play_off() {
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        let mut s = state_with(0x10, 1);
+        s.league_teams[1][15] = 36;
+        assert_eq!(banner(&s, 0, false).text, NO_MATCH_TODAY);
+        set_layout(&MOD2026);
+        let second_tier = banner(&s, 0, false).text;
+        let mut s = state_with(0x10, 2);
+        s.league_teams[2][2] = 36;
+        let third_tier = banner(&s, 0, false).text;
+        set_layout(&ORIGINAL);
+        assert_eq!(
+            (second_tier, third_tier),
+            (RELEGATION.into(), RELEGATION.into())
         );
     }
 

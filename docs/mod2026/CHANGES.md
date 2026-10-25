@@ -69,13 +69,20 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
 - **DFB-Pokal draw** (PRD R2): the draw takes clubs up to the last club of the lowest tier
   (DS:2277, 57 in the original), i.e. 0..=55 in the mod; the pool stays out like the original's
   reserve clubs 58..63.
-- **Promotion and relegation**: the 3. Liga's four relegated clubs swap with pool clubs
-  (59 or 60, then 58, 57, 56). Only the Bundesliga play-off is played, so for now the
-  2. Bundesliga's play-off place goes down directly and three clubs of the 3. Liga go up; the
-  tables mark three promotion places in the 3. Liga.
-- **Not yet**: the 2. Bundesliga / 3. Liga play-off, which clubs fill the pool (#177) and the
-  team editor's tier groups and their names (`crates/bmp/src/teamed/`, still 18 / 20 / 20,
-  `REGIONALLIGA` for its third group).
+- **Promotion and relegation** (PRD R1): the Bundesliga's 17th and 18th go down, its 16th plays
+  the 2. Bundesliga's 3rd; the 2. Bundesliga's 1st and 2nd go up, its 17th and 18th go down,
+  its 16th plays the 3. Liga's 3rd; the 3. Liga's 1st and 2nd go up and its 17th..20th swap
+  with the pool clubs 59 or 60, then 58, 57 and 56 (the original's replacement rule,
+  `relegation-replacement.md`), so no club leaves the game. The second play-off
+  (`cups::matchday_second_relegation_match`) runs the first one's code on the same play-off
+  days (weeks 91 and 92), right after it with its own "Relegationsspiel" title and results
+  screen (the live match when a human manager's club plays; like the original's play-off it
+  has no newspaper); the office notice and the "Relegation" banner reach its clubs too. Its first-leg
+  goals, result and leg flag live in save block 59 (`DS:05b8`, read by no original code), so the
+  save format is unchanged. The season end skips the swap of a play-off place whose club won
+  (`season_promotion_relegation`).
+- **Not yet**: which clubs fill the pool (#177) and the team editor's tier groups and their
+  names (`crates/bmp/src/teamed/`, still 18 / 20 / 20, `REGIONALLIGA` for its third group).
 
 ## Texts
 

@@ -124,5 +124,5 @@ its own strengths, moved by the reset's random walk and clamped to 15..45.
 
 With the mod layout (18 / 18 / 20 clubs, `league_layout::MOD2026`) the same code runs on the
 3. Liga, ids 36..55, with `n` = 56: the replacements are slot 59 or 60, then 58, 57 and 56. The
-PRD's mod rule for the 3. Liga's relegated clubs is a separate issue; this document only states
-what the original does.
+mod applies this rule to its pool 56..63 unchanged (pinned by
+`cups::tests::mod_pool_clubs_follow_the_original_replacement_rule`).

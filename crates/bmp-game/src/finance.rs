@@ -554,12 +554,12 @@ pub fn season_goal_messages(state: &GameState, rt: &mut Runtime) -> Vec<DialogLi
     let rank = |r: i16| usize::from(state.league_teams[league][(r as usize).min(19)]);
     let round = state.competition_rounds[league];
     let mut out = Vec::new();
-    if crate::league_layout::layout().relegation_playoff[0]
-        && state.month == 5
+    // MOD2026: every play-off of the layout (the original's is the Bundesliga's).
+    if state.month == 5
         && state.day_of_month == 13
         && i16::from(round as i8) - i16::from(rt.tier_round_count[league]) == 1
-        && ((league == 0 && round_position(mgr, round) == 15)
-            || (league == 1 && round_position(mgr, round) == 2))
+        && crate::league_layout::layout()
+            .plays_relegation_playoff(league, usize::from(round_position(mgr, round)))
     {
         out.push([
             line(b"Ihre Mannschaft"),
@@ -687,6 +687,32 @@ mod tests {
         );
         assert_eq!(rt.goal_message_flags[0], 0b10);
         assert!(season_goal_messages(&s, &mut rt).is_empty());
+    }
+
+    #[test]
+    fn mod_play_off_notice_reaches_both_play_offs() {
+        use crate::league_layout::{MOD2026, with_layout};
+        // A manager of tier `league` who finished the last round at table index `position`,
+        // on the day of the notice.
+        let notified = |league: u8, position: u8| {
+            let mut s = goal_state(0);
+            s.managers[0].league = league;
+            (s.day_of_month, s.month) = (13, 5);
+            let mut rt = Runtime::default();
+            let round = rt.tier_round_count[usize::from(league)] as u8 + 1;
+            s.competition_rounds = [round; 3];
+            s.managers[0].position_history[usize::from(round) - 2] = position;
+            season_goal_messages(&s, &mut rt)
+                .iter()
+                .any(|m| m[2] == b"Relegationsspiel.")
+        };
+        assert!(notified(0, 15) && notified(1, 2));
+        assert!(!notified(1, 15) && !notified(2, 2));
+        with_layout(&MOD2026, || {
+            assert!(notified(0, 15) && notified(1, 2));
+            assert!(notified(1, 15) && notified(2, 2));
+            assert!(!notified(2, 15) && !notified(0, 2));
+        });
     }
 
     #[test]
