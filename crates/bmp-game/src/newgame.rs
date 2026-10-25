@@ -52,7 +52,7 @@ const ENDLESS: u16 = 0x56ce;
 const MODERN_START_YEAR: u16 = 0x7c8;
 /// DS:07e0 of a historical start (1963), as the program image holds it.
 const HISTORICAL_START_YEAR: u16 = 0x7ab;
-/// MOD2026: DS:07e0 of every new game with Mod 2026 data (season 2026/27).
+/// MOD2026: DS:07e0 of a modern start with Mod 2026 data (season 2026/27).
 pub const MOD2026_START_YEAR: u16 = 2026;
 
 /// MOD2026: the year the running game's first season started in. `season_final` advances
@@ -506,8 +506,9 @@ fn apply_game_options(state: &mut GameState, rt: &mut Runtime, options: &GameOpt
     if rt.modern_start {
         state.start_year = MODERN_START_YEAR;
     }
-    // MOD2026: a mod game starts in season 2026/27 whatever "Histor. Start" says.
-    if rt.mod2026 {
+    // MOD2026: a mod game's modern start is season 2026/27; "Histor. Start" keeps the
+    // original's 1963/64 with the mod's clubs and rules (owner decision 2026-10-25).
+    if rt.mod2026 && rt.modern_start {
         state.start_year = MOD2026_START_YEAR;
     }
     state.level = options.difficulty();
@@ -1444,7 +1445,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn mod_games_start_in_2026() {
+    fn mod_games_start_in_2026_or_historically_in_1963() {
         let mana = synthetic_mana();
         for (mode, mod_end) in [
             (MODE_ONE_YEAR, 2027),
@@ -1465,14 +1466,14 @@ pub(crate) mod tests {
                     let code = c.options.end_year();
                     assert_eq!(s.scenario, code, "{what}");
                     let want_start = match (mod2026, start) {
-                        (true, _) => 2026,
+                        (true, 0) => 2026,
                         (false, 0) => MODERN_START_YEAR,
-                        (false, _) => HISTORICAL_START_YEAR,
+                        (_, _) => HISTORICAL_START_YEAR,
                     };
                     assert_eq!(s.start_year, want_start, "{what}");
                     let want_end = match (mod2026, mod_end) {
                         (_, 0) => None,
-                        (true, _) => Some(mod_end),
+                        (true, _) => Some(want_start + (mod_end - 2026)),
                         (false, _) => Some(code),
                     };
                     assert_eq!(game_end_year(&s, mod2026), want_end, "{what}");

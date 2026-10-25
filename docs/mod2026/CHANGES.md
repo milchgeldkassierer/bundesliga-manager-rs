@@ -174,7 +174,9 @@ layout").
 ## Season 2026/27
 
 - **Start year** (`crates/bmp-game/src/newgame.rs` `apply_game_options`, PRD R2): a new mod
-  game starts in 2026 (`MOD2026_START_YEAR`) for both settings of "Histor. Start". The game
+  game with the modern start begins in 2026 (`MOD2026_START_YEAR`); with "Histor. Start" it
+  keeps the original's 1963/64, with the mod's clubs, squads and rules (owner decision
+  2026-10-25; before, both settings started in 2026). The game
   logic reads the mod switch from `Runtime::mod2026`, which `Runtime::default` sets when the
   selected league layout is `MOD2026`. The option still selects its end-year code and the endless and one-year
   rules as before.

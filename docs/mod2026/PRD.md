@@ -155,7 +155,8 @@ Everything else plays like version 1.0.0.
 
 ### R2 Season 2026/27
 
-- A new game with mod data starts in season 2026/27.
+- A new game with mod data starts in season 2026/27. With "Histor. Start" it starts in the
+  original's 1963/64 instead, with the mod's clubs, squads and rules (owner decision 2026-10-25).
 - **Calendar and dates:** whatever the start menu, calendar, newspaper, statistics and history
   derive from the start year shows 2026/27 and the following years, and stays correct across the
   year 2027+ (no two-digit or 19xx overflow).
