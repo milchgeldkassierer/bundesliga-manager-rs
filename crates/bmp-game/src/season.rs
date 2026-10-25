@@ -2849,6 +2849,7 @@ mod tests {
     }
 
     use crate::finance::finance_daily_processing;
+    use crate::league_layout::{ORIGINAL, saved_layout};
     use crate::rng::NumberFormat;
     use crate::test_saves::save_states;
     use bmp_formats::savegame::SaveGame;
@@ -5389,6 +5390,7 @@ mod tests {
             let back = GameState::from_savegame(&SaveGame::parse(&bytes).unwrap()).unwrap();
             assert_eq!(back.to_savegame().to_bytes().unwrap(), bytes);
             assert_eq!(back.league_teams, s.league_teams);
+            assert_eq!(saved_layout(&back.league_teams), Some(&MOD2026));
             assert_eq!(back.league_results, s.league_results);
             assert_eq!(back.week_competitions, s.week_competitions);
             let points = |s: &GameState| s.team_tables.iter().map(|t| t.points).collect::<Vec<_>>();
@@ -5397,12 +5399,41 @@ mod tests {
         });
     }
 
+    /// A mod game saved mid-season and loaded again plays its season to the end with
+    /// 34 / 34 / 38 rounds.
+    #[test]
+    fn mod_save_plays_on_after_reload() {
+        use crate::league_layout::{MOD2026, with_layout};
+        with_layout(&MOD2026, || {
+            let mut ui = Headless::new(&GameState::zeroed());
+            ui.stop_at = 40;
+            let (s, end) = play_mod_game(&mut ui);
+            assert_eq!(end, Err(Done));
+            let bytes = s.to_savegame().to_bytes().unwrap();
+            let mut back = GameState::from_savegame(&SaveGame::parse(&bytes).unwrap()).unwrap();
+            let mut rt = Runtime::default();
+            let mut ui = Headless::new(&back);
+            ui.stop_at_season_end = true;
+            let end = season_main_loop(&mut back, &mut rt, &mut Rng::new(0x2026), &mut ui, true);
+            assert_eq!(end, Err(Done));
+            assert_eq!(back.competition_rounds, [35, 35, 39]);
+            for (t, rounds) in [(0, 34), (1, 34), (2, 38)] {
+                for &c in &back.league_teams[t][..usize::from(MOD2026.team_count[t])] {
+                    let p = back.team_tables[usize::from(c)].played;
+                    assert_eq!(p[0] + p[1], rounds, "tier {t} club {c}");
+                }
+            }
+        });
+    }
+
     /// Every real save plays on into the first office turn of the next season, or to the end
-    /// of the game. The run is capped at 1000 office turns.
+    /// of the game. The run is capped at 1000 office turns. Each is an original-layout save,
+    /// before and after its season change.
     #[test]
     fn real_saves_play_to_the_next_season() {
         for (path, mut s) in save_states() {
             let what = path.display().to_string();
+            assert_eq!(saved_layout(&s.league_teams), Some(&ORIGINAL), "{what}");
             let before = s.clone();
             let mut rt = Runtime::default();
             let mut rng = Rng::new(0x1234);
@@ -5428,6 +5459,7 @@ mod tests {
                 }
             }
             assert!(ui.titles.contains(&Title::SeasonEnd), "{what}");
+            assert_eq!(saved_layout(&s.league_teams), Some(&ORIGINAL), "{what}");
             let bytes = s.to_savegame().to_bytes().unwrap();
             let back = GameState::from_savegame(&SaveGame::parse(&bytes).unwrap()).unwrap();
             assert_eq!(back.to_savegame(), s.to_savegame(), "{what}");

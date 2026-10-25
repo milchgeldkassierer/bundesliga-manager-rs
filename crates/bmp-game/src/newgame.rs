@@ -1473,7 +1473,8 @@ pub(crate) mod tests {
         assert_eq!(game_end_year(&s, true), Some(2027));
         (s.start_year, s.logged_rounds, s.scenario) = (2027, 1, 0x7ae);
         assert_eq!(game_end_year(&s, true), Some(2029));
-        // An original save loaded with mod data keeps its end year.
+        // An original end-year code keeps its year (the loader refuses an original save
+        // on mod data, #218).
         (s.start_year, s.logged_rounds, s.scenario) = (1994, 2, 0x7cb);
         assert_eq!(game_end_year(&s, true), Some(0x7cb));
         (s.start_year, s.logged_rounds, s.scenario) = (1965, 2, 0x7ac);

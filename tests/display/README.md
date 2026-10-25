@@ -15,16 +15,18 @@ and the doubled logical pixel everywhere else.
 | File | Scenario | Screenshot |
 | --- | --- | --- |
 | `matchday-m08-newspaper.png` | `tests/visual/matchday.port.txt` on the original data with the 2x fonts | `m08-newspaper` |
-| `matchday-m08-newspaper-mod.png` | `tests/visual/matchday.port.txt` on Mod 2026 data with the 2x fonts | `m08-newspaper` |
-| `matchday-m01-office-mod.png` | `tests/visual/matchday.port.txt` on Mod 2026 data with the 2x fonts and crests | `m01-office` |
-| `matchday-m07-table-mod.png` | `tests/visual/matchday.port.txt` on Mod 2026 data with the 2x fonts and crests | `m07-table` |
+| `matchday-m08-newspaper-mod.png` | `tests/mod2026/matchday_2026.port.txt` on Mod 2026 data with the 2x fonts | `m08-newspaper` |
+| `matchday-m01-office-mod.png` | `tests/mod2026/matchday_2026.port.txt` on Mod 2026 data with the 2x fonts and crests | `m01-office` |
+| `matchday-m07-table-mod.png` | `tests/mod2026/matchday_2026.port.txt` on Mod 2026 data with the 2x fonts and crests | `m07-table` |
 
 Every scenario switches the display layer with the 2x fonts and crests on as the SDL host does
 (`Host::enable_display_layer`); only the mod's crests have a 2x version. The original-data golden runs on a copy of `BMP_DATA`; its game
 is the frozen v1.0.0, so it only changes with the 2x display itself. The mod goldens run on Mod
 2026 data built from `BMP_DATA` (`bmp_game::mod2026::build`) and show what a player of the mod
 sees; their text comes from the mod's game, so a change to the mod's league structure, clubs or
-squads that changes these screens also needs these goldens regenerated.
+squads that changes these screens also needs these goldens regenerated. An original save is
+refused on Mod 2026 data (#218), so the mod setups write a save the port played on that data (a
+new game) as `07072019.MAN`, and the mod goldens run the match day of that game.
 
 Regenerate after an intended change of the display detail (for example new 2x glyphs or crests)
 and review the new golden before committing it (the filter matches every golden test):

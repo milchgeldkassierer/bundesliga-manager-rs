@@ -1,0 +1,101 @@
+# Mod 2026 matchday scenario of the display tests (crates/bmp/src/display.rs): the clicks of
+# tests/visual/matchday.port.txt on the game that the Mod 2026 display setups write as
+# 07072019.MAN (a new mod game at its first office turn, load_game::tests::mod_save_bytes).
+# The new game shows every league's fixtures and tables, so the settings also switch those of
+# the 1. and 3. Liga off, leaving the 2. Bundesliga's as in the original scenario. The waits
+# fit this game's match: m02-live catches the goal scene of the 16th minute (crest sites M11,
+# M12), and the second half with its goal scenes needs 75 s. Not a visual check against
+# DOSBox (it lives outside tests/visual/).
+# seed: 55768
+# BMINTRO: any key ends the logo intro (the DOSBox side presses space).
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 161 132
+wait 100
+click 161 132
+wait 1000
+move 245 108
+wait 100
+click 245 108
+wait 300
+move 187 43
+wait 100
+click 187 43
+wait 300
+move 187 62
+wait 100
+click 187 62
+wait 300
+move 160 43
+wait 100
+click 160 43
+wait 300
+move 160 62
+wait 100
+click 160 62
+wait 300
+move 160 80
+wait 100
+click 160 80
+wait 300
+move 276 43
+wait 100
+click 276 43
+wait 300
+move 276 62
+wait 100
+click 276 62
+wait 300
+move 276 80
+wait 100
+click 276 80
+wait 300
+shot m00-settings
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot m01-office
+move 280 75
+wait 100
+click 280 75
+wait 10300
+shot m02-live
+wait 2500
+shot m03-live
+wait 30000
+shot m04-half-time
+move 293 213
+wait 100
+click 293 213
+wait 940
+shot m05-live
+wait 75000
+shot m06-full-time
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot m07-table
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot m08-newspaper
+move 160 120
+wait 100
+click 160 120
+wait 2000
+shot m09-office

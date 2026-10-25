@@ -163,6 +163,20 @@ pub fn is_mod2026() -> bool {
     *layout() == MOD2026
 }
 
+/// MOD2026: the known league structure that the saved tier rows (save block 32) were played
+/// under: each tier's row holds exactly that structure's club ids of the tier, in table order.
+/// The save format has no layout marker; the rows tell the layouts apart because their tier 2
+/// ids differ. A save that fits no known structure gives `None`.
+pub fn saved_layout(league_teams: &[[u8; 20]; 3]) -> Option<&'static LeagueLayout> {
+    [&ORIGINAL, &MOD2026].into_iter().find(|l| {
+        league_teams.iter().enumerate().all(|(t, row)| {
+            let mut ids = row[..usize::from(l.team_count[t])].to_vec();
+            ids.sort_unstable();
+            ids.into_iter().eq(l.team_ids(t))
+        })
+    })
+}
+
 /// Runs `f` with `layout` selected and selects the previous layout again afterwards.
 #[cfg(test)]
 pub fn with_layout<R>(layout: &'static LeagueLayout, f: impl FnOnce() -> R) -> R {
@@ -252,6 +266,26 @@ mod tests {
             .filter(|&i| ORIGINAL.week_competitions[i] != MOD2026.week_competitions[i])
             .collect();
         assert_eq!(changed, [7, 13, 23, 25, 29, 69]);
+    }
+
+    #[test]
+    fn saved_rows_tell_the_layout() {
+        let rows = |l: &LeagueLayout| -> [[u8; 20]; 3] {
+            let mut rows = [[0; 20]; 3];
+            for (t, row) in rows.iter_mut().enumerate() {
+                for (slot, id) in row.iter_mut().zip(l.team_ids(t).rev()) {
+                    *slot = id;
+                }
+            }
+            rows
+        };
+        assert_eq!(saved_layout(&rows(&ORIGINAL)), Some(&ORIGINAL));
+        let mod_rows = rows(&MOD2026);
+        assert_eq!(mod_rows[1][18..], [0, 0]);
+        assert_eq!(saved_layout(&mod_rows), Some(&MOD2026));
+        let mut twice = rows(&ORIGINAL);
+        twice[2][0] = twice[2][1];
+        assert_eq!(saved_layout(&twice), None);
     }
 
     #[test]

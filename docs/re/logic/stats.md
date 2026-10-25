@@ -1884,6 +1884,15 @@ files are unchanged.
    uninitialised path buffer after `getcwd` fails (seen in DOSBox: the last directory, an
    empty string, or garbage such as `"U.07"`). The port shows the C: directory. Expected
    difference in `tests/visual/disk_dialogs` frames k09 and k13 (the line only).
+4. `screen_load_game` loads a save whose tier rows (save block 32) are the Mod 2026 layout's
+   (18 / 18 / 20 clubs, ids 0..=17, 18..=35, 36..=55), rows the original never writes: league
+   tier 1 holds club 0 twice (its slots 18 and 19 are 0) and clubs 36 and 37 play in tier 2.
+   The game then plays on with a broken league. The port refuses such a save on the original
+   data like a save of the other layout on Mod 2026 data (`LoadError::OtherLayout`, a
+   `dialog_okay` box; `bmp_game::league_layout::saved_layout`, #218) and forgets its id again.
+   Every save the original or the port writes on the original data still loads (test
+   `a_mod_save_is_refused_in_an_original_run`; `real_saves_play_to_the_next_season` checks the
+   layout of every real save before and after its season change).
 
 ## Appendix A. Screen call traces
 

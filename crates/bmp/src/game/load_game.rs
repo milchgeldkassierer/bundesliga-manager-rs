@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use bmp_formats::savegame::{self, SaveGame};
+use bmp_game::league_layout::{layout, saved_layout};
 use bmp_game::rng::format_long_thousands;
 use bmp_game::state::{GameState, StateError};
 
@@ -51,6 +52,13 @@ const CORRUPT_SAVE: [&[u8]; 4] = [
     b"Achtung !",
     b"Spielstand",
     b"ist fehlerhaft !",
+    b"Vorgang abgebrochen.",
+];
+/// MOD2026: the message for [`LoadError::OtherLayout`], port-only text.
+const OTHER_LAYOUT_SAVE: [&[u8]; 4] = [
+    b"Achtung !",
+    b"Spielstand passt nicht",
+    b"zu diesen Spieldaten !",
     b"Vorgang abgebrochen.",
 ];
 
@@ -451,8 +459,8 @@ fn delete_file(dir: &Path, name: &[u8]) {
     }
 }
 
-/// Why a save could not be loaded (each case but [`LoadError::Corrupt`] is a
-/// dialog in the original).
+/// Why a save could not be loaded (each case but [`LoadError::Corrupt`] and
+/// [`LoadError::OtherLayout`] is a dialog in the original).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoadError {
     /// `disk_error_dialog` 422b:0006.
@@ -472,11 +480,17 @@ pub enum LoadError {
     /// overflow or name a missing crest picture ([`StateError::SavedValue`]);
     /// the original loads such a save.
     Corrupt,
+    /// MOD2026: the save's tier rows are another known league layout's
+    /// ([`saved_layout`]) than the one of this run's data; the original has no
+    /// such check.
+    OtherLayout,
 }
 
 /// Loads `path` and checks it like the original: signature, version, session
 /// save-id history (the id is remembered before the blocks are read, and
-/// forgotten again when the save is refused as [`LoadError::Corrupt`]).
+/// forgotten again when the save is refused as [`LoadError::Corrupt`] or
+/// [`LoadError::OtherLayout`]). A save played under another league layout
+/// than this run's is refused.
 ///
 /// A file too short for the header is judged like the original judges it: the
 /// short `file_read` leaves the rest of its stack buffer stale, so a file shorter
@@ -519,11 +533,20 @@ pub fn read_save(saves: &mut SaveSession, path: &Path) -> Result<GameState, Load
         | StateError::SavedValue { .. } => LoadError::Corrupt,
         StateError::BlockSize { .. } | StateError::BlockCount => LoadError::Disk,
     });
-    // DEVIATION: the original has no corrupt-save refusal (it loads the save and
-    // hangs or reads past its tables later). The port forgets the id of a refused
-    // corrupt save again, the dropped oldest id included, so picking the same
-    // file again shows the corrupt-save message instead of "already loaded".
-    if matches!(result, Err(LoadError::Corrupt)) {
+    // MOD2026: the save format has no layout marker, so the tier rows tell which
+    // layout a save was played under; a save that fits none loads as in v1.0.0.
+    // DEVIATION: on the original data this refuses a Mod 2026 save, whose tier
+    // rows the original never writes (club 0 twice in league tier 1, clubs 36
+    // and 37 in tier 2); the original loads it (stats.md §7a).
+    let result = result.and_then(|state| match saved_layout(&state.league_teams) {
+        Some(saved) if saved != layout() => Err(LoadError::OtherLayout),
+        _ => Ok(state),
+    });
+    // DEVIATION: the original has no corrupt-save or layout refusal (it loads the
+    // save and hangs or reads past its tables later). The port forgets the id of
+    // a refused save again, the dropped oldest id included, so picking the same
+    // file again shows the refusal message instead of "already loaded".
+    if matches!(result, Err(LoadError::Corrupt | LoadError::OtherLayout)) {
         saves.loaded_ids = history;
     }
     // A file that ends before the first tail long counts as having passed the
@@ -576,7 +599,8 @@ fn cheat_screen(host: &mut Host) -> Run<()> {
 /// missing signature the `dialog_okay` box "Kein Bundesliga Manager Prof.
 /// Spielstand. !!!", a wrong version and a save id loaded before the timed
 /// `ui_dialog_box`, a checksum mismatch the endless "MOGELGURU" screen, and a
-/// corrupt save ([`LoadError::Corrupt`], port only) a `dialog_okay` box. A `>V1`
+/// corrupt save ([`LoadError::Corrupt`], port only) and a save of the other
+/// league layout ([`LoadError::OtherLayout`], Mod 2026) a `dialog_okay` box. A `>V1`
 /// save asks for the level (0-5, `ui_value_spinner`, default 3) and stores
 /// `5 - level`. `who` titles the delete question of the selector.
 ///
@@ -619,6 +643,11 @@ pub fn screen_load_game(
         }
         Err(LoadError::Corrupt) => {
             let [a, b, c, d] = CORRUPT_SAVE;
+            dialog_okay(host, a, b, c, d)?;
+            return Ok(None);
+        }
+        Err(LoadError::OtherLayout) => {
+            let [a, b, c, d] = OTHER_LAYOUT_SAVE;
             dialog_okay(host, a, b, c, d)?;
             return Ok(None);
         }
@@ -722,9 +751,139 @@ pub(crate) fn find_case_insensitive(path: &Path) -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use bmp_formats::mana::ManaDat;
+    use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
     use bmp_game::state::{CREST_CODES, DAY_COUNTER_MAX};
+
+    /// A save written by the port on Mod 2026 data: a new game on `mana` at its
+    /// first office turn. Leaves the selected layout as it was.
+    pub(crate) fn mod_save_bytes(mana: &ManaDat) -> Vec<u8> {
+        use bmp_game::newgame::{
+            CupDraws, GameOptions, MODE_ENDLESS, ManagerChoice, MenuChoices, new_game, startup,
+        };
+        let previous = layout();
+        set_layout(&MOD2026);
+        let mut rt = bmp_game::runtime::Runtime::default();
+        let mut rng = bmp_game::rng::Rng::default();
+        let mut draws = CupDraws(|_| false);
+        let mut s = startup(mana, &mut rt, &mut rng, 35372, &mut draws);
+        let choices = MenuChoices {
+            managers: std::array::from_fn(|m| ManagerChoice {
+                name: if m == 0 {
+                    b"OLIVER".to_vec()
+                } else {
+                    Vec::new()
+                },
+                team: if m == 0 { 20 } else { bmp_game::state::NO_TEAM },
+                slot: m as u8 + 1,
+            }),
+            count: 1,
+            carousel_pos: 2,
+            options: GameOptions {
+                level: 2,
+                mode_flags: MODE_ENDLESS,
+            },
+        };
+        new_game(&mut s, &mut rt, &mut rng, mana, &choices, 35400, &mut draws);
+        set_layout(previous);
+        s.to_savegame().to_bytes().unwrap()
+    }
+
+    /// `MOD.MAN` holding [`mod_save_bytes`] of `BMP_DATA`'s `MANA.DAT` in a
+    /// temporary directory named after `tag`. `None` without `BMP_DATA`.
+    fn write_mod_save(tag: &str) -> Option<(PathBuf, PathBuf)> {
+        let data = bmp_formats::data_dir()?;
+        let mana = ManaDat::parse(&std::fs::read(data.join("MANA.DAT")).unwrap()).unwrap();
+        let dir = std::env::temp_dir().join(format!("bmp-mod-save-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("MOD.MAN");
+        std::fs::write(&file, mod_save_bytes(&mana)).unwrap();
+        Some((dir, file))
+    }
+
+    /// Every shipped (original) save is refused on Mod 2026 data, again on a
+    /// second pick, and leaves even a full save-id history unchanged; the same
+    /// session then loads it on the original data.
+    #[test]
+    fn an_original_save_is_refused_in_a_mod_run() {
+        let files = bmp_formats::save_files();
+        let Some(first) = files.first() else {
+            return;
+        };
+        let mut saves = SaveSession {
+            loaded_ids: (100..150).collect(),
+            ..SaveSession::default()
+        };
+        let full = saves.loaded_ids.clone();
+        set_layout(&MOD2026);
+        let refused: Vec<_> = files
+            .iter()
+            .chain(files.iter())
+            .map(|f| (f, read_save(&mut saves, f).err(), saves.loaded_ids.clone()))
+            .collect();
+        set_layout(&ORIGINAL);
+        let loaded = read_save(&mut saves, first);
+        for (f, err, ids) in refused {
+            let what = f.display();
+            assert_eq!(err, Some(LoadError::OtherLayout), "{what}");
+            assert_eq!(ids, full, "{what}: history unchanged");
+        }
+        assert!(loaded.is_ok(), "{}: {:?}", first.display(), loaded.err());
+    }
+
+    /// A save the port wrote on Mod 2026 data is refused on the original data,
+    /// and its id is not remembered.
+    #[test]
+    fn a_mod_save_is_refused_in_an_original_run() {
+        let Some((dir, file)) = write_mod_save("refused") else {
+            return;
+        };
+        let mut saves = SaveSession::default();
+        let result = read_save(&mut saves, &file);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(result.err(), Some(LoadError::OtherLayout));
+        assert!(saves.loaded_ids.is_empty(), "no id was remembered");
+    }
+
+    /// A save the port wrote on Mod 2026 data loads on Mod 2026 data, with the
+    /// 18 / 18 / 20 club tier rows of the mod layout.
+    #[test]
+    fn a_mod_save_loads_in_a_mod_run() {
+        let Some((dir, file)) = write_mod_save("loaded") else {
+            return;
+        };
+        set_layout(&MOD2026);
+        let result = read_save(&mut SaveSession::default(), &file);
+        set_layout(&ORIGINAL);
+        std::fs::remove_dir_all(&dir).unwrap();
+        let state = result.expect("the mod save loads");
+        assert_eq!(saved_layout(&state.league_teams), Some(&MOD2026));
+    }
+
+    /// A save whose tier rows fit no known layout (a club twice in league
+    /// tier 2) loads as in v1.0.0 on both data sets, and its id is remembered.
+    #[test]
+    fn a_save_of_no_known_layout_loads_in_both_runs() {
+        let dir = std::env::temp_dir().join(format!("bmp-no-layout-{}", std::process::id()));
+        let unknown = |s: &mut GameState| s.league_teams[2][0] = s.league_teams[2][1];
+        let Some(file) = write_corrupt_save(&dir, unknown) else {
+            return;
+        };
+        let mut original = SaveSession::default();
+        let on_original = read_save(&mut original, &file);
+        set_layout(&MOD2026);
+        let mut modded = SaveSession::default();
+        let on_mod = read_save(&mut modded, &file);
+        set_layout(&ORIGINAL);
+        std::fs::remove_dir_all(&dir).unwrap();
+        for (run, result, saves) in [("original", on_original, original), ("mod", on_mod, modded)] {
+            let state = result.unwrap_or_else(|e| panic!("{run}: {e:?}"));
+            assert_eq!(saved_layout(&state.league_teams), None, "{run}");
+            assert_eq!(saves.loaded_ids.len(), 1, "{run}: the id is remembered");
+        }
+    }
 
     #[test]
     fn save_id_history_rejects_repeats_and_keeps_fifty() {
@@ -1199,5 +1358,48 @@ mod tests {
         );
         assert_eq!(session.saves.last_name, b"CORRUPT", "last name unchanged");
         assert!(session.copy_protection_ok, "copy-protection flag unchanged");
+    }
+
+    /// The [`LoadError::OtherLayout`] arm end to end: a shipped save picked on
+    /// Mod 2026 data shows the message box, which takes the OKAY click, and
+    /// nothing is loaded or remembered; a second pick shows the box again.
+    #[cfg(unix)]
+    #[test]
+    fn loading_a_save_of_the_other_layout_shows_the_message_and_loads_nothing() {
+        use bmp_game::rng::Rng;
+        let Some(save) = patched_save(|_| {}) else {
+            return;
+        };
+        let dir = game_dir("other-layout-load", &[("ORIGINAL.MAN", save)]).unwrap();
+        let mut session = Session::new(Rng::new(1));
+        session.copy_protection_ok = false;
+        session.saves.last_name = b"BEFORE".to_vec();
+        set_layout(&MOD2026);
+        let picks: Vec<_> = (0..2)
+            .map(|_| {
+                let (result, clicks_left) = load_with_script(
+                    &dir,
+                    &mut session,
+                    b"ORIGINAL",
+                    "wait 1000\nclick 191 165\n",
+                );
+                (matches!(result, Ok(None)), clicks_left)
+            })
+            .collect();
+        set_layout(&ORIGINAL);
+        std::fs::remove_dir_all(&dir).unwrap();
+        for (i, (nothing_loaded, clicks_left)) in picks.into_iter().enumerate() {
+            assert!(nothing_loaded, "pick {i}: nothing is loaded");
+            assert_eq!(
+                clicks_left, 0,
+                "pick {i}: the message box took the OKAY click"
+            );
+        }
+        assert!(session.saves.loaded_ids.is_empty(), "no id was remembered");
+        assert_eq!(session.saves.last_name, b"ORIGINAL", "only the preset name");
+        assert!(
+            !session.copy_protection_ok,
+            "copy-protection flag unchanged"
+        );
     }
 }

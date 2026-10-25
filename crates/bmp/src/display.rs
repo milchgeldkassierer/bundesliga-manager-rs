@@ -462,6 +462,16 @@ mod tests {
         std::fs::read_to_string(&path).unwrap()
     }
 
+    /// MOD2026: the text of `tests/mod2026/matchday_2026.port.txt`, the match-day scenario
+    /// on the game of the Mod 2026 setups.
+    fn mod_matchday_text() -> String {
+        let path = format!(
+            "{}/../../tests/mod2026/matchday_2026.port.txt",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        std::fs::read_to_string(&path).unwrap()
+    }
+
     /// [`scenario_shots`] for the script `text`; `name` tells its temp directories apart.
     fn script_shots(
         data: &Path,
@@ -480,7 +490,16 @@ mod tests {
         let shots = temp_dir(&format!("{name}-{setup:?}-shots"));
         match setup {
             Setup::ModData | Setup::ModDataWithHiresFonts => {
-                bmp_game::mod2026::build(data, &run_data).unwrap()
+                bmp_game::mod2026::build(data, &run_data).unwrap();
+                // The scenarios load 07072019.MAN, and an original save is refused on Mod
+                // 2026 data (#218): they load a game the port wrote on this data instead.
+                let mana = std::fs::read(run_data.join("MANA.DAT")).unwrap();
+                let mana = bmp_formats::mana::ManaDat::parse(&mana).unwrap();
+                std::fs::write(
+                    run_data.join("07072019.MAN"),
+                    crate::game::load_game::tests::mod_save_bytes(&mana),
+                )
+                .unwrap();
             }
             Setup::OriginalWithHiresFonts => bmp_game::mod2026::copy_tree(data, &run_data).unwrap(),
         }
@@ -596,9 +615,10 @@ mod tests {
             .unwrap_or_else(|| panic!("no {name} shot"))
     }
 
-    /// The newspaper of the match-day scenario with `setup` matches `tests/display/<golden>`.
-    fn check_newspaper_golden(data: &Path, setup: Setup, golden: &str) {
-        let shots = scenario_shots(data, "matchday", setup);
+    /// The newspaper of the match-day scenario `text` with `setup` matches
+    /// `tests/display/<golden>`.
+    fn check_newspaper_golden(data: &Path, text: &str, setup: Setup, golden: &str) {
+        let shots = script_shots(data, "matchday", text, setup);
         let (vga, frame) = shot(&shots, "m08-newspaper");
         assert_display_golden(vga, frame, golden);
     }
@@ -645,6 +665,7 @@ mod tests {
         };
         check_newspaper_golden(
             &data,
+            &scenario_text("matchday"),
             Setup::OriginalWithHiresFonts,
             "matchday-m08-newspaper.png",
         );
@@ -661,6 +682,7 @@ mod tests {
         };
         check_newspaper_golden(
             &data,
+            &mod_matchday_text(),
             Setup::ModDataWithHiresFonts,
             "matchday-m08-newspaper-mod.png",
         );
@@ -675,7 +697,12 @@ mod tests {
         let Some(data) = bmp_formats::data_dir() else {
             return;
         };
-        let shots = scenario_shots(&data, "matchday", Setup::ModDataWithHiresFonts);
+        let shots = script_shots(
+            &data,
+            "matchday",
+            &mod_matchday_text(),
+            Setup::ModDataWithHiresFonts,
+        );
         let (vga, frame) = shot(&shots, "m01-office");
         assert!(hires_crest_at(vga, frame, 187, 60).is_some(), "no 2x crest");
         assert_display_golden(vga, frame, "matchday-m01-office-mod.png");
@@ -767,7 +794,7 @@ mod tests {
             ),
             (
                 "matchday",
-                scenario_text("matchday"),
+                mod_matchday_text(),
                 vec![
                     // M1, M2 (a computer club: X5) and the event panel M11, M12.
                     ("m02-live", vec![(22, 35), (101, 35), (20, 118), (261, 118)]),

@@ -2,7 +2,9 @@
 
 Every change of the port's v1.0.0 behaviour made for Mod 2026 (`PRD.md`) is listed here and
 marked `// MOD2026:` in the code. All of them switch on only when the data directory contains
-the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
+the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0, except that it
+refuses a Mod 2026 save (an obvious-bug fix of MISSION invariant 1, "Saves of the other league
+layout").
 
 ## Generator and mod switch
 
@@ -181,7 +183,7 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   shows the code as a year (the game end in `season_final`, the "ENDE:" line of the settings
   screen), a mod game uses its first season year (`start_year - logged_rounds`) plus the code's
   length instead: a one-year game ends in 2027, a three-year game in 2029, an endless game never.
-  An original save loaded with mod data keeps its end year.
+  An original save is refused on mod data (#218, "Saves of the other league layout").
 - **Youth players** (`season_end_youth_player`): the original lets youth players join from
   1967 (historical) or 1996 (modern), three seasons after the start. A mod game counts the three
   seasons from its first season year, i.e. from 2030 for a 2026 game, and also after loading
@@ -196,15 +198,27 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   (`crates/bmp-game/src/season.rs` `season_record_manager`) stores the overall rank across all
   league clubs, `table position + 1 + first_team[tier]`, under the layout in force then, and the
   history subtracts `first_team[tier]` of the layout in force when it is shown. A mod game writes
-  and reads under the mod layout and shows every place exactly. The save keeps the original format
-  and carries no layout marker, so an original save loaded with Mod 2026 data shows each 3.
-  Liga/Amateur season two places lower (`first_team[2]` is 38 in the original, 36 in the mod;
-  e.g. 5./2. become 7./4.); Bundesliga and 2. Liga seasons are unchanged. Accepted: the bytes of
-  an original and a mod save are indistinguishable, and an original save under mod data is a
-  foreign-layout reading anyway (other club ids, other club data). The high-score term and the
-  history graph bars read the same stored byte; the season-end rank line reads it right after the
-  season end wrote it, so it is foreign-layout only for a manager already recorded when an
-  original save was taken in a later manager's season-end office turn.
+  and reads under the mod layout and shows every place exactly. An original save read under the
+  mod layout would show each 3. Liga/Amateur season two places lower (`first_team[2]` is 38 in
+  the original, 36 in the mod; e.g. 5./2. become 7./4.), but since #218 the loader refuses an
+  original save on Mod 2026 data ("Saves of the other league layout"), so the history never
+  reads a foreign-layout rank. The high-score term and the history graph bars read the same
+  stored byte; the season-end rank line reads it right after the season end wrote it.
+- **Saves of the other league layout** (`crates/bmp/src/game/load_game.rs` `read_save`,
+  `crates/bmp-game/src/league_layout.rs` `saved_layout`, #218): the save format is unchanged and
+  has no layout marker; the layout a save was played under is read from save block 32, each
+  tier's row of club ids (original 18 / 20 / 20 clubs with tier 2 ids 38..=57, mod 18 / 18 / 20
+  with 36..=55; every row is a permutation of its tier's ids, so a save fits only one). A save of
+  the other layout is refused with a port-only box "Achtung ! / Spielstand passt nicht / zu
+  diesen Spieldaten ! / Vorgang abgebrochen." and the running game is untouched; like a corrupt
+  save, its id is forgotten again, so picking it again shows the box again instead of "Keinen
+  heutigen Spielstand laden !". A save that fits no known layout loads as in v1.0.0. The shipped
+  original saves that `bmp mod2026 build` copies into the mod directory are refused there. On the
+  original data, a Mod 2026 save is refused the same way: a deviation from v1.0.0, which loads
+  rows the original never writes (`docs/re/logic/stats.md` §7a item 4); every save the original
+  or the port writes on the original data still loads. The mod display tests
+  (`crates/bmp/src/display.rs`) therefore write a new mod game as `07072019.MAN` into their mod
+  data and run `tests/mod2026/matchday_2026.port.txt` on it (`tests/display/README.md`).
 - **No change needed**: the office calendar, the newspaper and message dates, the credits and
   the saves use the full year number; no site hard-codes a `19` century prefix. No other screen
   of the original shows a season label.

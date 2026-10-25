@@ -1,0 +1,24 @@
+# The original 1967/68 season-end save refused on Mod 2026 data (#218). Not a visual check
+# against DOSBox (it lives outside tests/visual/); run it by hand on a mod data directory built
+# outside the repo that also holds the original 00SAISON.MAN:
+#   bmp mod2026 build --from <original data> --out /tmp/bmp-mod2026
+#   cp <original 00SAISON.MAN> /tmp/bmp-mod2026/
+#   bmp --data /tmp/bmp-mod2026 run --script tests/mod2026/layout_refusal.port.txt \
+#       --shots /tmp/bmp-mod2026-shots --time 35372 --lowres
+# The clicks are those of tests/visual/office.port.txt up to its load; 00SAISON.MAN is the
+# first file of the list.
+# seed: 35372
+key space
+wait 500
+click 160 120
+wait 4000
+click 160 10
+wait 500
+click 40 82
+wait 500
+click 40 82
+wait 1000
+shot l01-refused
+click 191 165
+wait 1000
+shot l02-back

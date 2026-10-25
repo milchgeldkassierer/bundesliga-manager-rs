@@ -831,9 +831,9 @@ pub fn history_graph_lines(ranks: &[u8]) -> Vec<(i16, i16, u8, u8)> {
 
 /// The place a history line prints for the stored `rank` in `tier`. The
 /// save stores the overall rank across all league clubs under the layout in
-/// force when the season ended and carries no layout marker, so an original
-/// save read with Mod 2026 data shows its tier-2 seasons two places lower
-/// (`first_team[2]` is 38 there, 36 in the mod).
+/// force when the season ended, so an original save read with Mod 2026 data
+/// would show its tier-2 seasons two places lower (`first_team[2]` is 38
+/// there, 36 in the mod); the loader refuses such a save (#218).
 ///
 /// Origin: BMMAIN.EXE 362f:390e (screen_manager_history)
 pub fn history_place(rank: u8, tier: u8) -> i16 {
@@ -1313,8 +1313,8 @@ mod tests {
         // [rank, tier] of manager 0 in the original AUTOSAVE.MAN of issue #260.
         // The rank was stored as table position + 1 + ORIGINAL.first_team[tier]
         // (0, 18, 38). MOD2026.first_team is (0, 18, 36): tiers 0 and 1 read
-        // the same place, every tier-2 season reads two places lower, and the
-        // save cannot tell which layout wrote it.
+        // the same place, every tier-2 season reads two places lower; the
+        // loader refuses such a save (#218).
         let rows = [(43, 2), (48, 2), (40, 2), (33, 1)];
         let places = || rows.map(|(rank, tier)| history_place(rank, tier));
         set_layout(&ORIGINAL);
