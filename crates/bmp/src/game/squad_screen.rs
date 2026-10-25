@@ -1523,8 +1523,8 @@ mod tests {
             modded,
             [
                 b"Champions League".as_slice(),
-                b"Europa League",
-                b"Conference League"
+                b"Conference League",
+                b"Europa League"
             ]
         );
         assert_eq!(
@@ -1538,17 +1538,21 @@ mod tests {
     }
 
     /// MOD2026: the hover line of a player with status 3, which shows `UI[130]`, is no wider
-    /// with the Conference League than the contract column's hover text in the same line
+    /// with the Europa League than the contract column's hover text in the same line
     /// (font 2; skipped without `BMP_DATA`).
     #[test]
-    fn status_3_with_the_conference_league_fits_the_hover_line() {
+    fn status_3_with_the_europa_league_fits_the_hover_line() {
         use crate::game::{MICRO4, euro_gfx};
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        set_layout(&MOD2026);
+        let mut status = ui_string(304).to_vec();
+        status.extend_from_slice(ui_string(130));
+        set_layout(&ORIGINAL);
+        assert!(status.ends_with(b"Europa League"));
         let Some(g) = euro_gfx() else {
             eprintln!("skipped: no BMP_DATA");
             return;
         };
-        let mut status = ui_string(304).to_vec();
-        status.extend_from_slice(b"Conference League");
         assert!(g.text_width(MICRO4, &status) <= g.text_width(MICRO4, ui_string(36)));
     }
 

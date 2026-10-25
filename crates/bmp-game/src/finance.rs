@@ -527,15 +527,13 @@ pub type DialogLines = [Vec<u8>; 4];
 
 /// The third line of the messages that a season goal is out of reach.
 const CHANCE_LOST: &[u8] = b"die letzte Chance verspielt,";
-/// MOD2026: the last two lines of the message that the Bundesliga's Conference League places
-/// are out of reach. "die CONFERENCE L. zu erreichen." after [`CHANCE_LOST`] would be wider
-/// than the message box, so the sentence puts the cup into the fourth line.
-pub const MOD2026_CONFERENCE_LOST: [&[u8]; 2] = [
-    b"die letzte Chance auf die",
-    b"CONFERENCE LEAGUE verspielt.",
-];
-/// MOD2026: the third line of the message that a Conference League place is secured.
-pub const MOD2026_CONFERENCE_SECURED: &[u8] = b"den CONFERENCE-LEAGUE-PLATZ";
+/// MOD2026: the last two lines of the message that the Bundesliga's Europa League places are
+/// out of reach. "die EUROPA LEAGUE zu erreichen." after [`CHANCE_LOST`] would be wider than
+/// the message box, so the sentence puts the cup into the fourth line.
+pub const MOD2026_EUROPA_LOST: [&[u8]; 2] =
+    [b"die letzte Chance auf die", b"EUROPA LEAGUE verspielt."];
+/// MOD2026: the third line of the message that a Europa League place is secured.
+pub const MOD2026_EUROPA_SECURED: &[u8] = b"den EUROPA-LEAGUE-PLATZ";
 
 /// The messages about the season goals the office shows once per turn of the current
 /// manager: the relegation play-off ahead, the last match day before the winter break (2
@@ -609,8 +607,8 @@ pub fn season_goal_messages(state: &GameState, rt: &mut Runtime) -> Vec<DialogLi
             *flags |= 1 << k;
             let [chance, goal]: [&[u8]; 2] = match (k, league) {
                 (0, _) => [CHANCE_LOST, b"MEISTER zu werden."],
-                // MOD2026: the UEFA cup places are the Conference League's.
-                (1, 0) if mod2026 => MOD2026_CONFERENCE_LOST,
+                // MOD2026: the UEFA cup places are the Europa League's.
+                (1, 0) if mod2026 => MOD2026_EUROPA_LOST,
                 (1, 0) => [CHANCE_LOST, b"den UEFA-CUP zu erreichen."],
                 (1, _) => [CHANCE_LOST, b"AUFZUSTEIGEN."],
                 _ => [CHANCE_LOST, b"DIE KLASSE ZU ERHALTEN."],
@@ -627,8 +625,8 @@ pub fn season_goal_messages(state: &GameState, rt: &mut Runtime) -> Vec<DialogLi
             *flags |= 1 << (k + 3);
             let goal: &[u8] = match (k, league) {
                 (0, _) => b"die MEISTERSCHAFT",
-                // MOD2026: the UEFA cup places are the Conference League's.
-                (1, 0) if mod2026 => MOD2026_CONFERENCE_SECURED,
+                // MOD2026: the UEFA cup places are the Europa League's.
+                (1, 0) if mod2026 => MOD2026_EUROPA_SECURED,
                 (1, 0) => b"den UEFA-CUP-PLATZ",
                 (1, _) => b"den AUFSTIEG",
                 _ => b"den KLASSENERHALT",
@@ -788,9 +786,9 @@ mod tests {
         season_goal_messages(&s, &mut rt)
     }
 
-    /// MOD2026: the UEFA cup goal names the Conference League in a mod game.
+    /// MOD2026: the UEFA cup goal names the Europa League in a mod game.
     #[test]
-    fn the_uefa_cup_goal_names_the_conference_league_in_the_mod() {
+    fn the_uefa_cup_goal_names_the_europa_league_in_the_mod() {
         // Out of reach: every other club has more points than the last can still get.
         let lost = |mod2026| bundesliga_goal_messages(17, 0, 100, 0, mod2026)[1][2..].to_vec();
         assert_eq!(
@@ -800,11 +798,18 @@ mod tests {
                 b"den UEFA-CUP zu erreichen."
             ]
         );
-        assert_eq!(lost(true), MOD2026_CONFERENCE_LOST);
+        assert_eq!(lost(true), MOD2026_EUROPA_LOST);
+        assert_eq!(
+            lost(true),
+            [
+                &b"die letzte Chance auf die"[..],
+                b"EUROPA LEAGUE verspielt."
+            ]
+        );
         // Secured: the season is over and the leader has the most points.
         let secured = |mod2026| bundesliga_goal_messages(0, 100, 0, 34, mod2026)[1][2].clone();
         assert_eq!(secured(false), b"den UEFA-CUP-PLATZ");
-        assert_eq!(secured(true), MOD2026_CONFERENCE_SECURED);
+        assert_eq!(secured(true), b"den EUROPA-LEAGUE-PLATZ");
     }
 
     fn state_on(day: i32, month: i32, year: i32) -> GameState {

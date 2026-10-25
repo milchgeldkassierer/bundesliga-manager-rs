@@ -723,9 +723,9 @@ impl CupDrawUi for DrawScreens<'_> {
 mod tests {
     use super::*;
 
-    /// MOD2026: the Champions and the Europa League are no wider than the names they replace
-    /// in the fonts of the match list's title (1) and the draw's question (3), and the
-    /// Conference League fits the panel and the screen there (skipped without `BMP_DATA`).
+    /// MOD2026: the Champions League is no wider than the name it replaces in the fonts of the
+    /// match list's title (1) and the draw's question (3), and the Conference and the Europa
+    /// League fit the panel and the screen there (skipped without `BMP_DATA`).
     #[test]
     fn the_real_european_cup_names_fit_the_match_list_and_the_draw() {
         use crate::game::{FLOW, NEWBOLD, centered_fits, euro_gfx};
@@ -739,22 +739,22 @@ mod tests {
         set_layout(&ORIGINAL);
         let original = cup_names();
         for font in [FLOW, NEWBOLD] {
-            for c in 1..3 {
-                assert!(g.text_width(font, modded[c]) <= g.text_width(font, original[c]));
+            assert!(g.text_width(font, modded[1]) <= g.text_width(font, original[1]));
+        }
+        for name in &modded[2..] {
+            // The match list's title, centred on 5..0x139 in its panel: every stage, the
+            // competition and the widest minute.
+            for stage in &DFB_STAGES[2..7] {
+                let mut head = stage.to_vec();
+                head.extend_from_slice(name);
+                head.extend_from_slice(b"    120.");
+                head.extend_from_slice(MINUTE);
+                let fits = centered_fits(&g, FLOW, &head, (5, 0x139), 6..=0x138);
+                assert!(fits, "{:?}", String::from_utf8_lossy(&head));
             }
+            // The draw's question, centred on the screen.
+            assert!(centered_fits(&g, NEWBOLD, name, (0, 0x140), 0..=0x13f));
         }
-        // The match list's title, centred on 5..0x139 in its panel: every stage, the
-        // competition and the widest minute.
-        for stage in &DFB_STAGES[2..7] {
-            let mut head = stage.to_vec();
-            head.extend_from_slice(modded[3]);
-            head.extend_from_slice(b"    120.");
-            head.extend_from_slice(MINUTE);
-            let fits = centered_fits(&g, FLOW, &head, (5, 0x139), 6..=0x138);
-            assert!(fits, "{:?}", String::from_utf8_lossy(&head));
-        }
-        // The draw's question, centred on the screen.
-        assert!(centered_fits(&g, NEWBOLD, modded[3], (0, 0x140), 0..=0x13f));
     }
 
     #[test]

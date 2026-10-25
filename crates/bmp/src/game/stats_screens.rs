@@ -96,8 +96,8 @@ const MOD2026_TROPHIES: [&[u8]; 5] = [
     b"MEISTERSCHAFTEN",
     b"DFB-POKALE",
     b"CHAMPIONS LEAGUE",
-    b"EUROPA LEAGUE",
     b"CONFERENCE LEAGUE",
+    b"EUROPA LEAGUE",
 ];
 
 /// The trophy texts of the eternal table (`LBL[1..5]`) of the running game.
@@ -150,8 +150,8 @@ const CUP_NAMES: [&[u8]; 4] = [
 const MOD2026_CUP_NAMES: [&[u8]; 4] = [
     b"DfB-Pokal",
     b"Champions League",
-    b"Europa League",
     b"Conference League",
+    b"Europa League",
 ];
 
 /// The competition names (`UI[127..130]`) of the running game.
@@ -790,7 +790,7 @@ pub fn history_cup_texts(league: u8, dfb: u8, euro: u8) -> ((Vec<u8>, u8), (Vec<
     } else {
         let comp = usize::from((euro & 0x18) >> 3);
         let mut name = cup_names()[comp].to_vec();
-        // MOD2026: the real names are narrower than the original's shortened ones and stay whole.
+        // MOD2026: the real names fit the history's panel and stay whole.
         if (comp == 1 || comp == 2) && GAME_OPTION_A == GAME_OPTION_B && !is_mod2026() {
             name.truncate(18 - comp);
             name.push(b'.');
@@ -1160,7 +1160,7 @@ mod tests {
         let (_, (modded, _)) = history_cup_texts(2, 0x80, 0x18);
         set_layout(&ORIGINAL);
         let (_, (original, _)) = history_cup_texts(2, 0x80, 0x18);
-        assert_eq!(modded, b"3. LIGACONFERENCE LEAGUE");
+        assert_eq!(modded, b"3. LIGAEUROPA LEAGUE");
         assert_eq!(original, b"AM.-OBERLIGAUEFA-POKAL");
     }
 
@@ -1177,13 +1177,14 @@ mod tests {
         let modded = names();
         set_layout(&ORIGINAL);
         let original = names();
-        let real: [&[u8]; 3] = [b"Champions League", b"Europa League", b"Conference League"];
+        // The Pokal der Landesmeister, the Pokal der Pokalsieger and the UEFA-Pokal.
+        let real: [&[u8]; 3] = [b"Champions League", b"Conference League", b"Europa League"];
         assert_eq!(
             modded.0[2..],
             [
                 b"CHAMPIONS LEAGUE".as_slice(),
-                b"EUROPA LEAGUE",
-                b"CONFERENCE LEAGUE"
+                b"CONFERENCE LEAGUE",
+                b"EUROPA LEAGUE"
             ]
         );
         assert_eq!(
@@ -1223,16 +1224,16 @@ mod tests {
             modded,
             [
                 b"SIEGER CHAMPIONS LEAGUE".as_slice(),
-                b"VIERTELFINALE EUROPA LEAGUE",
-                b"HALBFINALE CONFERENCE LEAGUE",
+                b"VIERTELFINALE CONFERENCE LEAGUE",
+                b"HALBFINALE EUROPA LEAGUE",
                 b"CHAMPIONS LEAGUECHAMPIONS LEAGUE"
             ]
         );
     }
 
-    /// MOD2026: in the eternal table and the history (font 2) the Champions and the Europa
-    /// League are no wider than the texts they replace, and the Conference League fits the
-    /// panel it is drawn in (skipped without `BMP_DATA`).
+    /// MOD2026: in the eternal table and the history (font 2) the Champions League is no wider
+    /// than the texts it replaces, and the Conference and the Europa League fit the panel they
+    /// are drawn in (skipped without `BMP_DATA`).
     #[test]
     fn the_real_european_cup_names_fit_the_eternal_table_and_the_history() {
         use crate::game::{MICRO4, centered_fits, euro_gfx};
@@ -1242,17 +1243,12 @@ mod tests {
             return;
         };
         let width = |text: &[u8]| g.text_width(MICRO4, text);
-        for i in 2..4 {
-            assert!(width(MOD2026_TROPHIES[i]) <= width(TROPHIES[i]));
-        }
+        assert!(width(MOD2026_TROPHIES[2]) <= width(TROPHIES[2]));
         // Centred on 0xb0..0x11e in the panel 0x91..0x139.
-        assert!(centered_fits(
-            &g,
-            MICRO4,
-            MOD2026_TROPHIES[4],
-            (0xb0, 0x11e),
-            0x92..=0x138
-        ));
+        for trophy in &MOD2026_TROPHIES[3..] {
+            let fits = centered_fits(&g, MICRO4, trophy, (0xb0, 0x11e), 0x92..=0x138);
+            assert!(fits, "{:?}", String::from_utf8_lossy(trophy));
+        }
         // Every European cup text of a history line: the win and the stages 1..5.
         let texts = |comp: u8| -> Vec<Vec<u8>> {
             [0x80, 1, 2, 3, 4, 5]
@@ -1264,13 +1260,11 @@ mod tests {
         let modded: Vec<_> = (1..4).map(texts).collect();
         set_layout(&ORIGINAL);
         let original: Vec<_> = (1..4).map(texts).collect();
-        for comp in 0..2 {
-            for (m, o) in modded[comp].iter().zip(&original[comp]) {
-                assert!(width(m) <= width(o), "{:?}", String::from_utf8_lossy(m));
-            }
+        for (m, o) in modded[0].iter().zip(&original[0]) {
+            assert!(width(m) <= width(o), "{:?}", String::from_utf8_lossy(m));
         }
         // Centred on 0xb4..0x139 in the list panel 5..0x139.
-        for text in &modded[2] {
+        for text in modded[1..].iter().flatten() {
             let fits = centered_fits(&g, MICRO4, text, (0xb4, 0x139), 6..=0x138);
             assert!(fits, "{:?}", String::from_utf8_lossy(text));
         }

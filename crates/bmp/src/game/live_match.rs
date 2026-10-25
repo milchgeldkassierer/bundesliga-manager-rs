@@ -1356,8 +1356,8 @@ mod tests {
     use super::*;
 
     /// MOD2026: the title screen of a mod game names the real European cups, which a club
-    /// wins as "die"; the Conference League fits the screen in font 3 (skipped without
-    /// `BMP_DATA` from there on).
+    /// wins as "die"; the Champions League is no wider than the name it replaces, the Conference
+    /// and the Europa League fit the screen in font 3 (skipped without `BMP_DATA` from there on).
     #[test]
     fn the_title_screen_names_the_real_european_cups() {
         use crate::game::{FLOW, NEWBOLD, centered_fits, euro_gfx};
@@ -1373,8 +1373,8 @@ mod tests {
                 the(b"Deutsche Meisterschaft", b"gewinnt die"),
                 the(b"DfB-Pokal", b"gewinnt den"),
                 the(b"Champions League", b"gewinnt die"),
-                the(b"Europa League", b"gewinnt die"),
                 the(b"Conference League", b"gewinnt die"),
+                the(b"Europa League", b"gewinnt die"),
             ]
         );
         assert_eq!(
@@ -1391,18 +1391,11 @@ mod tests {
             eprintln!("skipped: no BMP_DATA");
             return;
         };
-        for c in 2..4 {
-            assert!(g.text_width(NEWBOLD, modded[c].0) <= g.text_width(NEWBOLD, original[c].0));
-            assert!(g.text_width(FLOW, modded[c].1) <= g.text_width(FLOW, original[c].1));
+        assert!(g.text_width(NEWBOLD, modded[2].0) <= g.text_width(NEWBOLD, original[2].0));
+        for (name, wins) in &modded[2..] {
+            assert!(g.text_width(FLOW, wins) <= g.text_width(FLOW, WINS_THE_M));
+            assert!(centered_fits(&g, NEWBOLD, name, (0, 0x13f), 0..=0x13f));
         }
-        assert!(centered_fits(
-            &g,
-            NEWBOLD,
-            modded[4].0,
-            (0, 0x13f),
-            0..=0x13f
-        ));
-        assert!(centered_fits(&g, FLOW, modded[4].1, (0, 0x13f), 0..=0x13f));
     }
 
     #[test]

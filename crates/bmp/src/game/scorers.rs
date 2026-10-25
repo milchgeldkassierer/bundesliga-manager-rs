@@ -513,17 +513,17 @@ mod tests {
     }
 
     /// MOD2026: the status line of status 3, which shows `UI[130]`, fits the info window with
-    /// the Conference League (font 2 from 0x5c, the panel 0x59..0x139; skipped without
+    /// the Europa League (font 2 from 0x5c, the panel 0x59..0x139; skipped without
     /// `BMP_DATA`).
     #[test]
-    fn status_3_with_the_conference_league_fits_the_info_window() {
+    fn status_3_with_the_europa_league_fits_the_info_window() {
         use crate::game::{MICRO4, euro_gfx};
         use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
         set_layout(&MOD2026);
         let mut line = b"STATUS: ".to_vec();
         line.extend_from_slice(ui_string(130));
         set_layout(&ORIGINAL);
-        assert_eq!(line, b"STATUS: Conference League");
+        assert_eq!(line, b"STATUS: Europa League");
         let Some(g) = euro_gfx() else {
             eprintln!("skipped: no BMP_DATA");
             return;

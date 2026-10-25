@@ -99,25 +99,29 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   `history_cup_texts`, `crates/bmp/src/game/live_match.rs` `title_winner_texts`,
   `crates/bmp-game/src/finance.rs` `season_goal_messages`, `crates/bmp/src/teamed/uefa.rs`,
   PRD R1c): a mod game names the Pokal der Landesmeister `Champions League`, the Pokal der
-  Pokalsieger `Europa League` and the UEFA-Pokal `Conference League` (`UI[128..130]`), in
-  upper case where the original upper-cases. Format, qualification and draws are unchanged.
+  Pokalsieger `Conference League` and the UEFA-Pokal `Europa League` (`UI[128..130]`; owner
+  decision of 2026-10-25, #256, which swapped #190's first mapping), in upper case where the
+  original upper-cases. Format, qualification and draws are unchanged.
   The sites: the match list's title and the draw's question (`cup_screens.rs`), the title
   screen of a won cup, which reads "gewinnt die" for the three leagues instead of "gewinnt
-  den", the manager history, the eternal table's trophy rows (`CHAMPIONS LEAGUE`, `EUROPA
-  LEAGUE`, `CONFERENCE LEAGUE` for `LANDESMEISTER-POKALE` etc.), the Bundesliga's season goal
-  messages for the UEFA cup places, the team editor's refusal of too weak foreign clubs, and
-  the status line of a player with status 3 in the player info and the squad list, which shows
-  `UI[130]` (a quirk of the original: "STATUS: UEFA-Pokal", now "STATUS: Conference League").
-  The Champions and the Europa League are narrower than the original names in every font; the
-  history, which shortens two original names to `POKAL DER LANDESM.` and `POKAL DER POKALS.`,
-  shows them whole because they are still narrower. The full `Conference League` fits the
-  panel or screen at every site but these (owner decision of 2026-10-25, #190):
-  - **Short form**: the team editor's refusal reads `CONFERENCE L. SONST ZU LEICHT.`; the
-    full name would not fit its 118 px message box.
-  - **Reworded**: "die letzte Chance verspielt, / die CONFERENCE L. zu erreichen." would not
-    fit the message box of the season goals even in the short form, so the mod's message
-    reads "die letzte Chance auf die / CONFERENCE LEAGUE verspielt."; the secured place is
-    "den CONFERENCE-LEAGUE-PLATZ".
+  den", the manager history, the eternal table's trophy rows (`CHAMPIONS LEAGUE`, `CONFERENCE
+  LEAGUE`, `EUROPA LEAGUE` for `LANDESMEISTER-POKALE`, `POKALSIEGER-POKALE`, `UEFA-POKALE`),
+  the Bundesliga's season goal messages for the UEFA cup places (now the Europa League's), the
+  team editor's refusal of too weak foreign clubs ("UEFA-CUP SONST ZU LEICHT."), and the status
+  line of a player with status 3 in the player info and the squad list, which shows `UI[130]`
+  (a quirk of the original: "STATUS: UEFA-Pokal", now "STATUS: Europa League").
+  The Champions League is narrower than the Pokal der Landesmeister in every font, and the
+  Conference League narrower than the Pokal der Pokalsieger. The Europa League is wider than
+  the short "UEFA-Pokal" in every font, so like the Conference League it is measured against
+  the field or screen at each site (PRD R1c: every renamed text must fit its original field).
+  The history, which shortens two original names to `POKAL DER LANDESM.` and `POKAL DER
+  POKALS.`, shows the real names whole because they fit its panel. The full names fit at every
+  site but these:
+  - **Short form**: the team editor's refusal reads `EUROPA L. SONST ZU LEICHT.`; the full
+    name would not fit its 118 px message box.
+  - **Reworded**: "die letzte Chance verspielt, / die EUROPA LEAGUE zu erreichen." would not
+    fit the message box of the season goals, so the mod's message reads "die letzte Chance auf
+    die / EUROPA LEAGUE verspielt."; the secured place is "den EUROPA-LEAGUE-PLATZ".
   The newspaper and the offers name no European cup by name ("EUROPAPOKAL", "EUROPA-POKAL"
   stay).
 

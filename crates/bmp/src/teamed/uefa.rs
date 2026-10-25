@@ -41,13 +41,13 @@ const HEADERS: [(i16, &[u8]); 6] = [
 const REFUSED_1: &[u8] = b"EINGABE NICHT ANGENOMMEN,";
 /// "UEFA-CUP SONST ZU LEICHT." (`DS:042E`).
 const REFUSED_2: &[u8] = b"UEFA-CUP SONST ZU LEICHT.";
-/// MOD2026: [`REFUSED_2`] with the Conference League, which replaces the UEFA cup; the full
-/// name does not fit the message box.
-const MOD2026_REFUSED_2: &[u8] = b"CONFERENCE L. SONST ZU LEICHT.";
+/// MOD2026: [`REFUSED_2`] with the Europa League, which replaces the UEFA cup; the full name
+/// does not fit the message box.
+const MOD2026_REFUSED_2: &[u8] = b"EUROPA L. SONST ZU LEICHT.";
 
 /// The second line of the refusal of a too low strength.
 fn refused_2(mod2026: bool) -> &'static [u8] {
-    // MOD2026: a mod game names the Conference League.
+    // MOD2026: a mod game names the Europa League.
     if mod2026 {
         MOD2026_REFUSED_2
     } else {
@@ -291,13 +291,13 @@ mod tests {
         assert!(!strength_ok(&mana_with_strength(0)));
     }
 
-    /// MOD2026: the refusal names the Conference League in a mod game and fits the message
-    /// box (font 3, centred on 1..0x77 in its frame; skipped without `BMP_DATA`).
+    /// MOD2026: the refusal names the Europa League in a mod game and fits the message box
+    /// (font 3, centred on 1..0x77 in its frame; skipped without `BMP_DATA`).
     #[test]
-    fn the_refusal_names_the_conference_league_in_the_mod() {
+    fn the_refusal_names_the_europa_league_in_the_mod() {
         use crate::game::{MICRO4, centered_fits, euro_gfx};
         assert_eq!(refused_2(false), b"UEFA-CUP SONST ZU LEICHT.");
-        assert_eq!(refused_2(true), b"CONFERENCE L. SONST ZU LEICHT.");
+        assert_eq!(refused_2(true), b"EUROPA L. SONST ZU LEICHT.");
         let Some(g) = euro_gfx() else {
             eprintln!("skipped: no BMP_DATA");
             return;
@@ -309,7 +309,7 @@ mod tests {
             (1, 0x77),
             2..=0x76
         ));
-        let full = b"CONFERENCE LEAGUE SONST ZU LEICHT.";
+        let full = b"EUROPA LEAGUE SONST ZU LEICHT.";
         assert!(!centered_fits(&g, MICRO4, full, (1, 0x77), 2..=0x76));
     }
 

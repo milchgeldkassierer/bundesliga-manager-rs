@@ -382,22 +382,28 @@ mod tests {
         assert_mod_texts_narrower(&pairs);
     }
 
-    /// MOD2026: the Conference League lines of the season goal messages fit the message box
-    /// (`dialog_okay`: font 1, centred on 0x3c..0xf5 in its panel; skipped without `BMP_DATA`).
+    /// MOD2026: the Europa League lines of the season goal messages fit the message box
+    /// (`dialog_okay`: font 1, centred on 0x3c..0xf5 in its panel; skipped without `BMP_DATA`);
+    /// the original's sentence with the cup's name would not.
     #[test]
-    fn the_conference_league_goal_lines_fit_the_message_box() {
-        use bmp_game::finance::{MOD2026_CONFERENCE_LOST, MOD2026_CONFERENCE_SECURED};
+    fn the_europa_league_goal_lines_fit_the_message_box() {
+        use bmp_game::finance::{MOD2026_EUROPA_LOST, MOD2026_EUROPA_SECURED};
         let Some(g) = euro_gfx() else {
             eprintln!("skipped: no BMP_DATA");
             return;
         };
-        for line in MOD2026_CONFERENCE_LOST
-            .iter()
-            .chain([&MOD2026_CONFERENCE_SECURED])
-        {
+        for line in MOD2026_EUROPA_LOST.iter().chain([&MOD2026_EUROPA_SECURED]) {
             let fits = centered_fits(&g, FLOW, line, (0x3c, 0xf5), 0x3d..=0xf4);
             assert!(fits, "{:?}", String::from_utf8_lossy(line));
         }
+        let original_form = b"die EUROPA LEAGUE zu erreichen.";
+        assert!(!centered_fits(
+            &g,
+            FLOW,
+            original_form,
+            (0x3c, 0xf5),
+            0x3d..=0xf4
+        ));
     }
 
     #[test]
