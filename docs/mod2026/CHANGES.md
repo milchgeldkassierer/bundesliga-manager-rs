@@ -69,6 +69,29 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
 - **Not yet**: the 2. Bundesliga / 3. Liga play-off, the "3. LIGA" texts, which clubs fill the
   pool (#177) and the team editor's tier groups (`crates/bmp/src/teamed/`, still 18 / 20 / 20).
 
+## Three-point rule
+
+- **Owner** (PRD R1b): the points for a win (DS:2271, a byte of the league tables) are
+  `LeagueLayout::points_per_win`, 2 in `ORIGINAL` and 3 in `MOD2026`; a draw gives 1, a loss 0.
+  The constant `POINTS_PER_WIN` is gone.
+- **Sites that follow it**: the match result (`league::apply_result`), the points still available
+  in the season goal messages (`finance::season_goal_messages`), the high score's tier term
+  (`highscore_compute_score` reads DS:2271 as `tier_base[3]`) and the manager's career points
+  lost (`season_record_manager`: points per win × games − points; the original multiplies by 2,
+  which the original layout keeps).
+- **Display**: the league table shows a single points number in the mod, through the original's
+  own branch for DS:2271 > 2. It fits under "PUNKTE": `"     ^6 "` is 22 px wide in the row
+  font, the original's `"^6:^4"` 23 px; from 100 points on the goals column moves 4 px right.
+  The career record on the eternal table screen shows its points as one number too, so 3-point
+  values never appear as a plus:minus pair. Both screens ask `LeagueLayout::single_points_column`.
+- **Ranking unchanged**: points, then fewer games played, goal difference, goals scored, as the
+  original ranks (PRD R1b: "as the original ranks apart from the points"). The played-games key
+  only separates clubs with a postponed match; DS:224d, which would drop it, is the original's
+  international switch and stays off.
+- **Unchanged**: the save format (at most 19 home wins × 3 = 57 points per side fit the bytes),
+  MANA.DAT block 3 and the strength recomputation (2-point previous-season values, PRD R3), and
+  the eternal table and board verdict (they rank by prestige, not points).
+
 ## Season 2026/27
 
 - **Start year** (`crates/bmp-game/src/newgame.rs` `apply_game_options`, PRD R2): a new mod

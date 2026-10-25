@@ -8,7 +8,6 @@
 use bmp_formats::savegame::{HIGHSCORE_ENTRIES, HighScoreEntry, HighScoreTable};
 
 use crate::finance::{CreditField, credit_sum};
-use crate::league::POINTS_PER_WIN;
 use crate::rng::{Rng, ldiv, lmul};
 use crate::state::GameState;
 use crate::stats::stadium_attraction;
@@ -21,8 +20,9 @@ use crate::transfer::player_value_calc;
 pub fn highscore_compute_score(state: &GameState, m: usize) -> i32 {
     let layout = crate::league_layout::layout();
     // `DS:226e`: first club id of each tier, as signed bytes; index 3 reads DS:2271.
+    // MOD2026: DS:2271 is the layout's points per win.
     let first = layout.first_team;
-    let tier_base = [first[0], first[1], first[2], POINTS_PER_WIN].map(|b| b as i8);
+    let tier_base = [first[0], first[1], first[2], layout.points_per_win].map(|b| b as i8);
     let man = &state.managers[m];
     let pos = state.team_tables[usize::from(man.team) % state.team_tables.len()].table_position;
     // MOD2026: the original's immediates 0x39 and 0x3a are its last league club id and its

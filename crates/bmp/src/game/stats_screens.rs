@@ -582,7 +582,12 @@ fn career_word(mgr: &Manager, k: usize) -> u16 {
 pub fn career_text(mgr: &Manager, row: usize, c: usize, fmt: NumberFormat) -> (Vec<u8>, bool) {
     // Word index of the "for" and the "against" pair (M+0x1a4 + 2 * index).
     let (p, q) = match row {
-        0 => (0, (!POINTS_AGAINST_HIDDEN).then_some(6)),
+        // MOD2026: with 3 points for a win the points show as one number, like the league
+        // table.
+        0 => (
+            0,
+            (!POINTS_AGAINST_HIDDEN && !layout().single_points_column()).then_some(6),
+        ),
         1 => (2, Some(4)),
         _ => (6 + 2 * row, None),
     };
@@ -1005,6 +1010,18 @@ mod tests {
         assert_eq!(career_text(&mgr, 0, 0, fmt()), (b"91:9".to_vec(), true));
         assert_eq!(career_text(&mgr, 0, 2, fmt()), (b"61:5".to_vec(), true));
         assert_eq!(career_text(&mgr, 2, 1, fmt()), (b"9".to_vec(), false));
+    }
+
+    #[test]
+    fn career_points_show_one_number_with_three_points() {
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        let mut mgr = Box::new(GameState::zeroed()).managers[0].clone();
+        mgr.career_stats[0] = [30, 61];
+        mgr.career_stats[3] = [4, 5];
+        set_layout(&MOD2026);
+        let text = career_text(&mgr, 0, 0, fmt());
+        set_layout(&ORIGINAL);
+        assert_eq!(text, (b"91".to_vec(), false));
     }
 
     #[test]

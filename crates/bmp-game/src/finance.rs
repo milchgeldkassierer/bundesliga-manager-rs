@@ -15,7 +15,6 @@
 //!
 //! Full documentation with Ghidra addresses: `docs/re/logic/finance.md`.
 
-use crate::league::POINTS_PER_WIN;
 use crate::news::{MessageArg, NO_FREE_SLOT, message_delete, message_post, team_slot_free_index};
 use crate::rng::{NumberFormat, Rng, clamp_int, ldiv, lmul, lrem, lshr};
 use crate::runtime::Runtime;
@@ -549,7 +548,8 @@ pub fn season_goal_messages(state: &GameState, rt: &mut Runtime) -> Vec<DialogLi
     let left = |t: usize| {
         let p = &state.team_tables[t].played;
         (i16::from(rt.tier_round_count[league]) - i16::from(p[0]) - i16::from(p[1]))
-            * i16::from(POINTS_PER_WIN)
+            // MOD2026: DS:2271 comes from the league layout (3 in the mod, PRD R1b).
+            * i16::from(crate::league_layout::layout().points_per_win)
     };
     let rank = |r: i16| usize::from(state.league_teams[league][(r as usize).min(19)]);
     let round = state.competition_rounds[league];
@@ -687,6 +687,24 @@ mod tests {
         );
         assert_eq!(rt.goal_message_flags[0], 0b10);
         assert!(season_goal_messages(&s, &mut rt).is_empty());
+    }
+
+    #[test]
+    fn the_points_still_available_count_three_per_win_in_the_mod() {
+        use crate::league_layout::{MOD2026, with_layout};
+        with_layout(&MOD2026, || {
+            // 4 of 34 rounds left: 30 + 4 x 3 = 42 points are still reachable.
+            let mut s = goal_state(5);
+            s.team_tables[20].played = [15, 15, 0, 0];
+            s.team_tables[20].points = [15, 15, 0, 0];
+            let second = usize::from(s.league_teams[1][1]);
+            s.team_tables[second].points = [41, 0, 0, 0];
+            assert!(season_goal_messages(&s, &mut Runtime::default()).is_empty());
+            s.team_tables[second].points = [43, 0, 0, 0];
+            let msgs = season_goal_messages(&s, &mut Runtime::default());
+            assert_eq!(msgs.len(), 1);
+            assert_eq!(msgs[0][3], b"AUFZUSTEIGEN.");
+        });
     }
 
     #[test]

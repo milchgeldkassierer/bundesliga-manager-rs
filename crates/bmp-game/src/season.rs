@@ -787,7 +787,11 @@ fn season_record_manager<U: SeasonUi + ?Sized>(
             t.losses[k],
         ]
         .map(u16::from);
-        let lost = w.wrapping_mul(2).wrapping_sub(a);
+        // MOD2026: the points lost count the layout's points per win; the original multiplies
+        // by 2, so the original layout is unchanged.
+        let lost = w
+            .wrapping_mul(u16::from(layout().points_per_win))
+            .wrapping_sub(a);
         let draws = w.wrapping_sub(l).wrapping_sub(d);
         for (field, add) in [a, g1, g2, lost, w, d, l, draws].into_iter().enumerate() {
             r.career_stats[field][k] = r.career_stats[field][k].wrapping_add(add);
@@ -4193,6 +4197,19 @@ mod tests {
     }
 
     #[test]
+    fn season_record_manager_counts_lost_points_with_three_points() {
+        use crate::league_layout::{MOD2026, with_layout};
+        with_layout(&MOD2026, || {
+            let rt = Runtime::default();
+            let mut s = record_state();
+            let mut ui = Headless::new(&s);
+            season_record_manager(&mut s, &rt, 0, &mut ui).unwrap();
+            // 3 * 17 - 40, 3 * 17 - 30.
+            assert_eq!(s.managers[0].career_stats[3], [11, 21]);
+        });
+    }
+
+    #[test]
     fn season_record_manager_shifts_a_full_log() {
         let rt = Runtime::default();
         let mut s = record_state();
@@ -5079,6 +5096,36 @@ mod tests {
         (s, end)
     }
 
+    /// Asserts `points == 3 * wins + draws` on both sides of every mod league club and returns
+    /// whether some side had a win and some side a draw.
+    fn assert_three_point_tables(s: &GameState) -> (bool, bool) {
+        use crate::league_layout::MOD2026;
+        let (mut won, mut drawn) = (false, false);
+        for c in 0..MOD2026.league_club_count() {
+            let t = &s.team_tables[usize::from(c)];
+            for k in 0..2 {
+                let draws = t.played[k] - t.wins[k] - t.losses[k];
+                assert_eq!(t.points[k], 3 * t.wins[k] + draws, "club {c} side {k}");
+                won |= t.wins[k] > 0;
+                drawn |= draws > 0;
+            }
+        }
+        (won, drawn)
+    }
+
+    #[test]
+    fn mod_season_scores_three_points() {
+        use crate::league_layout::{MOD2026, with_layout};
+        with_layout(&MOD2026, || {
+            let mut ui = Headless::new(&GameState::zeroed());
+            ui.stop_at_season_end = true;
+            let (s, end) = play_mod_game(&mut ui);
+            assert_eq!(end, Err(Done));
+            assert_eq!(s.competition_rounds, [35, 35, 39]);
+            assert_eq!(assert_three_point_tables(&s), (true, true));
+        });
+    }
+
     #[test]
     fn mod_season_plays_18_18_20() {
         use crate::league_layout::{MOD2026, with_layout};
@@ -5127,6 +5174,9 @@ mod tests {
             assert_eq!(back.league_teams, s.league_teams);
             assert_eq!(back.league_results, s.league_results);
             assert_eq!(back.week_competitions, s.week_competitions);
+            let points = |s: &GameState| s.team_tables.iter().map(|t| t.points).collect::<Vec<_>>();
+            assert_eq!(points(&back), points(&s));
+            assert_eq!(assert_three_point_tables(&s), (true, true));
         });
     }
 

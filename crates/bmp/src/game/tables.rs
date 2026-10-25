@@ -8,8 +8,7 @@
 
 use bmp_game::ai::squad_recalc_team_strength;
 use bmp_game::league::{
-    NO_MATCH, NOT_PLAYED, POINTS_PER_WIN, RoundMode, fixtures_build_round_pairings,
-    league_apply_round_and_sort,
+    NO_MATCH, NOT_PLAYED, RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
 };
 use bmp_game::league_layout::layout;
 use bmp_game::rng::{NumberFormat, format_long_thousands, long_abs_diff};
@@ -368,15 +367,24 @@ pub fn league_table_row_text(
     cat(&mut out, &num(*fmt, i32::from(losses)));
     cat(&mut out, b"    ");
     let points = col(tt.points, cols);
-    if POINTS_PER_WIN > 2 {
+    // MOD2026: DS:2271 comes from the league layout, so the mod's 3-point rule takes the
+    // original's single-number branch.
+    let league = layout();
+    if league.single_points_column() {
         cat(&mut out, b"     ");
     }
     cat(&mut out, &num(*fmt, i32::from(points)));
-    if POINTS_PER_WIN < 3 {
-        cat(&mut out, b":");
-        cat(&mut out, &num(*fmt, i32::from(2 * games - points)));
-    } else {
+    if league.single_points_column() {
         cat(&mut out, b" ");
+    } else {
+        cat(&mut out, b":");
+        cat(
+            &mut out,
+            &num(
+                *fmt,
+                i32::from(i16::from(league.points_per_win) * games - points),
+            ),
+        );
     }
     cat(&mut out, b"    ");
     let gf = col(tt.goals_for, cols);
@@ -1448,6 +1456,32 @@ mod tests {
         assert_eq!(
             league_table_row_text(&s, 0, 2, &mut f),
             b"sSuUnN@@   ^2     ^0 ^1 ^1    ^1:^3    ^^1:^^3      -^2"
+        );
+    }
+
+    #[test]
+    fn league_row_text_shows_one_number_with_three_points() {
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        let mut s = state();
+        let t = &mut s.team_tables[0];
+        t.form[0][..8].copy_from_slice(b"sSuUnN@@");
+        t.played = [3, 2, 0, 0];
+        t.wins = [2, 0, 0, 0];
+        t.losses = [0, 1, 0, 0];
+        t.points = [5, 1, 0, 0];
+        t.goals_for = [7, 1, 0, 0];
+        t.goals_against = [2, 3, 0, 0];
+        let mut f = fmt();
+        set_layout(&MOD2026);
+        let rows = [1, 2].map(|cols| league_table_row_text(&s, 0, cols, &mut f));
+        set_layout(&ORIGINAL);
+        assert_eq!(
+            rows[0],
+            b"sSuUnN@@   ^5     ^2 ^2 ^1         ^6     ^^8:^^5      +^3"
+        );
+        assert_eq!(
+            rows[1],
+            b"sSuUnN@@   ^2     ^0 ^1 ^1         ^1     ^^1:^^3      -^2"
         );
     }
 

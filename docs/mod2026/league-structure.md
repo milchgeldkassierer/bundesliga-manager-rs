@@ -24,7 +24,7 @@ the `file:line` pointers have moved. The `history_graph_lines` height and the
 - **Table readers.** Most of the port does not repeat the numbers: it reads them from the
   constants and `Runtime` fields that mirror the DS tables below. Every use of `LEAGUE_*`,
   `TIER_*`, `tier_*`, `RELEGATION_*`, `PROMOTION_PLACES`, `EURO_PLACES`, `UEFA_PLACES`,
-  `DFB_LAST_TEAM` and `POINTS_PER_WIN` in `crates/` is listed as a `reader` row by function.
+  `DFB_LAST_TEAM` and `POINTS_PER_WIN` (now `LeagueLayout::points_per_win`) in `crates/` is listed as a `reader` row by function.
 - **Hex and fixed indices.** `0x39`, `0x3f`, `0x40`, `[u8; 60]`, row 114 and the play-off ranks
   `[0][15]` / `[1][2]` are league values the decimal grep cannot see (`hex` and `index` rows).
 - **Team editor.** The team editor (`crates/bmp/src/teamed/`, `TEAMED.EXE`) keeps its own copies
@@ -62,7 +62,7 @@ the category sections below list only the sites that use them.
 | Season end | `crates/bmp-game/src/cups.rs:68`, `crates/bmp-game/src/finance.rs:638` | `HAS_RELEGATION_PLAYOFF`, `RELEGATION_PLAYOFF` | DS:226a, DS:226b, DS:226c | 1, 0, 0 | the tier has a relegation play-off |
 | Cup qualification | `crates/bmp-game/src/cups.rs:64`, `crates/bmp/src/game/tables.rs:39` | `UEFA_PLACES`, `EURO_PLACES` | DS:226d | 4 | UEFA-Cup places of the Bundesliga |
 | League order lists | `crates/bmp-game/src/league.rs:15`, `crates/bmp-game/src/runtime.rs:16` | `LEAGUE_FIRST_TEAM`, `TIER_FIRST` | DS:226e, DS:226f, DS:2270 | 0, 18, 38 | first club id per tier; DS:226f/DS:2270 are the tier bounds of `league_of_rank` 27c2:1bb5 |
-| Tables | `crates/bmp-game/src/league.rs:29` | `POINTS_PER_WIN` | DS:2271 | 2 | points for a win |
+| Tables | `crates/bmp-game/src/league_layout.rs:35` | `LeagueLayout::points_per_win` | DS:2271 | 2 | points for a win (3 in the mod, R1b) |
 | League order lists | `crates/bmp/src/game/scorers.rs:54`, `crates/bmp-game/src/runtime.rs:58` | `TIER_RANGE`, `Runtime::tier_club_ranges` | DS:2272..DS:2277 | 0..17, 18..37, 38..57 | first and last club id per tier |
 | Cup qualification | `crates/bmp-game/src/cups.rs:60` | `DFB_LAST_TEAM` | DS:2277 | 57 | last league club id, also the top of the DFB-Pokal draw |
 | Season end | `crates/bmp-game/src/cups.rs:832`, 835 | `season_promotion_relegation` | DS:2278 | 58 | first non-league club id (58..63 are the non-league German clubs); the port computes it as the sum of the tier counts |
@@ -149,7 +149,7 @@ of `clubs.json`).
 |---|---|---|---|---|---|---|
 | Tables | `crates/bmp-game/src/ai.rs:741`, 772 | `match_attendance_estimate` | 1f9d:11e0 | 34, 38; 18, 20 | attendance from rounds per tier and rank against team count | reader |
 | Tables | `crates/bmp-game/src/league.rs:299`, 302 | `league_apply_round_and_sort` | 3a41:2d33 (DS:2262 at 3a41:2d49; DS:225e at 3a41:32fe, 3562, 3736, 3778) | 18, 20, 34, 38 | round gate and table sort bound | reader |
-| Tables | `crates/bmp-game/src/league.rs:391`, 411 | `POINTS_PER_WIN` / `apply_result` | DS:2271 (3a41:2d33 at 3a41:2fcb, 31c4) | 2 | points for a win (R1b changes it to 3) | reader |
+| Tables | `crates/bmp-game/src/league.rs:375` | `LeagueLayout::points_per_win` / `apply_result` | DS:2271 (3a41:2d33 at 3a41:2fcb, 31c4) | 2 | points for a win (3 in the mod, R1b done) | reader |
 | Tables | `crates/bmp-game/src/newgame.rs:499` | `add_manager_squads` | FAR:234d | 38 | position history init, one entry per round (38) | grep |
 | Tables | `crates/bmp-game/src/state.rs:251`, 257 | `Manager::position_history` | FAR:234d | 38 | position history holds one byte per round, 38 rounds max; array dimension = max rounds per tier (DS:2262) | grep |
 | Tables | `crates/bmp-game/src/state.rs:1494` | `GameState::sort_league_table` | 3a41:2d33 | 18, 20 | exchange sort of league_teams[tier][..DS:225e[tier]] | reader |

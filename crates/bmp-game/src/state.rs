@@ -313,7 +313,7 @@ record! {
         /// +0x1a4 (FAR:23e6) career totals, two `u16` halves (home, away)
         /// per field, added up at every season end by `season_main_loop`
         /// 2a58:3763: points, goals for, goals against, points lost
-        /// (`2 * played - points`), played, wins, losses, draws
+        /// (`DS:2271 * played - points`), played, wins, losses, draws
         /// (`played - losses - wins`).
         pub career_stats: [[u16; 2]; 8],
         /// +0x1c4..0x1db not yet traced.
@@ -2198,6 +2198,27 @@ pub(crate) mod tests {
         let mut c = s.clone();
         c.sort_league_table(0, 4, 2, false);
         assert_eq!(&c.league_teams[0][..4], &[0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn sort_league_table_ranks_points_then_goal_difference_then_goals() {
+        let mut s = GameState::zeroed();
+        s.league_teams[0][..4].copy_from_slice(&[3, 1, 2, 0]);
+        // 3-point values over five games, split into home and away.
+        for (t, pts, gf, ga) in [(0, 9, 5, 2), (1, 9, 4, 3), (2, 6, 5, 5), (3, 6, 4, 4)] {
+            let r = &mut s.team_tables[t];
+            r.points = [pts - 3, 3, 0, 0];
+            r.played = [3, 2, 0, 0];
+            r.goals_for = [gf - 1, 1, 0, 0];
+            r.goals_against = [ga - 1, 1, 0, 0];
+        }
+        s.sort_league_table(0, 4, 1, false);
+        assert_eq!(&s.league_teams[0][..4], &[0, 1, 2, 3]);
+        let positions: Vec<u8> = s.team_tables[..4]
+            .iter()
+            .map(|t| t.table_position)
+            .collect();
+        assert_eq!(positions, [0, 1, 2, 3]);
     }
 
     #[test]

@@ -12,8 +12,6 @@ use crate::matchsim::league_result_cell;
 use crate::rng::{Rng, clamp_int, long_abs_diff};
 use crate::state::{Club, GERMAN_CLUBS, GameState, MatchHistory, TeamTable};
 
-/// DS:2271 points for a win (2-point rule).
-pub const POINTS_PER_WIN: u8 = 2;
 /// Home-goals value of a result that has not been played yet.
 pub const NOT_PLAYED: u8 = 0x1e;
 /// Home team id (`'F'`) that ends a pairing list.
@@ -373,9 +371,11 @@ fn apply_result(state: &mut GameState, rng: &mut Rng, h: u8, a: u8, gh: u8, ga: 
 
     let hist = &mut state.match_history;
     let (home_form, away_form);
+    // MOD2026: DS:2271 comes from the league layout (3 in the mod, PRD R1b).
+    let win = layout().points_per_win;
     if ga < gh {
         let pts = &mut state.team_tables[hi].points[0];
-        *pts = pts.wrapping_add(POINTS_PER_WIN);
+        *pts = pts.wrapping_add(win);
         Streaks::new(hist, hi, 1).set_outcome(Outcome::Won);
         team_record_update(hist, h, 0, gh, ga, false, 1, 1, a);
         team_record_update(hist, a, 5, gh, ga, false, 1, 1, h);
@@ -395,7 +395,7 @@ fn apply_result(state: &mut GameState, rng: &mut Rng, h: u8, a: u8, gh: u8, ga: 
         (home_form, away_form) = (FORM_HOME_DRAW, FORM_AWAY_DRAW);
     } else {
         let ta = &mut state.team_tables[ai];
-        ta.points[1] = ta.points[1].wrapping_add(POINTS_PER_WIN);
+        ta.points[1] = ta.points[1].wrapping_add(win);
         ta.wins[1] = ta.wins[1].wrapping_add(1);
         let losses = &mut state.team_tables[hi].losses[0];
         *losses = losses.wrapping_add(1);
@@ -727,6 +727,32 @@ mod tests {
         assert_eq!(s.league_teams[0][16..18], [4, 1]);
         assert_eq!(s.team_tables[1].table_position, 17);
         assert_eq!(s.managers[0].position_history[0], 0);
+    }
+
+    #[test]
+    fn apply_round_scores_by_the_layouts_points_per_win() {
+        use crate::league_layout::{MOD2026, ORIGINAL, with_layout};
+        // Pairs 0-1 3:1, 2-3 2:2, 4-5 0:1: points won and points lost of clubs 0..6.
+        let cases = [
+            (&ORIGINAL, [(2, 0), (0, 2), (1, 1), (1, 1), (0, 2), (2, 0)]),
+            (&MOD2026, [(3, 0), (0, 3), (1, 2), (1, 2), (0, 3), (3, 0)]),
+        ];
+        for (l, expect) in cases {
+            let points = with_layout(l, || {
+                let mut s = round_one();
+                let mut rng = Rng::new(1234);
+                league_apply_round_and_sort(&mut s, &mut rng, 0, RoundMode::Apply, 1, false);
+                s.team_tables[..6]
+                    .iter()
+                    .map(|t| {
+                        let won = t.points[0] + t.points[1];
+                        let played = t.played[0] + t.played[1];
+                        (won, l.points_per_win * played - won)
+                    })
+                    .collect::<Vec<_>>()
+            });
+            assert_eq!(points, expect, "{} points per win", l.points_per_win);
+        }
     }
 
     #[test]

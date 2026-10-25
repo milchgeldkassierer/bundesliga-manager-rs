@@ -1,5 +1,6 @@
 //! The league structure: which club ids form each league tier, how many rounds each tier plays,
-//! how many clubs go down and the season calendar that schedules the rounds.
+//! how many clubs go down, the points for a win and the season calendar that schedules the
+//! rounds.
 //!
 //! The original keeps these values as DGROUP tables (DS:225e..DS:2278, DS:2280) that its whole
 //! program reads. The port reads them from the one [`LeagueLayout`] selected for the program run
@@ -30,6 +31,8 @@ pub struct LeagueLayout {
     pub relegated_directly: [u8; 3],
     /// DS:226a: the league tier's last relegation place plays a play-off.
     pub relegation_playoff: [bool; 3],
+    /// DS:2271: points for a win (a draw gives 1, a loss 0).
+    pub points_per_win: u8,
     /// DS:2280 (save block 50) in the data segment image (`season.md` §1.4): the competitions
     /// of each half-week slot; bit `t` is a round of league tier `t`.
     pub week_competitions: [u8; 95],
@@ -66,6 +69,13 @@ impl LeagueLayout {
     pub fn league_club_count(&self) -> u8 {
         self.team_count.iter().sum()
     }
+
+    /// Points show as one number instead of `"for:against"`: the original's own branch for a
+    /// win worth more than 2 (`"     ^6 "` is 22 px wide in the row font and fits under
+    /// "PUNKTE", the original's `"^6:^4"` 23 px).
+    pub fn single_points_column(&self) -> bool {
+        self.points_per_win > 2
+    }
 }
 
 /// The league structure of `BMMAIN.EXE`.
@@ -75,6 +85,7 @@ pub const ORIGINAL: LeagueLayout = LeagueLayout {
     round_count: [34, 38, 38],
     relegated_directly: [2, 4, 4],
     relegation_playoff: [true, false, false],
+    points_per_win: 2,
     week_competitions: [
         0x07, 0x70, 0x07, 0x00, 0x07, 0x70, 0x07, 0x06, 0x08, 0x00, 0x07, 0x00, 0x07, 0x06, 0x07,
         0x70, 0x07, 0x07, 0x07, 0x70, 0x07, 0x00, 0x08, 0x01, 0x07, 0x06, 0x07, 0x00, 0x07, 0x06,
@@ -92,12 +103,15 @@ pub const ORIGINAL: LeagueLayout = LeagueLayout {
 ///
 /// The play-off of the 2. Bundesliga is not played yet (only the Bundesliga play-off is ported),
 /// so its play-off place goes down directly, and three clubs of the 3. Liga go up.
+///
+/// A win gives 3 points (PRD R1b).
 pub const MOD2026: LeagueLayout = LeagueLayout {
     first_team: [0, 18, 36],
     team_count: [18, 18, 20],
     round_count: [34, 34, 38],
     relegated_directly: [2, 2, 4],
     relegation_playoff: [true, true, false],
+    points_per_win: 3,
     week_competitions: mod_calendar(ORIGINAL.week_competitions),
 };
 
@@ -164,6 +178,8 @@ mod tests {
         assert_eq!([0, 1, 2].map(|t| l.promotion_places(t)), [0, 3, 4]);
         assert_eq!(l.league_club_count(), 58);
         assert_eq!(l.league_club_count()..GERMAN_CLUBS as u8, 58..64);
+        assert_eq!(l.points_per_win, 2);
+        assert!(!l.single_points_column());
     }
 
     #[test]
@@ -180,6 +196,8 @@ mod tests {
         assert_eq!([0, 1, 2].map(|t| l.relegation_places(t)), [3, 3, 4]);
         assert_eq!([0, 1, 2].map(|t| l.promotion_places(t)), [0, 3, 3]);
         assert_eq!(l.league_club_count()..GERMAN_CLUBS as u8, 56..64);
+        assert_eq!(l.points_per_win, 3);
+        assert!(l.single_points_column());
     }
 
     #[test]
