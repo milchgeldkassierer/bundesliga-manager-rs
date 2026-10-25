@@ -29,6 +29,7 @@ use crate::matchsim::{
     MATCH_DAY_MANAGER, MatchHooks, TickerEvent, has_rescheduled_match_today,
     league_postpone_matches_weather, match_pick_scorer, matchday_play, matchday_play_rescheduled,
 };
+use crate::mod2026::currency;
 use crate::newgame::{first_season_year, game_end_year, manager_compute_wage_budget};
 use crate::news::{
     self, EVENT_CHANCE, EVENT_GOAL, EVENT_RED_CARD, EVENT_YELLOW_CARD, MessageArg, NO_FREE_SLOT,
@@ -201,6 +202,15 @@ const LEAVES: u8 = 0x80;
 /// Row of [`GameState::team_slots`] the weekly event messages go to.
 const EVENT_MESSAGE_ROW: u8 = 2;
 
+/// A text with an amount in DM (v1.0.0) and in euros (MOD2026): the DM text with
+/// [`currency`] `(true)` in place of `currency(false)`.
+pub type MoneyText = [&'static [u8]; 2];
+
+/// The form of `text` the game shows: in euros with the mod flag.
+fn in_currency(text: MoneyText, mod2026: bool) -> &'static [u8] {
+    text[usize::from(mod2026)]
+}
+
 /// Whether `day` lies in the winter break (`DS:224d` is 0).
 ///
 /// Origin: BMMAIN.EXE 1cb5:13bd (random_weekly_events, the tests at 1cb5:2069, 1cb5:2134 and
@@ -231,7 +241,7 @@ pub fn random_weekly_events(
         transfer_list_upkeep(state, rng);
     }
     listed_player_bids(state, rt, rng, fmt, m);
-    hooligan_damage(state, rng, fmt, m);
+    hooligan_damage(state, rng, fmt, m, rt.mod2026);
     comfort_downgrade(state, rng, fmt, m);
     if state.day_counter < SEASON_LAST_DAY {
         squad_week(state, rt, rng, fmt, m);
@@ -342,10 +352,16 @@ fn post_offer(
 
 /// Hooligans of the last home game (flag set at kick-off) damage the stadium: 2..=5 times
 /// (four times the seats plus half the standing places) DM, in thousands; a stadium in a
-/// good condition may lose a grade.
+/// good condition may lose a grade. `mod2026`: the message shows the damage in euros.
 ///
 /// Origin: BMMAIN.EXE 1cb5:13bd (random_weekly_events, 1cb5:16ab..18f4)
-fn hooligan_damage(state: &mut GameState, rng: &mut Rng, fmt: &mut NumberFormat, m: u8) {
+fn hooligan_damage(
+    state: &mut GameState,
+    rng: &mut Rng,
+    fmt: &mut NumberFormat,
+    m: u8,
+    mod2026: bool,
+) {
     let r = &mut state.managers[usize::from(m)];
     if r.value_13e & 1 == 0 {
         return;
@@ -355,10 +371,7 @@ fn hooligan_damage(state: &mut GameState, rng: &mut Rng, fmt: &mut NumberFormat,
     let damage = lmul(ldiv(lmul(k, places), 1000), 1000);
     r.balance = r.balance.wrapping_sub(damage);
     r.value_13e ^= 1;
-    let mut l3 = b"von ".to_vec();
-    // DS:224d is 0 (no currency prefix) and DS:2252 == DS:224e.
-    l3.extend(format_long_thousands(damage, *fmt));
-    l3.extend_from_slice(b" DM an.");
+    let l3 = hooligan_damage_line(damage, *fmt, mod2026);
     if r.stadium[5][0] > 1 {
         let down = if r.balance > 2_000_000 {
             rng.random_range(0, 1) == 0 || rng.random_range(0, 2) == 0
@@ -376,6 +389,19 @@ fn hooligan_damage(state: &mut GameState, rng: &mut Rng, fmt: &mut NumberFormat,
         &l3,
     ];
     message_queue_add(state, rng, fmt, lines, EVENT_MESSAGE_ROW, 0);
+}
+
+/// The third line of the hooligan message: the damage with the currency.
+///
+/// Origin: BMMAIN.EXE 1cb5:13bd (random_weekly_events, 1cb5:16ab..18f4)
+pub fn hooligan_damage_line(damage: i32, fmt: NumberFormat, mod2026: bool) -> Vec<u8> {
+    let mut line = b"von ".to_vec();
+    // DS:224d is 0 (no currency prefix) and DS:2252 == DS:224e.
+    line.extend(format_long_thousands(damage, fmt));
+    // MOD2026: the mod's damage is in euros.
+    line.extend_from_slice(currency(mod2026));
+    line.extend_from_slice(b" an.");
+    line
 }
 
 /// A Bundesliga stadium's comfort is graded down with chance `1 / (443 - 52 * comfort)`.
@@ -2220,17 +2246,46 @@ pub enum SeasonEndEvent<'a> {
 }
 
 /// The report line of a promotion into the 2. Bundesliga and its bonus.
-const PROMOTED_TO_SECOND: (&[u8], i32) = (b"Gratulation zum Aufstieg (800.000 DM).", 800_000);
+const PROMOTED_TO_SECOND: (MoneyText, i32) = (
+    [
+        b"Gratulation zum Aufstieg (800.000 DM).",
+        b"Gratulation zum Aufstieg (800.000 \xd5).",
+    ],
+    800_000,
+);
 /// The report line of a promotion into the Bundesliga and its bonus.
-const PROMOTED_TO_FIRST: (&[u8], i32) = (b"Gratulation zum Aufstieg (1.600.000 DM).", 1_600_000);
+const PROMOTED_TO_FIRST: (MoneyText, i32) = (
+    [
+        b"Gratulation zum Aufstieg (1.600.000 DM).",
+        b"Gratulation zum Aufstieg (1.600.000 \xd5).",
+    ],
+    1_600_000,
+);
 /// The report lines of the season-end flags 2, 4 and 8 ([`crate::state::Manager::value_140`]).
 const SEASON_END_FLAG_LINES: [(u8, &[u8]); 3] = [
     (2, b"Ihr Abstieg ersch]ttert Millionen Fans."),
     (4, b"DFB verweigert die Lizenz. Sie steigen ab."),
-    (8, b"Sie beginnen neu mit 500.000 DM."),
+    (RESTARTED, b"Sie beginnen neu mit 500.000 DM."),
 ];
+/// The season-end flag of a fresh start with 500.000.
+const RESTARTED: u8 = 8;
+/// MOD2026: the report line of [`RESTARTED`] in euros.
+const RESTARTED_IN_EUROS: &[u8] = b"Sie beginnen neu mit 500.000 \xd5.";
 /// The report line and the bonus of the league's top scorer.
-const TOP_SCORER: (&[u8], i32) = (b"Torsch]tzenk|nig aus Ihrem Team (250.000 DM).", 250_000);
+const TOP_SCORER: (MoneyText, i32) = (
+    [
+        b"Torsch]tzenk|nig aus Ihrem Team (250.000 DM).",
+        b"Torsch]tzenk|nig aus Ihrem Team (250.000 \xd5).",
+    ],
+    250_000,
+);
+/// MOD2026: the season-end report lines with an amount, in DM and in euros.
+pub const MONEY_REPORT_LINES: [MoneyText; 4] = [
+    PROMOTED_TO_SECOND.0,
+    PROMOTED_TO_FIRST.0,
+    TOP_SCORER.0,
+    [SEASON_END_FLAG_LINES[2].1, RESTARTED_IN_EUROS],
+];
 /// The report line of a European cup place.
 const EURO_QUALIFIED: &[u8] = b"Sie sind f}r den Europapokal qualifiziert.";
 /// The report line of a youth player.
@@ -2377,7 +2432,8 @@ fn season_end_bonuses(
         } else {
             PROMOTED_TO_FIRST
         };
-        lines.push(line);
+        // MOD2026: the mod's bonuses are in euros (the amounts stay).
+        lines.push(in_currency(line, rt.mod2026));
         let r = &mut state.managers[mu];
         r.balance = r.balance.wrapping_add(bonus);
         let contracts = &mut state.manager_contracts[mu];
@@ -2398,11 +2454,16 @@ fn season_end_bonuses(
     }
     for (bit, line) in SEASON_END_FLAG_LINES {
         if flags & bit != 0 {
-            lines.push(line);
+            // MOD2026: the mod's fresh start is in euros.
+            lines.push(if bit == RESTARTED && rt.mod2026 {
+                RESTARTED_IN_EUROS
+            } else {
+                line
+            });
         }
     }
     if top_scorer {
-        lines.push(TOP_SCORER.0);
+        lines.push(in_currency(TOP_SCORER.0, rt.mod2026));
         let r = &mut state.managers[mu];
         r.balance = r.balance.wrapping_add(TOP_SCORER.1);
     }
@@ -3154,7 +3215,7 @@ mod tests {
                 transfer_list_upkeep(&mut want, &mut want_rng);
             }
             listed_player_bids(&mut want, &rt, &mut want_rng, &mut want_fmt, mu);
-            hooligan_damage(&mut want, &mut want_rng, &mut want_fmt, mu);
+            hooligan_damage(&mut want, &mut want_rng, &mut want_fmt, mu, rt.mod2026);
             comfort_downgrade(&mut want, &mut want_rng, &mut want_fmt, mu);
             if day < SEASON_LAST_DAY {
                 squad_week(&mut want, &rt, &mut want_rng, &mut want_fmt, mu);
@@ -3424,7 +3485,7 @@ mod tests {
         let mut want = rng;
         let k = i32::from(want.random_range(2, 5));
         want.random_range(0, 3);
-        hooligan_damage(&mut s, &mut rng, &mut NumberFormat::default(), 1);
+        hooligan_damage(&mut s, &mut rng, &mut NumberFormat::default(), 1, false);
         assert_eq!(rng, want);
         let damage = k * 5500 / 1000 * 1000;
         let r = &s.managers[1];
@@ -3437,6 +3498,31 @@ mod tests {
         text.extend_from_slice(b" DM an. ^");
         assert_eq!(inbox(&s, 1), [text]);
         assert_eq!(s.team_slots[EVENT_MESSAGE_ROW as usize][0], 3);
+    }
+
+    /// MOD2026: the damage message in euros; the damage is the same.
+    #[test]
+    fn the_mod_shows_the_hooligan_damage_in_euros() {
+        let damage = |mod2026| {
+            let mut s = weekly_state();
+            let r = &mut s.managers[1];
+            (r.value_13e, r.balance, r.stadium[1][0], r.stadium[0][0]) = (1, 0, 1000, 0);
+            let mut fmt = NumberFormat::default();
+            hooligan_damage(&mut s, &mut Rng::new(4), &mut fmt, 1, mod2026);
+            (inbox(&s, 1), s.managers[1].balance)
+        };
+        let (original, balance) = damage(false);
+        let (modded, mod_balance) = damage(true);
+        assert_eq!(mod_balance, balance);
+        let amount = format_long_thousands(-balance, NumberFormat::default());
+        let text = |unit: &[u8]| {
+            let mut t = b"Randalierer im Stadion^richteten einen Sachschaden^von ".to_vec();
+            t.extend_from_slice(&amount);
+            t.extend_from_slice(unit);
+            t
+        };
+        assert_eq!(original, [text(b" DM an. ^")]);
+        assert_eq!(modded, [text(b" \xd5 an. ^")]);
     }
 
     #[test]
@@ -4821,7 +4907,10 @@ mod tests {
                     &mut stale,
                 );
                 assert_eq!(shown, released);
-                assert_eq!(lines, [line, SEASON_END_FLAG_LINES[2].1, TOP_SCORER.0]);
+                assert_eq!(
+                    lines,
+                    [line[0], SEASON_END_FLAG_LINES[2].1, TOP_SCORER.0[0]]
+                );
                 assert_eq!(s.managers[1].balance, 1000 + bonus + 250_000);
                 let first = if released { 100 } else { 10 };
                 assert_eq!(
@@ -4830,6 +4919,60 @@ mod tests {
                 );
                 assert_eq!((s.far_0000[2], s.far_4b9a[2 * (6 + 1)], stale), (0, 0, 6));
             }
+        }
+    }
+
+    /// MOD2026: the report shows the bonuses in euros; the club gets the same money.
+    #[test]
+    fn the_mod_reports_the_bonuses_in_euros() {
+        let report = |mod2026| {
+            let mut s = weekly_state();
+            let r = &mut s.managers[1];
+            (r.league, r.value_140, r.balance) = (1, 1 | 2 | 8, 1000);
+            let rt = Runtime {
+                mod2026,
+                ..Runtime::default()
+            };
+            let mut lines = Vec::new();
+            season_end_bonuses(&mut s, &rt, 1, true, &mut lines, &mut 0);
+            (lines, s.managers[1].balance)
+        };
+        let (original, balance) = report(false);
+        assert_eq!(
+            original,
+            [
+                &b"Gratulation zum Aufstieg (800.000 DM)."[..],
+                b"Ihr Abstieg ersch]ttert Millionen Fans.",
+                b"Sie beginnen neu mit 500.000 DM.",
+                b"Torsch]tzenk|nig aus Ihrem Team (250.000 DM).",
+            ]
+        );
+        let (modded, mod_balance) = report(true);
+        assert_eq!(
+            modded,
+            [
+                &b"Gratulation zum Aufstieg (800.000 \xd5)."[..],
+                b"Ihr Abstieg ersch]ttert Millionen Fans.",
+                b"Sie beginnen neu mit 500.000 \xd5.",
+                b"Torsch]tzenk|nig aus Ihrem Team (250.000 \xd5).",
+            ]
+        );
+        assert_eq!(mod_balance, balance);
+        for ([original, _], bonus) in [PROMOTED_TO_SECOND, PROMOTED_TO_FIRST, TOP_SCORER] {
+            let digits: Vec<u8> = original
+                .iter()
+                .copied()
+                .filter(u8::is_ascii_digit)
+                .collect();
+            assert_eq!(digits, bonus.to_string().as_bytes());
+        }
+        for [original, modded] in MONEY_REPORT_LINES {
+            let at = original
+                .windows(3)
+                .position(|w| w == currency(false))
+                .unwrap();
+            let euro = [&original[..at], currency(true), &original[at + 3..]].concat();
+            assert_eq!(modded, euro);
         }
     }
 

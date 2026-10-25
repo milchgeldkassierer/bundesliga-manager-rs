@@ -26,7 +26,6 @@ pub mod training;
 pub mod transfer_screen;
 pub mod widgets;
 
-use bmp_formats::font::EURO;
 use bmp_formats::mana::ManaDat;
 use bmp_formats::vga;
 use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
@@ -35,6 +34,7 @@ use bmp_game::rng::Rng;
 use bmp_game::runtime::Runtime;
 use bmp_game::state::{GERMAN_CLUBS, GameState};
 
+pub(crate) use bmp_game::mod2026::currency;
 pub use bmp_game::runtime::SEASON_START_DAY;
 
 use crate::host::{Host, LEFT_DOWN, Run};
@@ -45,12 +45,6 @@ pub const GAME_OPTION_A: i32 = 1;
 /// `DS:2252/2254`: game option long B (1 in the shipped data; 3 selects the
 /// French ordinal suffixes).
 pub const GAME_OPTION_B: i32 = 1;
-
-/// MOD2026: the currency after an amount, v1.0.0's `" DM"` or the mod's `" €"` (one glyph
-/// where `DM` has two, so a text never gets wider; `docs/mod2026/CHANGES.md`).
-pub(crate) fn currency(mod2026: bool) -> &'static [u8] {
-    if mod2026 { &[b' ', EURO] } else { b" DM" }
-}
 
 /// Game globals that live outside the save game.
 pub struct Session {
@@ -345,10 +339,24 @@ pub(crate) fn assert_mod_texts_narrower(pairs: &[(Vec<u8>, Vec<u8>)]) {
 mod tests {
     use super::*;
 
+    /// MOD2026: a text with [`currency`] in place of `" DM"` gets narrower.
     #[test]
-    fn currency_is_dm_or_euro() {
-        assert_eq!(currency(false), b" DM");
-        assert_eq!(currency(true), [b' ', EURO]);
+    fn the_euro_is_narrower_than_dm() {
+        assert_mod_texts_narrower(&[(currency(true).to_vec(), currency(false).to_vec())]);
+    }
+
+    /// MOD2026: every season text with an amount gets narrower in euros.
+    #[test]
+    fn the_season_texts_get_narrower_in_euros() {
+        use bmp_game::rng::NumberFormat;
+        use bmp_game::season::{MONEY_REPORT_LINES, hooligan_damage_line};
+        let mut pairs: Vec<_> = MONEY_REPORT_LINES
+            .iter()
+            .map(|[original, modded]| (modded.to_vec(), original.to_vec()))
+            .collect();
+        let damage = |mod2026| hooligan_damage_line(22_000, NumberFormat::default(), mod2026);
+        pairs.push((damage(true), damage(false)));
+        assert_mod_texts_narrower(&pairs);
     }
 
     #[test]

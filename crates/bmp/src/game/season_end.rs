@@ -6,7 +6,7 @@
 //! The logic is [`bmp_game::season::season_end_messages`]; it reports what to show as
 //! [`SeasonEndEvent`]s, which [`season_end_event`] draws.
 
-use bmp_game::rng::format_long_thousands;
+use bmp_game::rng::{NumberFormat, format_long_thousands};
 use bmp_game::season::SeasonEndEvent;
 use bmp_game::state::GameState;
 
@@ -16,7 +16,7 @@ use super::squad_screen::squad_list_draw;
 use super::tables::league_names;
 use super::widgets::{dialog_okay, input_wait_click};
 use super::{
-    GAME_OPTION_A, GAME_OPTION_B, append_ordinal_suffix, office_show_cached_background,
+    GAME_OPTION_A, GAME_OPTION_B, append_ordinal_suffix, currency, office_show_cached_background,
     text_to_upper_de,
 };
 use crate::gfx::{BitmapId, ui_draw_line, ui_draw_text_centered_shadow, ui_fill_rect};
@@ -54,7 +54,6 @@ const STAYS: [&[u8]; 3] = [b"bleibt Ihnen auch", b"die n{chste Saison", b"erhalt
 const LEAVES: [&[u8]; 2] = [b"kehrt Ihrem Verein", b"den R}cken..."];
 /// `DS:4e30`, `DS:4e34`, `DS:4f64`: the transfer fee.
 const FEE: [&[u8]; 2] = [b"Sie erhalten eine", b"Abl|sesumme von"];
-const CURRENCY: &[u8] = b" DM";
 /// `DS:537e`.
 const THE_END: &[u8] = b"ENDE";
 
@@ -204,10 +203,7 @@ pub(super) fn season_end_event(
         SeasonEndEvent::Leaves { pid, fee } => {
             let name = state.players[usize::from(pid)].name().to_vec();
             okay(ui.host, auto, [&name, LEAVES[0], LEAVES[1], b""])?;
-            // DS:224d (the currency prefix DS:4f78) is 0 in the shipped data.
-            let shown = fee.wrapping_mul(GAME_OPTION_B) / GAME_OPTION_A;
-            let mut buf = format_long_thousands(shown, ui.host.number_format());
-            buf.extend_from_slice(CURRENCY);
+            let buf = fee_text(fee, ui.host.number_format(), ui.host.mod2026);
             okay(ui.host, auto, [FEE[0], FEE[1], &buf, b""])
         }
         SeasonEndEvent::ContractDone { .. } => {
@@ -223,6 +219,16 @@ pub(super) fn season_end_event(
             Ok(())
         }
     }
+}
+
+/// The amount line of the transfer fee dialog, `fee` scaled by `DS:2252 / DS:224e`.
+fn fee_text(fee: i32, fmt: NumberFormat, mod2026: bool) -> Vec<u8> {
+    // DS:224d (the currency prefix DS:4f78) is 0 in the shipped data.
+    let shown = fee.wrapping_mul(GAME_OPTION_B) / GAME_OPTION_A;
+    let mut buf = format_long_thousands(shown, fmt);
+    // MOD2026: the mod's fees are in euros.
+    buf.extend_from_slice(currency(mod2026));
+    buf
 }
 
 /// The contracts list of the current manager (`squad_list_draw(6, 0x12, 0, 0x18, 0xec, 0xb0,
@@ -301,4 +307,23 @@ pub(super) fn game_end_screen(host: &mut Host, auto: bool) -> Run<()> {
     host.set_font(3);
     centered(host, THE_END, 8, 0x13f, 0x73, 1, 0xff);
     input_wait_click(host, auto)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::assert_mod_texts_narrower;
+
+    #[test]
+    fn the_fee_is_shown_with_separators_and_the_currency() {
+        let fmt = NumberFormat {
+            pad_width: 1,
+            ..NumberFormat::default()
+        };
+        let original = fee_text(1_250_000, fmt, false);
+        assert_eq!(original, b"1.250.000 DM");
+        let modded = fee_text(1_250_000, fmt, true);
+        assert_eq!(modded, b"1.250.000 \xd5");
+        assert_mod_texts_narrower(&[(modded, original)]);
+    }
 }

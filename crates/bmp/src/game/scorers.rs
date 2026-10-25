@@ -10,7 +10,7 @@ use bmp_game::state::{GameState, SQUAD_COUNT, TRANSFER_LIST};
 use super::squad_screen::ui_string;
 use super::stats_screens::format_long_or_blank;
 use super::widgets::{TextButtons, ui_wait_right_click_button};
-use super::{GAME_OPTION_A, GAME_OPTION_B, Session, text_to_upper_de};
+use super::{GAME_OPTION_A, GAME_OPTION_B, Session, currency, text_to_upper_de};
 use crate::gfx::{
     Gfx, Ui, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow, ui_fill_rect,
 };
@@ -89,6 +89,25 @@ fn tendency_marker(tendency: u8) -> u8 {
 /// The x offset of the ERSCHÖPFUNG marker (not clamped).
 fn exhaustion_marker(exhaustion: u8) -> u8 {
     ((i32::from(i16::from(exhaustion) - 50) * 0x5e) / 100) as u8
+}
+
+/// The value `v` of entry `i` of the "DATEN" block: a number, the strong side (6), the market
+/// value with the currency (7) or the contract years (8).
+fn data_text(i: usize, v: i32, fmt: NumberFormat, mod2026: bool) -> Vec<u8> {
+    let mut buf = format_long_or_blank(fmt, v);
+    match i {
+        6 => buf = SIDE_TEXT[usize::from(v > 1) + usize::from(v > 4)].to_vec(),
+        // MOD2026: the mod's market values are in euros.
+        7 => buf.extend_from_slice(currency(mod2026)),
+        8 => {
+            buf.extend_from_slice(b" JAHR");
+            if v > 1 {
+                buf.push(b'E');
+            }
+        }
+        _ => {}
+    }
+    buf
 }
 
 /// The info window of record `slot` of squad `FAR:304a`: age, status, goals
@@ -188,18 +207,7 @@ pub fn screen_player_info(
             }
             _ => i32::from(r.contract_years),
         };
-        let mut buf = num_or_blank(host, v);
-        match i {
-            6 => buf = SIDE_TEXT[usize::from(v > 1) + usize::from(v > 4)].to_vec(),
-            7 => buf.extend_from_slice(b" DM"),
-            8 => {
-                buf.extend_from_slice(b" JAHR");
-                if v > 1 {
-                    buf.push(b'E');
-                }
-            }
-            _ => {}
-        }
+        let buf = data_text(i, v, host.number_format(), host.mod2026);
         centered(host, &buf, x0, x0 + 0x3a, ry + 7, 1, 0xff);
     }
     text_at(host, b"TENDENZ", 0x7f, 0xb1, 1);
@@ -490,6 +498,19 @@ pub fn screen_top_scorers(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::assert_mod_texts_narrower;
+
+    /// The market value, in DM and (MOD2026) in euros; the other entries keep their text.
+    #[test]
+    fn the_market_value_shows_the_currency() {
+        let fmt = NumberFormat::default();
+        let original = data_text(7, 1_250_000, fmt, false);
+        let modded = data_text(7, 1_250_000, fmt, true);
+        assert_eq!(original, b"1.250.000 DM");
+        assert_eq!(modded, b"1.250.000 \xd5");
+        assert_eq!(data_text(8, 2, fmt, true), b"2 JAHRE");
+        assert_mod_texts_narrower(&[(modded, original)]);
+    }
 
     #[test]
     fn age_categories() {

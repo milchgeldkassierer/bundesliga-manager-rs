@@ -200,10 +200,20 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   them and text drawing and text widths use them for 0xd5; `map_char` and the font tables are
   unchanged, and without the flag 0xd5 stays a space. `encode_cp437('€')` gives 0xd5.
   `normal.font` stays a stub.
+- **Euro in the season and statistics texts** (`crates/bmp-game/src/season.rs`,
+  `crates/bmp/src/game/{season_events,season_end,stats_screens,scorers}.rs`, PRD R1d): with
+  the mod flag (`Runtime::mod2026` in the season logic, `Host::mod2026` on the screens) the
+  hooligan damage message, the season-end report (promotion bonuses, "Sie beginnen neu mit
+  500.000 €.", the top scorer's bonus), the transfer fee of a leaving player, the Christmas
+  bonus (`"BUNDESLIGA: 850.000 €, 2.LIGA: 425.000 €,"`), the forfeit fine, the balance, debts,
+  monthly income and expenses of the statistics and the market value in the player info show
+  `" €"` (`bmp_game::mod2026::currency`) where v1.0.0 shows `" DM"`. The unit stays where the original's
+  was; every text starts and is centred as before and gets narrower. The amounts paid and
+  stored are unchanged.
 - **Euro on the money screens** (`crates/bmp/src/game/{credits,stadium,contract,negotiation,
   transfer_screen,squad_screen}.rs`, PRD R1d): with the mod flag (`Host::mod2026`) the loans,
   stadium, sponsor contract, contract negotiation, transfer market and squad list screens show
-  every amount in euros: the `" DM"` after an amount becomes `" €"` (`game::currency`), so
+  every amount in euros: the `" DM"` after an amount becomes `" €"` (`bmp_game::mod2026::currency`, re-exported as `game::currency`), so
   `"ZINSEN PRO MONAT: 7.000 €"`, `"maximal 1 Mio. €"`, `"von 1.000.000 € belegt."`,
   `"GEHALT PRO MONAT (IN €)"`, `"150.000 € PRO 1000"`, `"1.000 €/Woche."` (training camp
   prices on the status line). The unit stays where the original's was, and the amounts keep

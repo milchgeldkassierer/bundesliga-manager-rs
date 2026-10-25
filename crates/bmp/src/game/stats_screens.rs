@@ -15,7 +15,7 @@ use super::tables::{
     line, num, panel, text_at,
 };
 use super::widgets::ui_wait_right_click_button;
-use super::{GAME_OPTION_A, GAME_OPTION_B, Session, text_to_upper_de};
+use super::{GAME_OPTION_A, GAME_OPTION_B, Session, currency, text_to_upper_de};
 use crate::gfx::{Gfx, Ui, ui_draw_frame};
 use crate::host::{Host, Run};
 
@@ -66,8 +66,8 @@ const BLANK_ZERO_224D: &[u8] = b"^\xfc";
 /// `DS:4a46`, `DS:4a56`.
 const NONE_YET_F: &[u8] = b"(NOCH KEINE...)";
 const NONE_YET_M: &[u8] = b"(NOCH KEINER...)";
-/// `LBL[319]`, `LBL[324]` (empty: the currency prefix of the `DS:224d` variant).
-const CURRENCY: &[u8] = b" DM";
+/// `LBL[324]` (empty: the currency prefix of the `DS:224d` variant); the currency after an
+/// amount, `LBL[319]`, is [`currency`].
 const CURRENCY_PREFIX: &[u8] = b"";
 /// `M(m)[0x1ec]` before the first home game: no lowest attendance yet.
 const NO_LOWEST_ATTENDANCE: i32 = 99_999;
@@ -331,6 +331,7 @@ fn attendance_finance_text(
     debt: i32,
     fmt: NumberFormat,
     prev: &[u8],
+    mod2026: bool,
 ) -> (Vec<u8>, i32) {
     let m = current(state);
     let games = i32::from(state.managers[m].values_13a[0]);
@@ -344,7 +345,8 @@ fn attendance_finance_text(
     let money = |v: i32| -> Vec<u8> {
         let mut buf = CURRENCY_PREFIX.to_vec();
         cat(&mut buf, &num(fmt, v));
-        cat(&mut buf, CURRENCY);
+        // MOD2026: the mod's amounts are in euros.
+        cat(&mut buf, currency(mod2026));
         buf
     };
     match i {
@@ -370,11 +372,39 @@ fn attendance_finance_text(
             // strcpy instead of strcat: the prefix is overwritten.
             let v = debt.wrapping_mul(GAME_OPTION_B) / GAME_OPTION_A;
             let mut buf = num(fmt, v.wrapping_neg());
-            cat(&mut buf, CURRENCY);
+            cat(&mut buf, currency(mod2026));
             (buf, 0)
         }
         _ => (prev.to_vec(), 0),
     }
+}
+
+/// Line `i` (0x1d income, 0x1e expenses) of the monthly finances: the amount and the
+/// currency.
+///
+/// Origin: BMMAIN.EXE 362f:0af7 (screen_statistics)
+fn monthly_finance_text(
+    state: &mut GameState,
+    i: usize,
+    fmt: NumberFormat,
+    mod2026: bool,
+) -> Vec<u8> {
+    let mut buf = CURRENCY_PREFIX.to_vec();
+    match i {
+        // The income is scaled by B / A, the expenses by B / B.
+        0x1d => {
+            let v = finance_monthly_income(state).wrapping_mul(GAME_OPTION_B);
+            cat(&mut buf, &num(fmt, v / GAME_OPTION_A));
+        }
+        0x1e => {
+            let v = finance_monthly_expenses(state).wrapping_mul(GAME_OPTION_B);
+            cat(&mut buf, &num(fmt, v / GAME_OPTION_B));
+        }
+        _ => {}
+    }
+    // MOD2026: the mod's amounts are in euros.
+    cat(&mut buf, currency(mod2026));
+    buf
 }
 
 /// Streaks, records, attendance and finances of the own club.
@@ -442,7 +472,8 @@ pub fn screen_statistics(host: &mut Host, session: &mut Session, state: &mut Gam
             }
         } else if i < 0x1c {
             host.number_no_separators = false;
-            let (text, v) = attendance_finance_text(state, i, debt, host.number_format(), &buf);
+            let (text, v) =
+                attendance_finance_text(state, i, debt, host.number_format(), &buf, host.mod2026);
             buf = text;
             if (i == 23 || i == 24) && v != NO_LOWEST_ATTENDANCE && v != 0 {
                 let s = num(host.number_format(), v);
@@ -453,21 +484,7 @@ pub fn screen_statistics(host: &mut Host, session: &mut Session, state: &mut Gam
         } else {
             host.number_pad = 7;
             host.number_no_separators = false;
-            buf = CURRENCY_PREFIX.to_vec();
-            let fmt = host.number_format();
-            match i {
-                // The income is scaled by B / A, the expenses by B / B.
-                0x1d => {
-                    let v = finance_monthly_income(state).wrapping_mul(GAME_OPTION_B);
-                    cat(&mut buf, &num(fmt, v / GAME_OPTION_A));
-                }
-                0x1e => {
-                    let v = finance_monthly_expenses(state).wrapping_mul(GAME_OPTION_B);
-                    cat(&mut buf, &num(fmt, v / GAME_OPTION_B));
-                }
-                _ => {}
-            }
-            cat(&mut buf, CURRENCY);
+            buf = monthly_finance_text(state, i, host.number_format(), host.mod2026);
             text_at(host, &buf, x, y, 2);
             host.number_pad = 1;
             x -= 0x8c;
@@ -887,6 +904,7 @@ pub fn screen_manager_history(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::assert_mod_texts_narrower;
 
     fn fmt() -> NumberFormat {
         NumberFormat {
@@ -924,6 +942,47 @@ mod tests {
                 "{year}"
             );
         }
+    }
+
+    /// The balance and the debts of the statistics, in DM and (MOD2026) in euros.
+    #[test]
+    fn balance_and_debts_show_the_currency() {
+        let mut s = Box::new(GameState::zeroed());
+        s.managers[0].balance = 1_234_567;
+        let texts = |s: &mut GameState, mod2026| {
+            [26, 27].map(|i| attendance_finance_text(s, i, -50_000, fmt(), b"", mod2026).0)
+        };
+        let [balance, debts] = texts(&mut s, false);
+        assert_eq!(
+            (&balance[..], &debts[..]),
+            (&b"1.234.567 DM"[..], &b"50.000 DM"[..])
+        );
+        let [m_balance, m_debts] = texts(&mut s, true);
+        assert_eq!(
+            (&m_balance[..], &m_debts[..]),
+            (&b"1.234.567 \xd5"[..], &b"50.000 \xd5"[..])
+        );
+        assert_mod_texts_narrower(&[(m_balance, balance), (m_debts, debts)]);
+    }
+
+    /// The monthly income and expenses of the statistics, in DM and (MOD2026) in euros.
+    #[test]
+    fn monthly_finances_show_the_currency() {
+        let mut s = Box::new(GameState::zeroed());
+        let texts = |s: &mut GameState, mod2026| {
+            [0x1d, 0x1e].map(|i| monthly_finance_text(s, i, fmt(), mod2026))
+        };
+        let [income, expenses] = texts(&mut s, false);
+        assert_eq!(
+            (&income[..], &expenses[..]),
+            (&b"25 DM"[..], &b"675.625 DM"[..])
+        );
+        let [m_income, m_expenses] = texts(&mut s, true);
+        assert_eq!(
+            (&m_income[..], &m_expenses[..]),
+            (&b"25 \xd5"[..], &b"675.625 \xd5"[..])
+        );
+        assert_mod_texts_narrower(&[(m_income, income), (m_expenses, expenses)]);
     }
 
     #[test]

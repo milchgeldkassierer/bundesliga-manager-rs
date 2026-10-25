@@ -7,7 +7,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use bmp_formats::font::encode_cp437;
+use bmp_formats::font::{EURO, encode_cp437};
 use bmp_formats::mana::{GERMAN_CLUB_COUNT, ManaDat, PLAYER_NAME_LEN, PLAYERS_PER_CLUB};
 use bmp_formats::vga::{self, ICON_SHEET, VgaImage};
 use serde_json::Value;
@@ -29,6 +29,12 @@ const SQUADS_JSON: &str = include_str!("../../../docs/mod2026/data/squads.json")
 /// The crest pictures `docs/mod2026/crests/<n>.png` as (picture number, PNG bytes), sorted by
 /// number (embedded by `build.rs`).
 pub const CRESTS: &[(u8, &[u8])] = include!(concat!(env!("OUT_DIR"), "/mod2026_crests.rs"));
+
+/// The currency after an amount, v1.0.0's `" DM"` or the mod's `" €"` (one glyph where `DM`
+/// has two, so a text never gets wider; `docs/mod2026/CHANGES.md`).
+pub fn currency(mod2026: bool) -> &'static [u8] {
+    if mod2026 { &[b' ', EURO] } else { b" DM" }
+}
 
 /// The 2x versions `docs/mod2026/crests/hires/<n>.png` of [`CRESTS`] for the 2x display layer,
 /// in the same shape (embedded by `build.rs`).
@@ -423,6 +429,12 @@ pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
 mod tests {
     use super::*;
     use bmp_formats::mana;
+
+    #[test]
+    fn currency_is_dm_or_euro() {
+        assert_eq!(currency(false), b" DM");
+        assert_eq!(currency(true), [b' ', EURO]);
+    }
 
     /// A fresh, empty directory below the system temp directory.
     fn temp(name: &str) -> PathBuf {
