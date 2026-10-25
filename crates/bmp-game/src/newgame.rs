@@ -9,6 +9,10 @@
 //! Full documentation with addresses: `docs/re/logic/flow.md` §2, §4.6–§4.9 and §5.1–§5.5.
 
 use bmp_formats::mana::ManaDat;
+use bmp_formats::savegame::{
+    ONE_YEAR_SCENARIOS, SCENARIO_MODERN_OFFSET, SCENARIO_ONE_YEAR, SCENARIO_THREE_YEARS,
+    THREE_YEAR_SCENARIOS,
+};
 
 use crate::ai::{league_strength_drift, squad_recalc_team_strength};
 use crate::cups::{
@@ -44,23 +48,12 @@ const TRAINING_141: [u8; 5] = [5, 4, 6, 5, 6];
 const TRAINING_146: [u8; 4] = [1, 3, 3, 3];
 /// FAR:513c of an endless game.
 const ENDLESS: u16 = 0x56ce;
-/// FAR:513c of a one-year game (1964).
-const ONE_YEAR: u16 = 0x7ac;
-/// FAR:513c of a three-year game (1966).
-const THREE_YEARS: u16 = 0x7ae;
-/// Years a modern start adds to FAR:513c.
-const MODERN_OFFSET: u16 = 0x1d;
 /// DS:07e0 of a modern start (1992).
 const MODERN_START_YEAR: u16 = 0x7c8;
 /// DS:07e0 of a historical start (1963), as the program image holds it.
 const HISTORICAL_START_YEAR: u16 = 0x7ab;
 /// MOD2026: DS:07e0 of every new game with Mod 2026 data (season 2026/27).
 pub const MOD2026_START_YEAR: u16 = 2026;
-
-/// Whether `FAR:513c` ends the game after one season.
-fn is_one_year(end_year: u16) -> bool {
-    end_year == ONE_YEAR || end_year == ONE_YEAR + MODERN_OFFSET
-}
 
 /// MOD2026: the year the running game's first season started in. `season_final` advances
 /// `start_year` and `logged_rounds` together, so their difference stays fixed.
@@ -157,13 +150,13 @@ impl GameOptions {
     pub fn end_year(&self) -> u16 {
         let mut year = ENDLESS;
         if self.mode_flags & MODE_ONE_YEAR != 0 {
-            year = ONE_YEAR;
+            year = SCENARIO_ONE_YEAR;
         }
         if self.mode_flags & MODE_THREE_YEARS != 0 {
-            year = THREE_YEARS;
+            year = SCENARIO_THREE_YEARS;
         }
         if self.modern_start() {
-            year += MODERN_OFFSET;
+            year += SCENARIO_MODERN_OFFSET;
         }
         year
     }
@@ -611,8 +604,8 @@ fn init_manager(
     bp4: &mut i16,
 ) {
     let sc = state.scenario;
-    let one_year = is_one_year(sc);
-    let three_years = sc == THREE_YEARS || sc == THREE_YEARS + MODERN_OFFSET;
+    let one_year = ONE_YEAR_SCENARIOS.contains(&sc);
+    let three_years = THREE_YEAR_SCENARIOS.contains(&sc);
     if one_year {
         let c = &mut state.manager_contracts[m];
         c[8] = 30000;
@@ -624,9 +617,9 @@ fn init_manager(
         state.managers[m].team = (m * 11) as u8;
     }
     let endless = if rt.modern_start {
-        sc > THREE_YEARS + MODERN_OFFSET
+        sc > THREE_YEAR_SCENARIOS[1]
     } else {
-        sc > THREE_YEARS
+        sc > THREE_YEAR_SCENARIOS[0]
     };
     let tf: u8 = if endless { 2 } else { 0 };
     let level = state.level as i8;
@@ -1250,6 +1243,37 @@ pub(crate) mod tests {
         assert_eq!(m.stadium.map(|x| x[0]), [6000, 20000, 7000, 2, 1, 4, 3]);
         assert_eq!(m.values_132[3], 0);
         assert!(s.managers[0].team < 18 && m.team < 18 && s.managers[0].team != m.team);
+    }
+
+    /// Both starts take the same manager setup per game length: the one-year contracts and
+    /// carousel position, the amateur tier only in the endless game, and the three-year stadium.
+    #[test]
+    fn manager_setup_follows_the_game_length_in_both_starts() {
+        let mana = synthetic_mana();
+        for start in [MODE_HISTORICAL, 0] {
+            for length in [MODE_ONE_YEAR, MODE_THREE_YEARS, MODE_ENDLESS] {
+                let what = format!("length {length}, start {start}");
+                let c = choices(&[40], length | start, 2, 33);
+                let (mut s, rt, mut rng) = up_to_manager_loop(&mana, 3, &c);
+                let mut bp4 = c.carousel_pos;
+                manager_init_loop(&mut s, &rt, &mut rng, 0, &mut bp4, None);
+                let one_year = length == MODE_ONE_YEAR;
+                let league = if length == MODE_ENDLESS { 2 } else { 0 };
+                assert_eq!(s.managers[0].league, league, "{what}");
+                assert_eq!(bp4, if one_year { 7 } else { 33 }, "{what}");
+                assert_eq!(s.manager_contracts[0][0] == 180_000, one_year, "{what}");
+                if length != MODE_ENDLESS {
+                    let floodlight_and_scoreboard =
+                        (s.managers[0].stadium[3][0], s.managers[0].stadium[4][0]);
+                    let expected = if length == MODE_THREE_YEARS {
+                        (2, 1)
+                    } else {
+                        (3, 3)
+                    };
+                    assert_eq!(floodlight_and_scoreboard, expected, "{what}");
+                }
+            }
+        }
     }
 
     #[test]

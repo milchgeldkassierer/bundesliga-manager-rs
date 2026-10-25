@@ -2,6 +2,7 @@
 //! competition of the day and the league-position curve, the date panel and the
 //! six main icons with their 3x3 submenus. Spec: `docs/re/logic/flow.md` §6.
 
+use bmp_formats::savegame::ONE_YEAR_SCENARIOS;
 use bmp_formats::vga;
 use bmp_game::cups::relegation_playoff_pairing;
 use bmp_game::finance::season_goal_messages;
@@ -312,11 +313,11 @@ fn draw_main_icon(host: &mut Host, i: i16, flags: u16) -> [i16; 4] {
 
 /// True when sub icon `si` (1-based) of main icon `sel` is disabled: the
 /// training camp while its cooldown runs, the manager contract in the
-/// scenarios 0x7ac/0x7c9, the new game with four managers
+/// one-year games ([`ONE_YEAR_SCENARIOS`]), the new game with four managers
 /// (18bc:1605..1662, 18bc:17a4..17e9).
 fn sub_icon_disabled(state: &GameState, cur: usize, sel: i16, si: i16) -> bool {
     (sel == 3 && si == 5 && state.managers[cur].camp_cooldown != 0)
-        || (sel == 1 && si == 6 && (state.scenario == 0x7ac || state.scenario == 0x7c9))
+        || (sel == 1 && si == 6 && ONE_YEAR_SCENARIOS.contains(&state.scenario))
         || (sel == 5 && si == 5 && state.manager_count == 4)
 }
 
@@ -959,5 +960,19 @@ mod tests {
             office_curve(1, 5, |_| 2),
             vec![(0x3f, 0x4a, 0xb1, 0x43, 0x0b)]
         );
+    }
+
+    #[test]
+    fn manager_contract_icon_is_disabled_only_in_the_one_year_games() {
+        let mut s = GameState::zeroed();
+        for (scenario, disabled) in [
+            (0x7ac, true),
+            (0x7c9, true),
+            (0x7ae, false),
+            (0x56ce, false),
+        ] {
+            s.scenario = scenario;
+            assert_eq!(sub_icon_disabled(&s, 0, 1, 6), disabled, "{scenario:#x}");
+        }
     }
 }

@@ -694,19 +694,36 @@ impl HighScoreTable {
     }
 }
 
+/// FAR:513c (save block 43) of a historical one-year game: it ends after the 1964 season.
+pub const SCENARIO_ONE_YEAR: u16 = 0x7ac;
+/// FAR:513c of a historical three-year game: it ends after the 1966 season.
+pub const SCENARIO_THREE_YEARS: u16 = 0x7ae;
+/// Years a modern (1992) start adds to the FAR:513c end-year codes.
+pub const SCENARIO_MODERN_OFFSET: u16 = 0x1d;
+/// FAR:513c codes of the one-year games (historical, modern).
+pub const ONE_YEAR_SCENARIOS: [u16; 2] = [
+    SCENARIO_ONE_YEAR,
+    SCENARIO_ONE_YEAR + SCENARIO_MODERN_OFFSET,
+];
+/// FAR:513c codes of the three-year games (historical, modern).
+pub const THREE_YEAR_SCENARIOS: [u16; 2] = [
+    SCENARIO_THREE_YEARS,
+    SCENARIO_THREE_YEARS + SCENARIO_MODERN_OFFSET,
+];
+
 /// Builds the high-score file name `HIGH.XY` (template at DS:949c).
 ///
-/// `X` is `'1'` when FAR:513c is 0x7ac or 0x7c9, `'3'` when it is 0x7ae or
-/// 0x7cb, else `'0'`; `Y` is `'5' - level` (DS:4a28), wrapping like the
-/// original byte arithmetic.
+/// `X` is `'1'` when FAR:513c is one of [`ONE_YEAR_SCENARIOS`], `'3'` when it
+/// is one of [`THREE_YEAR_SCENARIOS`], else `'0'`; `Y` is `'5' - level`
+/// (DS:4a28), wrapping like the original byte arithmetic.
 ///
 /// Origin: BMMAIN.EXE 322b:21c4 (Ghidra 4000:4474, highscore_load_or_store)
 pub fn highscore_file_name(far_513c: u16, level: u8) -> String {
     let mut variant = 0u8;
-    if far_513c == 0x7ac || far_513c == 0x7c9 {
+    if ONE_YEAR_SCENARIOS.contains(&far_513c) {
         variant = 1;
     }
-    if far_513c == 0x7ae || far_513c == 0x7cb {
+    if THREE_YEAR_SCENARIOS.contains(&far_513c) {
         variant = 3;
     }
     let x = (variant + b'0') as char;

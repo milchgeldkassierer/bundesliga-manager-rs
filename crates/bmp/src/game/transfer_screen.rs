@@ -7,6 +7,7 @@
 //! functions of [`bmp_game::transfer`]; this module ports the screen around
 //! them.
 
+use bmp_formats::savegame::ONE_YEAR_SCENARIOS;
 use bmp_game::ai::squad_recalc_team_strength;
 use bmp_game::rng::{NumberFormat, format_long_thousands};
 use bmp_game::squad::{InsertRejected, LineupRules, auto_lineup, squad_count_listed};
@@ -38,8 +39,6 @@ const OWN_COLUMNS: u32 = 0x0000_90c6;
 const MARKET_COLUMNS: u32 = 0x0002_0086;
 /// `FAR:2ea2` value that also selects a market row (with event 3).
 const SELECT_EVENT: u16 = 0xe8;
-/// `FAR:513c` values of the one-year games (no loans).
-const ONE_YEAR_GAMES: [u16; 2] = [0x7ac, 0x7c9];
 /// No highlighted market row.
 const NO_ROW: i16 = 0x7f;
 
@@ -552,7 +551,7 @@ pub fn screen_transfer_market(
             if r >= 0 && r <= i16::from(squad_count_listed(state, MARKET)) && click != 0 {
                 si = r + 999;
             }
-            if my > 0x6d && !ONE_YEAR_GAMES.contains(&state.scenario) {
+            if my > 0x6d && !ONE_YEAR_SCENARIOS.contains(&state.scenario) {
                 mk.loan = !mk.loan;
                 mk.redraw_market = true;
             }

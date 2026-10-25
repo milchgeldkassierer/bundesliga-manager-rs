@@ -298,13 +298,17 @@ record! {
         pub home_attendance: [u8; 20],
         /// +0x15e (FAR:23a0) seven stadium `long` pairs: `[item][0]` = current
         /// value, `[item][1]` = value under construction (0 if none). New game
-        /// (`s` = 1 if FAR:513c is 0x7ac/0x7c9, `t` = 1 if it is 0x7ae/0x7cb):
+        /// (`s` = 1 if FAR:513c is one of [`ONE_YEAR_SCENARIOS`], `t` = 1 if it
+        /// is one of [`THREE_YEAR_SCENARIOS`]):
         /// items 0 and 2 = `(2 - league) * k` and item 1 = `(5 - league) * k`
         /// (`_aFlmul`; +5000 / +10000 when `s`), item 3 = `3 - t`,
         /// item 4 = `3 - 2t` (both only when FAR:513c < 2000), item 5 = `4 + s`,
         /// item 6 = `3 + s`. Users: `screen_stadium` 1000:0602,
         /// `stadium_expansion_order` 1000:0000,
         /// `stadium_construction_progress` 1000:20e1, `random_weekly_events`.
+        ///
+        /// [`ONE_YEAR_SCENARIOS`]: bmp_formats::savegame::ONE_YEAR_SCENARIOS
+        /// [`THREE_YEAR_SCENARIOS`]: bmp_formats::savegame::THREE_YEAR_SCENARIOS
         pub stadium: [[i32; 2]; 7],
         /// +0x196 (FAR:23d8) construction countdown in days per stadium item
         /// (`stadium_expansion_order` 1000:0000 sets it,
@@ -809,8 +813,11 @@ pub struct GameState {
     pub manager_contracts: [[i32; 9]; 4],
     /// #42 DS:4a28 difficulty level (`5 - user level`).
     pub level: u8,
-    /// #43 FAR:513c scenario / start-year selector (0x7ac, 0x7c9, 0x7ae, 0x7cb
-    /// special-cased; 0x56ce in all samples).
+    /// #43 FAR:513c scenario / start-year selector ([`ONE_YEAR_SCENARIOS`] and
+    /// [`THREE_YEAR_SCENARIOS`] special-cased; 0x56ce in all samples).
+    ///
+    /// [`ONE_YEAR_SCENARIOS`]: bmp_formats::savegame::ONE_YEAR_SCENARIOS
+    /// [`THREE_YEAR_SCENARIOS`]: bmp_formats::savegame::THREE_YEAR_SCENARIOS
     pub scenario: u16,
     /// #44 FAR:1d34 three rows of 10 slot bytes (`team_slot_free_index`).
     pub team_slots: [[u8; 10]; 3],
