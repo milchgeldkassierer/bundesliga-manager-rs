@@ -173,3 +173,13 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   them and text drawing and text widths use them for 0xd5; `map_char` and the font tables are
   unchanged, and without the flag 0xd5 stays a space. `encode_cp437('€')` gives 0xd5.
   `normal.font` stays a stub.
+- **Euro on the money screens** (`crates/bmp/src/game/{credits,stadium,contract,negotiation,
+  transfer_screen,squad_screen}.rs`, PRD R1d): with the mod flag (`Host::mod2026`) the loans,
+  stadium, sponsor contract, contract negotiation, transfer market and squad list screens show
+  every amount in euros: the `" DM"` after an amount becomes `" €"` (`game::currency`), so
+  `"ZINSEN PRO MONAT: 7.000 €"`, `"maximal 1 Mio. €"`, `"von 1.000.000 € belegt."`,
+  `"GEHALT PRO MONAT (IN €)"`, `"150.000 € PRO 1000"`, `"1.000 €/Woche."` (training camp
+  prices on the status line). The unit stays where the original's was, and the amounts keep
+  their padding and position, so columns stay aligned; the euro glyph is narrower than `DM` in
+  every font. The money values themselves are unchanged. Without the flag every text is
+  v1.0.0's.

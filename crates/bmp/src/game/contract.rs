@@ -15,7 +15,7 @@ use bmp_game::rng::{NumberFormat, format_long_thousands, ldiv, lmul};
 use bmp_game::state::{GameState, OFFERS_PER_KIND};
 
 use super::widgets::ui_dialog_box;
-use super::{GAME_OPTION_A, GAME_OPTION_B, Session};
+use super::{GAME_OPTION_A, GAME_OPTION_B, Session, currency};
 use crate::gfx::{
     BitmapId, ui_draw_frame, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow,
     ui_fill_rect,
@@ -29,7 +29,6 @@ const YEARS: &[u8] = b" JAHR";
 const PLURAL: &[u8] = b"E";
 const CANCELLABLE: &[u8] = b"K}NDBAR";
 const NO_INTEREST: &[u8] = b"KEIN INTERESSE...";
-const CURRENCY: &[u8] = b" DM";
 const MINUS: &[u8] = b"-";
 /// `LBL[137..138]`.
 const STILL_BOUND: [&[u8]; 2] = [b"Sie stehen noch", b"unter Vertrag"];
@@ -190,10 +189,10 @@ pub(crate) fn contract_head_text(n: u8, years: bool, fmt: NumberFormat) -> Vec<u
 
 /// Amount text of [`contract_info_line`]: the magnitude scaled by
 /// `DS:2252 / DS:224e`, padded to 10 characters with thousands separators,
-/// plus `" DM"`; the flag tells whether a `"-"` goes in front.
+/// plus the [`currency`]; the flag tells whether a `"-"` goes in front.
 ///
 /// Origin: BMMAIN.EXE 362f:26cd..362f:27b0 (contract_info_line)
-pub(crate) fn contract_amount_text(amount: i32) -> (bool, Vec<u8>) {
+pub(crate) fn contract_amount_text(amount: i32, mod2026: bool) -> (bool, Vec<u8>) {
     let negative = amount < 0;
     let v = if negative {
         amount.wrapping_neg()
@@ -207,7 +206,8 @@ pub(crate) fn contract_amount_text(amount: i32) -> (bool, Vec<u8>) {
     };
     // DS:224d == 0: no currency prefix (LBL[324]).
     let mut t = format_long_thousands(ldiv(lmul(GAME_OPTION_B, v), GAME_OPTION_A), fmt);
-    t.extend_from_slice(CURRENCY);
+    // MOD2026: the mod's contracts are in euros.
+    t.extend_from_slice(currency(mod2026));
     (negative, t)
 }
 
@@ -243,7 +243,7 @@ fn contract_info_line(
         );
         y += 12;
     }
-    let (negative, text) = contract_amount_text(amount);
+    let (negative, text) = contract_amount_text(amount, host.mod2026);
     if negative {
         ui_draw_text_at(&mut host.g, &mut host.rp, MINUS, x, y + 7, 1);
     }
@@ -528,6 +528,7 @@ pub fn screen_manager_contract(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::assert_mod_texts_narrower;
 
     fn fmt() -> NumberFormat {
         NumberFormat {
@@ -549,17 +550,27 @@ mod tests {
     #[test]
     fn amount_is_padded_with_separators() {
         assert_eq!(
-            contract_amount_text(201_399),
+            contract_amount_text(201_399, false),
             (false, b"^^^201.399 DM".to_vec())
         );
         assert_eq!(
-            contract_amount_text(-2500),
+            contract_amount_text(-2500, false),
             (true, b"^^^^^2.500 DM".to_vec())
         );
         assert_eq!(
-            contract_amount_text(1_234_567),
+            contract_amount_text(1_234_567, false),
             (false, b"^1.234.567 DM".to_vec())
         );
+    }
+
+    /// MOD2026: the amount in euros, padded like v1.0.0's.
+    #[test]
+    fn amount_in_euros() {
+        let (negative, modded) = contract_amount_text(-2500, true);
+        assert!(negative);
+        assert_eq!(modded, b"^^^^^2.500 \xd5");
+        let original = contract_amount_text(-2500, false).1;
+        assert_mod_texts_narrower(&[(modded, original)]);
     }
 
     #[test]

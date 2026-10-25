@@ -8,6 +8,7 @@
 //! them.
 
 use bmp_game::ai::squad_recalc_team_strength;
+use bmp_game::rng::{NumberFormat, format_long_thousands};
 use bmp_game::squad::{InsertRejected, LineupRules, auto_lineup, squad_count_listed};
 use bmp_game::state::{GameState, TRANSFER_LIST};
 use bmp_game::transfer::{
@@ -25,7 +26,7 @@ use super::squad_screen::{
 use super::widgets::{
     TextButtons, dialog_two_choice, ui_dialog_box, ui_input_number, ui_wait_right_click_button,
 };
-use super::{GAME_OPTION_A, GAME_OPTION_B, Session, text_to_upper_de};
+use super::{GAME_OPTION_A, GAME_OPTION_B, Session, currency, text_to_upper_de};
 use crate::gfx::{Gfx, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow, ui_fill_rect};
 use crate::host::{Host, LEFT_DOWN, RIGHT_DOWN, Run};
 
@@ -43,7 +44,7 @@ const ONE_YEAR_GAMES: [u16; 2] = [0x7ac, 0x7c9];
 const NO_ROW: i16 = 0x7f;
 
 fn num(host: &Host, v: i32) -> Vec<u8> {
-    bmp_game::rng::format_long_thousands(v, host.number_format())
+    format_long_thousands(v, host.number_format())
 }
 
 fn fill(host: &mut Host, x0: i16, y0: i16, x1: i16, y1: i16, color: u8) {
@@ -61,9 +62,15 @@ fn xor_market_row(host: &mut Host, r: i16) {
     Gfx::rastport_set_draw_mode(&mut host.rp, 0);
 }
 
-/// `fmt(v * DS:2252 / DS:224e)` with the empty currency prefix.
-fn money(host: &Host, v: i32) -> Vec<u8> {
-    num(host, v.wrapping_mul(GAME_OPTION_B) / GAME_OPTION_A)
+/// `fmt(v * DS:2252 / DS:224e)` with the empty currency prefix, the currency and `tail`.
+fn money(host: &Host, v: i32, tail: &[u8]) -> Vec<u8> {
+    money_text(v, host.number_format(), tail, host.mod2026)
+}
+
+fn money_text(v: i32, fmt: NumberFormat, tail: &[u8], mod2026: bool) -> Vec<u8> {
+    // MOD2026: the mod's amounts are in euros.
+    let amount = format_long_thousands(v.wrapping_mul(GAME_OPTION_B) / GAME_OPTION_A, fmt);
+    [&amount, currency(mod2026), tail].concat()
 }
 
 /// The BEHALTEN / VERKAUFEN question for an offer of `fee`: shows the offer
@@ -76,14 +83,12 @@ fn transfer_offer_received(host: &mut Host, fee: &mut i32, len: i32) -> Run<usiz
     text_at(host, b"Angebot", 0xa5, 0x8e, 1);
     text_at(host, b"Abl|se", 0xa5, 0x98, 1);
     let mut s = b": ".to_vec();
-    s.extend(money(host, *fee));
-    s.extend_from_slice(b" DM.");
+    s.extend(money(host, *fee, b"."));
     text_at(host, &s, 0xd9, 0x8e, 1);
     let cut = offer_compensation(*fee, len);
     *fee = fee.wrapping_sub(cut);
     let mut s = b": ".to_vec();
-    s.extend(money(host, cut));
-    s.extend_from_slice(b" DM.");
+    s.extend(money(host, cut, b"."));
     text_at(host, &s, 0xd9, 0x98, 1);
     ui_draw_line(&mut host.g, &mut host.rp, 0xa3, 0x9a, 0x13a, 0x9a, 0xb);
     let mut icons = TextButtons::default();
@@ -115,8 +120,7 @@ fn sponsor_subsidy_offer(
     let amt =
         (base / 100).wrapping_mul(i32::from(session.rng.random_range(20, 65))) / 10000 * 10000;
     host.number_no_separators = false;
-    let mut text = money(host, amt);
-    text.extend_from_slice(b" DM AN ?");
+    let text = money(host, amt, b" AN ?");
     let m = state.current_manager as usize;
     let who = state.managers[m].name().to_vec();
     if dialog_two_choice(
@@ -311,8 +315,7 @@ fn market_click(
         } else {
             host.number_no_separators = false;
             let mut l1 = b"NEHMEN SIE DAS ANGEBOT (".to_vec();
-            l1.extend(money(host, offer));
-            l1.extend_from_slice(b" DM)");
+            l1.extend(money(host, offer, b")"));
             let mut l2 = b"F]R ".to_vec();
             l2.extend_from_slice(state.players[pid].name());
             l2.extend_from_slice(b" AN ?");
@@ -440,9 +443,8 @@ pub fn screen_transfer_market(
             );
             host.set_font(2);
             host.number_no_separators = false;
-            let mut s = money(host, state.managers[m].balance);
+            let s = money(host, state.managers[m].balance, b"");
             host.number_no_separators = true;
-            s.extend_from_slice(b" DM");
             fill(host, 0xa5, 0xa9, 0x118, 0xb2, 8);
             host.set_font(1);
             text_at(host, &s, 0xa5, 0xb0, 1);
@@ -567,5 +569,34 @@ pub fn screen_transfer_market(
             squad_recalc_team_strength(state, &session.rt, &mut session.rng, cur, false);
             return Ok(());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::assert_mod_texts_narrower;
+
+    /// MOD2026: offers, compensations, subsidies and the balance in euros.
+    #[test]
+    fn amounts_in_euros() {
+        let fmt = NumberFormat::default();
+        assert_eq!(
+            money_text(150_000, fmt, b" AN ?", false),
+            b"150.000 DM AN ?"
+        );
+        assert_eq!(
+            money_text(150_000, fmt, b" AN ?", true),
+            b"150.000 \xd5 AN ?"
+        );
+        let pairs: Vec<_> = [&b"."[..], b" AN ?", b")", b""]
+            .map(|tail| {
+                (
+                    money_text(1_250_000, fmt, tail, true),
+                    money_text(1_250_000, fmt, tail, false),
+                )
+            })
+            .into();
+        assert_mod_texts_narrower(&pairs);
     }
 }

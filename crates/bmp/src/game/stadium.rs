@@ -10,7 +10,7 @@ use bmp_game::rng::{format_long_thousands, ldiv, lmul};
 use bmp_game::state::{GameState, Manager, STADIUM_QUALITY_LEVELS, STADIUM_SIZE_LEVELS};
 
 use super::widgets::{TextButtons, ui_dialog_box, ui_value_spinner, ui_wait_right_click_button};
-use super::{GAME_OPTION_A, GAME_OPTION_B, Session};
+use super::{GAME_OPTION_A, GAME_OPTION_B, Session, currency};
 use crate::gfx::{
     Gfx, Ui, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow, ui_fill_rect,
 };
@@ -53,12 +53,14 @@ const ROW_LABELS: [&[u8]; 9] = [
     b"KOMFORT",
     b"EINTRITTSPREIS",
 ];
-/// `DS:28ac..28d4`.
+/// `DS:28ac..28d4`; `PER_1000` and `PER_POINT` without their leading `" DM"`, the
+/// [`currency`].
 const YES: &[u8] = b"NA KLAR !";
 const NO: &[u8] = b"ACH NEE...";
 const COSTS: &[u8] = b"KOSTET ";
-const PER_1000: &[u8] = b" DM PRO 1000";
-const PER_POINT: &[u8] = b" DM PRO PUNKT";
+const PER_1000: &[u8] = b" PRO 1000";
+const PER_POINT: &[u8] = b" PRO PUNKT";
+const PER_WEEK: &[u8] = b"/Woche.";
 const MAX_SIZE: &[u8] = b"MAX. GR|~E: ";
 const COSTS_2: &[u8] = b" KOSTEN: ";
 const MAX_STATUS: &[u8] = b"MAX. STATUS: ";
@@ -74,11 +76,9 @@ const COSTS_OPEN: &[u8] = b"(KOSTEN: ";
 const BUILD_TIME: &[u8] = b"BAUZEIT: CIRKA";
 const BUILD_TIME_TOTAL: &[u8] = b"BAUZEIT: INSGESAMT CA.";
 const WEEKS: &[u8] = b" WOCHEN";
-/// `DS:4a18`, `DS:4f64..4f70`.
+/// `DS:4a18`, `DS:4f64..4f70` (`" DM"`, `" DM."` and `" DM)"` are the [`currency`] and their
+/// tails).
 const WEEKS_SHORT: &[u8] = b" WOCHE(N)";
-const DM: &[u8] = b" DM";
-const DM_DOT: &[u8] = b" DM.";
-const DM_CLOSE: &[u8] = b" DM)";
 
 /// `DS:0044 + 4 * row`: price per 1000 places (rows 1..3) or per level
 /// (rows 4..7); row 0 is never used as a price (the word pair doubles as the
@@ -204,6 +204,7 @@ pub fn status_row(
     m: &Manager,
     r: usize,
     fmt: bmp_game::rng::NumberFormat,
+    mod2026: bool,
 ) -> (Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>) {
     let f = |v: i32| format_long_thousands(v, fmt);
     let s = &m.stadium;
@@ -253,7 +254,8 @@ pub fn status_row(
                 let n = t.iter().position(|&c| c == 0).unwrap_or(t.len());
                 t.truncate(n);
             }
-            t.extend_from_slice(DM);
+            // MOD2026: the mod's ticket price is in euros.
+            t.extend_from_slice(currency(mod2026));
             (t, None)
         }
     };
@@ -279,9 +281,13 @@ fn stadium_draw_status_panel(host: &mut Host, state: &GameState, balance_only: b
     host.set_font(2);
     host.number_no_separators = false;
     fill(host, 0x9a, 0x59, 0x120, 0x5e, 8);
-    let mut t = BALANCE.to_vec();
-    t.extend_from_slice(&num(host, display(m.balance)));
-    t.extend_from_slice(DM);
+    let t = money_text(
+        BALANCE,
+        display(m.balance),
+        host.number_format(),
+        b"",
+        host.mod2026,
+    );
     text_at(host, &t, 0x9a, 0x5e, 1);
     if balance_only {
         return;
@@ -292,7 +298,7 @@ fn stadium_draw_status_panel(host: &mut Host, state: &GameState, balance_only: b
     for (r, label) in ROW_LABELS.iter().enumerate() {
         let y = 0x77 + 8 * r as i16;
         text_at(host, label, 0xa, y, 2);
-        let (now, after, weeks) = status_row(m, r, host.number_format());
+        let (now, after, weeks) = status_row(m, r, host.number_format(), host.mod2026);
         text_at(host, &now, 0x76, y, 2);
         let (after, color) = match after {
             Some(a) => (a, 2),
@@ -378,12 +384,11 @@ pub fn status_line_show(host: &mut Host, session: &mut Session, text: StatusText
         StatusText::Prompt(p) => (p.to_vec(), true),
         StatusText::CampLegend(i) => (CAMP_LEGEND[i.min(4)].to_vec(), false),
         StatusText::CampPrice(name, price) => {
-            let mut t = name.to_vec();
-            if price != 0 {
-                t.extend_from_slice(b", ");
-                t.extend_from_slice(&num(host, price));
-                t.extend_from_slice(b" DM/Woche.");
-            }
+            let t = if price != 0 {
+                camp_price_text(name, price, host.number_format(), host.mod2026)
+            } else {
+                name.to_vec()
+            };
             (t, false)
         }
     };
@@ -452,9 +457,13 @@ fn stadium_expansion_order(
         if aa < 4 { 2 } else { 1 },
         0xff,
     );
-    let mut l3 = COSTS_2.to_vec();
-    l3.extend_from_slice(&num(host, display(cost)));
-    l3.extend_from_slice(DM);
+    let l3 = money_text(
+        COSTS_2,
+        display(cost),
+        host.number_format(),
+        b"",
+        host.mod2026,
+    );
     centered(host, &l3, 0x97, 0x120, 0x37, 2, 0xff);
     let l4 = if rest == 0 {
         BUILD_TIME
@@ -511,6 +520,46 @@ pub fn capacity_left(m: &Manager, aa: usize) -> i32 {
     }
 }
 
+/// `head`, the shown `amount`, the currency and `tail`: every money text of the stadium screen.
+fn money_text(
+    head: &[u8],
+    amount: i32,
+    fmt: bmp_game::rng::NumberFormat,
+    tail: &[u8],
+    mod2026: bool,
+) -> Vec<u8> {
+    // MOD2026: the mod's amounts are in euros.
+    [
+        head,
+        &format_long_thousands(amount, fmt),
+        currency(mod2026),
+        tail,
+    ]
+    .concat()
+}
+
+/// `"KOSTET <amount> DM PRO 1000"` (places) or `"... PRO PUNKT"` (levels) of the expansion
+/// panel.
+fn price_text(
+    amount: i32,
+    fmt: bmp_game::rng::NumberFormat,
+    per_1000: bool,
+    mod2026: bool,
+) -> Vec<u8> {
+    let per = if per_1000 { PER_1000 } else { PER_POINT };
+    money_text(COSTS, amount, fmt, per, mod2026)
+}
+
+/// `"<camp>, <price> DM/Woche."` of the status line.
+fn camp_price_text(
+    name: &[u8],
+    price: i32,
+    fmt: bmp_game::rng::NumberFormat,
+    mod2026: bool,
+) -> Vec<u8> {
+    money_text(&[name, b", "].concat(), price, fmt, PER_WEEK, mod2026)
+}
+
 /// Handles a click on row `aa` (1..8) of the status table. Returns the result
 /// of the expansion (-1: nothing changed), or `None` when the dialog "Im
 /// Moment keine Baufirma" ended it early.
@@ -534,12 +583,11 @@ fn handle_row(
     centered(host, ROW_HELP[aa], 0x97, 0x120, 0x16, 0xb, 0);
     line(host, 0x97, 0x18, 0x120, 0x18, 0xb);
     let price = PRICES.get(aa).copied().unwrap_or(0);
-    let mut t = Vec::new();
-    if aa < 8 {
-        t.extend_from_slice(COSTS);
-        t.extend_from_slice(&num(host, display(price)));
-        t.extend_from_slice(if aa < 4 { PER_1000 } else { PER_POINT });
-    }
+    let t = if aa < 8 {
+        price_text(display(price), host.number_format(), aa < 4, host.mod2026)
+    } else {
+        Vec::new()
+    };
     text_at(host, &t, 0x9a, 0x49, 1);
     let mut res: i32 = -1;
     let mut max: i32 = 0;
@@ -554,9 +602,13 @@ fn handle_row(
             let mut t = MAX_SIZE.to_vec();
             t.extend_from_slice(&num(host, max));
             text_at(host, &t, 0x9a, 0x50, 1);
-            let mut t = COSTS_2.to_vec();
-            t.extend_from_slice(&num(host, display(lmul(price, max / 1000))));
-            t.extend_from_slice(DM_DOT);
+            let t = money_text(
+                COSTS_2,
+                display(lmul(price, max / 1000)),
+                host.number_format(),
+                b".",
+                host.mod2026,
+            );
             text_at(host, &t, 0x9a, 0x57, 1);
         }
         stadium_draw_status_panel(host, state, true);
@@ -637,8 +689,13 @@ fn choose_level(
         let color = if l > cur && i32::from(l) <= lim { 1 } else { 3 };
         text_at(host, names[l as usize], 0x9a, y, color);
         if l > cur || cur == 0 {
-            let mut t = num(host, display(lmul(i32::from(l - cur), price)));
-            t.extend_from_slice(DM);
+            let t = money_text(
+                b"",
+                display(lmul(i32::from(l - cur), price)),
+                host.number_format(),
+                b"",
+                host.mod2026,
+            );
             text_at(host, &t, 0xd8, y, color);
         }
     }
@@ -648,9 +705,13 @@ fn choose_level(
     let mut t = MAX_STATUS.to_vec();
     t.extend_from_slice(lim_name);
     text_at(host, &t, 0x9a, 0x50, 1);
-    let mut t = COSTS_OPEN.to_vec();
-    t.extend_from_slice(&num(host, display(lmul(lim - i32::from(cur), price))));
-    t.extend_from_slice(DM_CLOSE);
+    let t = money_text(
+        COSTS_OPEN,
+        display(lmul(lim - i32::from(cur), price)),
+        host.number_format(),
+        b")",
+        host.mod2026,
+    );
     text_at(host, &t, 0x9a, 0x57, 1);
     Gfx::rastport_set_draw_mode(&mut host.rp, 2);
     let mut sel: i16 = -1;
@@ -752,6 +813,7 @@ pub fn screen_stadium(host: &mut Host, session: &mut Session, state: &mut GameSt
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::assert_mod_texts_narrower;
     use bmp_game::rng::NumberFormat;
 
     fn fmt() -> NumberFormat {
@@ -794,7 +856,7 @@ mod tests {
     #[test]
     fn status_rows_now_and_after() {
         let mut m = manager();
-        let row = |m: &Manager, r| status_row(m, r, fmt());
+        let row = |m: &Manager, r| status_row(m, r, fmt(), false);
         assert_eq!(row(&m, 0), (b"15.000".to_vec(), None, None));
         assert_eq!(row(&m, 4), (b"IS NICH".to_vec(), None, None));
         assert_eq!(row(&m, 6), (b"BEFRIEDIGEND".to_vec(), None, None));
@@ -820,5 +882,80 @@ mod tests {
                 Some(b"^1 WOCHE(N)".to_vec())
             )
         );
+    }
+
+    /// MOD2026: the ticket price and the expansion panel texts in euros.
+    #[test]
+    fn amounts_in_euros() {
+        let m = manager();
+        let ticket = |mod2026| status_row(&m, 8, fmt(), mod2026).0;
+        assert_eq!(ticket(true), b"13 \xd5");
+        assert_eq!(ticket(false), b"13 DM");
+        assert_eq!(
+            price_text(150_000, fmt(), true, true),
+            b"KOSTET 150.000 \xd5 PRO 1000"
+        );
+        assert_eq!(
+            price_text(150_000, fmt(), true, false),
+            b"KOSTET 150.000 DM PRO 1000"
+        );
+        assert_eq!(
+            price_text(380_000, fmt(), false, false),
+            b"KOSTET 380.000 DM PRO PUNKT"
+        );
+        assert_eq!(
+            camp_price_text(b"Trlg. Hackstedt", 25_000, fmt(), true),
+            b"Trlg. Hackstedt, 25.000 \xd5/Woche."
+        );
+        assert_eq!(
+            camp_price_text(b"Trlg. Hackstedt", 25_000, fmt(), false),
+            b"Trlg. Hackstedt, 25.000 DM/Woche."
+        );
+        let texts = |mod2026| {
+            vec![
+                price_text(150_000, fmt(), true, mod2026),
+                price_text(380_000, fmt(), false, mod2026),
+                ticket(mod2026),
+                camp_price_text(b"Trlg. Hackstedt", 25_000, fmt(), mod2026),
+                money_text(BALANCE, -1_234_567, fmt(), b"", mod2026),
+                money_text(COSTS_2, 4_500_000, fmt(), b"", mod2026),
+                money_text(COSTS_2, 4_500_000, fmt(), b".", mod2026),
+                money_text(COSTS_OPEN, 1_140_000, fmt(), b")", mod2026),
+            ]
+        };
+        assert_eq!(texts(true)[6], b" KOSTEN: 4.500.000 \xd5.");
+        assert_eq!(texts(false)[7], b"(KOSTEN: 1.140.000 DM)");
+        let pairs: Vec<_> = texts(true).into_iter().zip(texts(false)).collect();
+        assert_mod_texts_narrower(&pairs);
+    }
+
+    /// MOD2026: in the 9-padded level cost column (font 2 at x 0xd8) every row keeps the
+    /// right edge of its amount, and its text ends no further right than with "DM".
+    #[test]
+    fn level_cost_column_keeps_its_amount_edge() {
+        let mut fmt9 = fmt();
+        fmt9.pad_width = 9;
+        let row = |v, mod2026| money_text(b"", v, fmt9, b"", mod2026);
+        let Some(g) = crate::game::euro_gfx() else {
+            eprintln!("skipped: no BMP_DATA");
+            return;
+        };
+        for v in [38_000, 380_000, 1_140_000, 15_200_000] {
+            let (modded, original) = (row(v, true), row(v, false));
+            let amount_edge = |t: &[u8], unit: &[u8]| {
+                assert!(t.ends_with(unit), "{v}");
+                g.text_width(2, &t[..t.len() - unit.len()])
+            };
+            assert_eq!(
+                amount_edge(&modded, currency(true)),
+                amount_edge(&original, currency(false)),
+                "{v}"
+            );
+            assert!(
+                g.text_width(2, &modded) <= g.text_width(2, &original),
+                "{v}"
+            );
+        }
+        assert_eq!(row(380_000, false), b"^^380.000 DM");
     }
 }

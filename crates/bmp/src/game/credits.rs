@@ -12,7 +12,7 @@ use bmp_game::state::{Credit, GameState};
 use super::stadium::{StatusText, status_line_show};
 use super::start_menu::Pictures;
 use super::widgets::{dialog_okay, ui_dialog_box, ui_input_number, ui_wait_right_click_button};
-use super::{GAME_OPTION_A, GAME_OPTION_B, Session};
+use super::{GAME_OPTION_A, GAME_OPTION_B, Session, currency};
 use crate::gfx::{Ui, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow, ui_fill_rect};
 use crate::host::{Host, LEFT_DOWN, Run};
 
@@ -30,7 +30,6 @@ const INTEREST_MONTH: &[u8] = b"Zinsen/Monat:";
 const ASK_AMOUNT: &[u8] = b"Wie hoch soll der Kredit sein ?";
 const ASK_MONTHS: &[u8] = b"Laufzeit des Kredites (Mon.) ?";
 const ASK_RATE: &[u8] = b"Prozentsatz des Kredites ?";
-const DM: &[u8] = b" DM";
 
 /// Most money a manager may owe the bank (`4 Mio. DM`) or one fellow manager.
 const BANK_LIMIT: i32 = 4_000_000;
@@ -80,7 +79,7 @@ fn current(state: &GameState) -> usize {
 /// interest per payment.
 ///
 /// Origin: BMMAIN.EXE 212a:119b (credit_list_draw, line texts)
-pub fn credit_lines(c: &Credit, fmt: bmp_game::rng::NumberFormat) -> [Vec<u8>; 3] {
+pub fn credit_lines(c: &Credit, fmt: bmp_game::rng::NumberFormat, mod2026: bool) -> [Vec<u8>; 3] {
     let f = |v: i32, years: bool| {
         let mut fy = fmt;
         fy.no_separators = years;
@@ -93,7 +92,9 @@ pub fn credit_lines(c: &Credit, fmt: bmp_game::rng::NumberFormat) -> [Vec<u8>; 3
     l1.extend_from_slice(&f(i32::from(c.year_taken), true));
     l1.extend_from_slice(b": ");
     l1.extend_from_slice(&f(display(c.principal), false));
-    l1.extend_from_slice(b" DM (");
+    // MOD2026: the mod's amounts are in euros.
+    l1.extend_from_slice(currency(mod2026));
+    l1.extend_from_slice(b" (");
     l1.extend_from_slice(&f(i32::from(c.rate), false));
     l1.extend_from_slice(b"%)");
     let mut l2 = DUE_ON.to_vec();
@@ -104,8 +105,40 @@ pub fn credit_lines(c: &Credit, fmt: bmp_game::rng::NumberFormat) -> [Vec<u8>; 3
     l2.extend_from_slice(&f(i32::from(c.due_year), true));
     let mut l3 = INTEREST_PER_MONTH.to_vec();
     l3.extend_from_slice(&f(display(c.interest_payment), false));
-    l3.extend_from_slice(DM);
+    l3.extend_from_slice(currency(mod2026));
     [l1, l2, l3]
+}
+
+/// `head`, the shown `amount` and the currency: the money texts of the loans screen.
+fn money_text(
+    head: &[u8],
+    amount: i32,
+    fmt: bmp_game::rng::NumberFormat,
+    mod2026: bool,
+) -> Vec<u8> {
+    // MOD2026: the mod's amounts are in euros.
+    [
+        head,
+        &format_long_thousands(display(amount), fmt),
+        currency(mod2026),
+    ]
+    .concat()
+}
+
+/// The limit line of the refusal dialog: `"maximal 1 Mio. DM"` from a manager,
+/// `"maxmimal 4 Mio. DM"` (sic) from the bank.
+fn limit_line(bank: bool, mod2026: bool) -> Vec<u8> {
+    let head: &[u8] = if bank {
+        b"maxmimal 4 Mio."
+    } else {
+        b"maximal 1 Mio."
+    };
+    [head, currency(mod2026)].concat()
+}
+
+/// The last line of the usury dialog, `"von 1.000.000 DM belegt."`.
+fn usury_fine_line(mod2026: bool) -> Vec<u8> {
+    [b"von 1.000.000", currency(mod2026), b" belegt."].concat()
 }
 
 /// Lists the used loan slots of `lender` (`None` only clears the separator
@@ -130,7 +163,7 @@ fn credit_list_draw(host: &mut Host, state: &GameState, lender: Option<usize>) {
             if n == 2 {
                 y -= 1;
             }
-            let lines = credit_lines(c, host.number_format());
+            let lines = credit_lines(c, host.number_format(), host.mod2026);
             for (k, l) in lines.iter().enumerate() {
                 text_at(host, l, 9, y + 8 * k as i16, 1);
             }
@@ -151,11 +184,7 @@ fn credit_summary_draw(host: &mut Host, state: &GameState) {
     line(host, 0x97, 0x84, 0x102, 0x84, 6);
     line(host, 0x97, 0x9f, 0x102, 0x9f, 6);
     host.number_no_separators = false;
-    let amount = |host: &Host, v: i32| {
-        let mut t = num(host, display(v));
-        t.extend_from_slice(DM);
-        t
-    };
+    let amount = |host: &Host, v: i32| money_text(b"", v, host.number_format(), host.mod2026);
     centered(host, BALANCE, 0x72);
     let t = amount(host, m.balance);
     centered(host, &t, 0x7e);
@@ -227,6 +256,8 @@ fn take_loan(
     restore_status_strip(host);
     let mut refused = false;
     let lender_name = state.managers[lender.min(3)].name().to_vec();
+    // MOD2026: the mod's limits and fine are in euros.
+    let mod2026 = host.mod2026;
     match loan_refusal(state, lender, amount) {
         Some(LoanRefusal::LenderTooPoor) => {
             refused = if GAME_OPTION_A == 1 {
@@ -251,7 +282,7 @@ fn take_loan(
             refused = dialog_okay(
                 host,
                 b"Sie k|nnen nur",
-                b"maximal 1 Mio. DM",
+                &limit_line(false, mod2026),
                 b"Kredit von einem",
                 b"Mitspieler aufnehmen.",
             )?;
@@ -260,7 +291,7 @@ fn take_loan(
             refused = dialog_okay(
                 host,
                 b"Sie k|nnen nur",
-                b"maxmimal 4 Mio. DM",
+                &limit_line(true, mod2026),
                 b"Kredit von der",
                 b"Bank aufnehmen.",
             )?;
@@ -288,7 +319,7 @@ fn take_loan(
                         b"Wegen Wucher werden Sie",
                         b"mit einer",
                         b"Disziplinarstrafe von",
-                        b"von 1.000.000 DM belegt.",
+                        &usury_fine_line(mod2026),
                     )?;
                     refused = dialog_okay(
                         host,
@@ -458,12 +489,12 @@ pub fn screen_credits(
                         (DEBTS_HERE, CreditField::Principal, 0x8f),
                         (INTEREST_HERE, CreditField::Interest, 0x98),
                     ] {
-                        let mut t = label.to_vec();
-                        t.extend_from_slice(&num(
-                            host,
-                            display(credit_sum(m, field, Some(lender))),
-                        ));
-                        t.extend_from_slice(DM);
+                        let t = money_text(
+                            label,
+                            credit_sum(m, field, Some(lender)),
+                            host.number_format(),
+                            host.mod2026,
+                        );
                         text_at(host, &t, 9, y, 1);
                     }
                     host.set_font(1);
@@ -505,6 +536,7 @@ pub fn screen_credits(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::assert_mod_texts_narrower;
     use bmp_game::rng::NumberFormat;
 
     fn fmt() -> NumberFormat {
@@ -529,10 +561,39 @@ mod tests {
             year_taken: 2019,
             due_year: 2019,
         };
-        let [l1, l2, l3] = credit_lines(&c, fmt());
+        let [l1, l2, l3] = credit_lines(&c, fmt(), false);
         assert_eq!(l1, b"7.7.2019: 100.000 DM (7%)");
         assert_eq!(l2, b"F[LLIG AM 7.10.2019");
         assert_eq!(l3, b"ZINSEN PRO MONAT: 7.000 DM");
+        let [m1, m2, m3] = credit_lines(&c, fmt(), true);
+        assert_eq!(m1, b"7.7.2019: 100.000 \xd5 (7%)");
+        assert_eq!(m2, l2);
+        assert_eq!(m3, b"ZINSEN PRO MONAT: 7.000 \xd5");
+        assert_mod_texts_narrower(&[(m1, l1), (m3, l3)]);
+    }
+
+    /// MOD2026: the limit and fine lines of the loan dialogs and the amounts of the account
+    /// summary.
+    #[test]
+    fn dialog_and_summary_amounts_in_euros() {
+        let texts = |mod2026| {
+            vec![
+                limit_line(false, mod2026),
+                limit_line(true, mod2026),
+                usury_fine_line(mod2026),
+                money_text(b"", -2_345_678, fmt(), mod2026),
+                money_text(DEBTS_HERE, 4_000_000, fmt(), mod2026),
+                money_text(INTEREST_HERE, 280_000, fmt(), mod2026),
+            ]
+        };
+        let (modded, original) = (texts(true), texts(false));
+        assert_eq!(original[0], b"maximal 1 Mio. DM");
+        assert_eq!(modded[1], b"maxmimal 4 Mio. \xd5");
+        assert_eq!(modded[2], b"von 1.000.000 \xd5 belegt.");
+        assert_eq!(original[2], b"von 1.000.000 DM belegt.");
+        assert_eq!(modded[4], b"SCHULDEN HIER: 4.000.000 \xd5");
+        assert_eq!(original[5], b"ZINSEN HIER: 280.000 DM");
+        assert_mod_texts_narrower(&modded.into_iter().zip(original).collect::<Vec<_>>());
     }
 
     #[test]

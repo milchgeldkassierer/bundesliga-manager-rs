@@ -17,7 +17,7 @@ use bmp_game::transfer::player_value_of;
 
 use super::negotiation::{Browse, contract_negotiation_browse};
 use super::widgets::{ui_dialog_box, ui_wait_right_click_button};
-use super::{GAME_OPTION_A, GAME_OPTION_B, Session, text_to_upper_de};
+use super::{GAME_OPTION_A, GAME_OPTION_B, Session, currency, text_to_upper_de};
 use crate::gfx::{
     BitmapId, Gfx, RastPort, Ui, ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow,
     ui_fill_rect,
@@ -263,6 +263,15 @@ pub(super) fn player_append_foot_text_of(buf: &mut Vec<u8>, state: &GameState, g
     buf.push(b')');
 }
 
+/// The value column of the squad list: `shown` padded as `fmt` says (7 characters), and the
+/// currency.
+fn value_text(shown: i32, fmt: bmp_game::rng::NumberFormat, mod2026: bool) -> Vec<u8> {
+    // MOD2026: the mod's values are in euros.
+    let mut t = format_long_thousands(shown, fmt);
+    t.extend_from_slice(currency(mod2026));
+    t
+}
+
 /// `squad_list_draw` mode: the own squad with the transfer-flag highlight.
 const LIST_MODE_TRANSFER_FLAGS: u8 = 4;
 
@@ -453,9 +462,7 @@ pub(super) fn squad_list_draw(
                         v /= 3;
                     }
                     let shown = v.wrapping_mul(GAME_OPTION_B) / GAME_OPTION_A;
-                    let mut s = num(host, shown);
-                    s.extend_from_slice(b" DM");
-                    text = Some(s);
+                    text = Some(value_text(shown, host.number_format(), host.mod2026));
                 }
             }
             if let Some(t) = text {
@@ -1503,6 +1510,22 @@ pub fn screen_squad_lineup(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::assert_mod_texts_narrower;
+
+    /// MOD2026: the value column in euros, padded like v1.0.0's.
+    #[test]
+    fn value_column_in_euros() {
+        let fmt = bmp_game::rng::NumberFormat {
+            pad_width: 7,
+            ..Default::default()
+        };
+        assert_eq!(value_text(450_000, fmt, false), b"450.000 DM");
+        assert_eq!(value_text(45_000, fmt, true), b"^45.000 \xd5");
+        assert_mod_texts_narrower(&[(
+            value_text(450_000, fmt, true),
+            value_text(450_000, fmt, false),
+        )]);
+    }
 
     fn squad_state() -> GameState {
         let mut s = GameState::zeroed();

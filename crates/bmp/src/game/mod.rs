@@ -26,6 +26,7 @@ pub mod training;
 pub mod transfer_screen;
 pub mod widgets;
 
+use bmp_formats::font::EURO;
 use bmp_formats::mana::ManaDat;
 use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
 use bmp_game::newgame::{self, CupDraws};
@@ -43,6 +44,12 @@ pub const GAME_OPTION_A: i32 = 1;
 /// `DS:2252/2254`: game option long B (1 in the shipped data; 3 selects the
 /// French ordinal suffixes).
 pub const GAME_OPTION_B: i32 = 1;
+
+/// MOD2026: the currency after an amount, v1.0.0's `" DM"` or the mod's `" €"` (one glyph
+/// where `DM` has two, so a text never gets wider; `docs/mod2026/CHANGES.md`).
+pub(crate) fn currency(mod2026: bool) -> &'static [u8] {
+    if mod2026 { &[b' ', EURO] } else { b" DM" }
+}
 
 /// Game globals that live outside the save game.
 pub struct Session {
@@ -303,9 +310,45 @@ fn run_main(
     ))
 }
 
+/// Test support: a [`Gfx`](crate::gfx::Gfx) with the glyph fonts of `BMP_DATA` and the mod's
+/// euro glyphs, or `None` without `BMP_DATA`.
+#[cfg(test)]
+pub(crate) fn euro_gfx() -> Option<crate::gfx::Gfx> {
+    let set = bmp_formats::font::FontSet::load(&bmp_formats::data_dir()?).expect("fonts");
+    let mut g = crate::gfx::Gfx::new();
+    g.set_fonts(&set);
+    g.set_euro_glyphs();
+    Some(g)
+}
+
+/// Test support: every `(mod, v1.0.0)` text pair is narrower with the mod than without, in
+/// each glyph font (skipped without `BMP_DATA`).
+#[cfg(test)]
+pub(crate) fn assert_mod_texts_narrower(pairs: &[(Vec<u8>, Vec<u8>)]) {
+    let Some(g) = euro_gfx() else {
+        eprintln!("skipped: no BMP_DATA");
+        return;
+    };
+    for (modded, original) in pairs {
+        for font in 1..=3u16 {
+            assert!(
+                g.text_width(font, modded) < g.text_width(font, original),
+                "font {font}: {:?}",
+                String::from_utf8_lossy(original)
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn currency_is_dm_or_euro() {
+        assert_eq!(currency(false), b" DM");
+        assert_eq!(currency(true), [b' ', EURO]);
+    }
 
     #[test]
     fn upper_case_handles_umlauts() {

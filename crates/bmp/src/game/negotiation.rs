@@ -18,7 +18,7 @@ use super::squad_screen::{
     squad_list_hover_info,
 };
 use super::widgets::{TextButtons, dialog_okay, ui_input_number_typed};
-use super::{GAME_OPTION_A, GAME_OPTION_B, Session};
+use super::{GAME_OPTION_A, GAME_OPTION_B, Session, currency};
 use crate::gfx::{ui_draw_line, ui_draw_text_at, ui_draw_text_centered_shadow, ui_fill_rect};
 use crate::host::{Host, LEFT_DOWN, RIGHT_DOWN, Run};
 
@@ -82,6 +82,12 @@ fn draw_list(
     );
 }
 
+/// `"GEHALT PRO MONAT (IN DM)"` of the negotiation panel.
+fn salary_label(mod2026: bool) -> Vec<u8> {
+    // MOD2026: the mod's salaries are in euros.
+    [b"GEHALT PRO MONAT (IN", currency(mod2026), b")"].concat()
+}
+
 /// The negotiation panel for record `slot` and its input loop. Returns the
 /// typed terms and whether "NEUER VERTRAG" was clicked, plus the panel's
 /// button slot.
@@ -113,7 +119,7 @@ fn negotiate_input(
     text_at(host, b":", 0x82, 0xd9, 2);
     let t = num(host, shown_len(p.contract_years));
     text_at(host, &t, 0x87, 0xd9, 2);
-    text_at(host, b"GEHALT PRO MONAT (IN DM)", 8, 0xe1, 2);
+    text_at(host, &salary_label(host.mod2026), 8, 0xe1, 2);
     text_at(host, b":", 0x82, 0xe1, 2);
     let t = num(host, shown_salary(p.market_value));
     text_at(host, &t, 0x87, 0xe1, 2);
@@ -415,4 +421,18 @@ pub(super) fn contract_negotiation_browse(
         8,
     );
     Ok(slot != ICON_EXIT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::assert_mod_texts_narrower;
+
+    /// MOD2026: the salary label names euros.
+    #[test]
+    fn salary_label_in_euros() {
+        assert_eq!(salary_label(false), b"GEHALT PRO MONAT (IN DM)");
+        assert_eq!(salary_label(true), b"GEHALT PRO MONAT (IN \xd5)");
+        assert_mod_texts_narrower(&[(salary_label(true), salary_label(false))]);
+    }
 }
