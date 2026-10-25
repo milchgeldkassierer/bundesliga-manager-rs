@@ -77,3 +77,8 @@ The first-team squads of the 64 club slots as of October 2026 (PRD R4), checked 
   first initial (`C.CONTEH`, `S.CONTEH`), or more letters of the first name if the initials are
   the same too (`LE.MAIER`, `LO.MAIER`); of two players with the same full name, the younger
   one gets `JUN.` (`M.SCHULZ`, `M.SCHULZ JUN.`).
+- **Width** (owner report 2026-10-25): a name is at most 52 pixels wide in micro4, the limit of
+  TEAMED's name input, for which every screen of the game is laid out (the original stores
+  `SCHLOTTERBEC`). A wider name keeps the first part of a double name (`AMAIMOUNI`, `ROSSING`),
+  else the last word (`BOSCH`, `KIALA`), else it is cut at the end like the original's
+  (`SCHLOTTERBEC`, `KÖNIGSDÖRFF`).

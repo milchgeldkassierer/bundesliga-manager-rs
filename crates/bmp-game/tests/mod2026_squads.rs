@@ -329,3 +329,42 @@ fn cut_keeps_a_small_squad_whole() {
     let squad = &fixture()[..15];
     assert_eq!(cut(squad), squad);
 }
+
+/// TEAMED's player name input (`edit_player`, TEAMED.EXE 1000:0a7d with the limit 0x34)
+/// accepts a name only up to 52 pixels in micro4, so every original screen is laid out for
+/// names that wide (the original stores `SCHLOTTERBEC` cut to fit). Every mod name keeps to
+/// it: too wide names keep the first part of a double name or the surname after a particle,
+/// else they are cut at the end like the original's. Needs `BMP_DATA` for the font.
+#[test]
+fn player_names_fit_the_team_editors_name_field() {
+    const NAME_FIELD_PX: u32 = 0x34;
+    let Some(data) = bmp_formats::data_dir() else {
+        return;
+    };
+    let fonts = bmp_formats::font::FontSet::load(&data).unwrap();
+    let micro4 = fonts.get(bmp_formats::font::FontId::Micro4);
+    let width = |name: &str| -> u32 {
+        encode_cp437(name)
+            .into_iter()
+            .map(|c| {
+                let glyph = &micro4.glyphs[usize::from(bmp_formats::font::map_char(c))];
+                u32::from(glyph.width)
+            })
+            .sum()
+    };
+    let too_wide: Vec<String> = squads()
+        .iter()
+        .flat_map(|club| {
+            players(club)
+                .iter()
+                .map(|p| text(p, "name"))
+                .filter(|name| width(name) > NAME_FIELD_PX)
+                .map(|name| format!("{name} ({}, {} px)", label(club), width(name)))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert!(
+        too_wide.is_empty(),
+        "too wide for the name field: {too_wide:#?}"
+    );
+}
