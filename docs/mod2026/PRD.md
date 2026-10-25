@@ -138,12 +138,14 @@ Everything else plays like version 1.0.0.
 - **Renames:** in every text that names a European cup (statistics, history, newspaper, draws,
   match day, titles, the manager's trophy cabinet, offers):
   - "Pokal der Landesmeister" / "LANDESMEISTER" → "Champions League" / "CHAMPIONS LEAGUE";
-  - "Pokal der Pokalsieger" / "POKALSIEGER" → "Europa League" / "EUROPA LEAGUE";
-  - "UEFA-Pokal" / "UEFA-Cup" → "Conference League" / "CONFERENCE LEAGUE".
+  - "Pokal der Pokalsieger" / "POKALSIEGER" → "Conference League" / "CONFERENCE LEAGUE";
+  - "UEFA-Pokal" / "UEFA-Cup" → "Europa League" / "EUROPA LEAGUE".
+  (Owner decision 2026-10-25: the Cup Winners' Cup becomes the Conference League and the UEFA Cup
+  the Europa League, not the other way round.)
   Abbreviated forms, for example "POKAL DER LANDESM.", get matching short forms ("CHAMPIONS L.",
   "EUROPA L.", "CONFERENCE L.") that fit the same widths.
-  **Conference League** (owner decision 2026-10-25, #190): it is wider than "UEFA-Pokal" in every
-  font, so its width is measured against the field or the screen at each place, not against the
+  **Conference League** (owner decision 2026-10-25, #190): it is wider than the names it replaces in
+  every font, so its width is measured against the field or the screen at each place, not against the
   original text. The full name is shown wherever it fits there, otherwise "CONFERENCE L.".
 - **Format:** the competitions keep the original's format and qualification. Only the names
   change.
