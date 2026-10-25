@@ -1,6 +1,8 @@
 //! Embeds the Mod 2026 crest pictures into the program: `docs/mod2026/crests/<n>.png` as
 //! `$OUT_DIR/mod2026_crests.rs` and their 2x versions `docs/mod2026/crests/hires/<n>.png` as
 //! `$OUT_DIR/mod2026_hires_crests.rs`, each a sorted array of `(n, include_bytes!(<n>.png))`.
+//! Also records the checkout's common git directory as `BMP_GIT_COMMON_DIR` (empty without
+//! git metadata), from which the Mod 2026 build guard derives the owner's play directory.
 
 use std::fmt::Write;
 use std::path::Path;
@@ -10,6 +12,23 @@ fn main() {
     let crests = Path::new(&manifest).join("../../docs/mod2026/crests");
     embed(&crests, "mod2026_crests.rs");
     embed(&crests.join("hires"), "mod2026_hires_crests.rs");
+    println!(
+        "cargo:rustc-env=BMP_GIT_COMMON_DIR={}",
+        git_common_dir(Path::new(&manifest)).unwrap_or_default()
+    );
+}
+
+/// `git rev-parse --path-format=absolute --git-common-dir` run in `dir` (as in
+/// `tools/check.sh`), or `None` when git or the git metadata is missing.
+fn git_common_dir(dir: &Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .current_dir(dir)
+        .output()
+        .ok()?;
+    let path = String::from_utf8(output.stdout).ok()?;
+    let path = path.trim();
+    (output.status.success() && !path.is_empty()).then(|| path.to_owned())
 }
 
 /// Writes `$OUT_DIR/<out_file>` with every `<n>.png` directly in `dir`.

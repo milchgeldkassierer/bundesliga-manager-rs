@@ -51,6 +51,11 @@ pub fn is_active(data_dir: &Path) -> bool {
 /// copies are written as new files, so they do not inherit the read-only permissions of the
 /// pristine copy.
 pub fn build(from: &Path, out: &Path) -> Result<(), String> {
+    build_guarding(from, out, &repo_play_dir())
+}
+
+/// [`build`] with `play_dir` as the play directory that is never written.
+fn build_guarding(from: &Path, out: &Path, play_dir: &Path) -> Result<(), String> {
     let source = fs::canonicalize(from).map_err(|e| format!("{}: {e}", from.display()))?;
     if !source.is_dir() {
         return Err(format!("{}: not a directory", from.display()));
@@ -62,7 +67,7 @@ pub fn build(from: &Path, out: &Path) -> Result<(), String> {
             out.display()
         ));
     }
-    let play_dir = resolve(&repo_play_dir()).map_err(|e| e.to_string())?;
+    let play_dir = resolve(play_dir).map_err(|e| e.to_string())?;
     if target.starts_with(&play_dir) {
         return Err(format!(
             "--out {} is the play directory {}, which is never written",
@@ -229,9 +234,25 @@ fn field<const N: usize>(name: &str) -> Result<[u8; N], String> {
     Ok(field)
 }
 
-/// `<repo>/BMP` of the checkout this crate was built from.
+/// `<main checkout>/BMP`, the owner's play directory, for the checkout this crate was built
+/// from (see [`play_dir_of`]).
 fn repo_play_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../BMP")
+    let git_common_dir = env!("BMP_GIT_COMMON_DIR");
+    play_dir_of(
+        Path::new(env!("CARGO_MANIFEST_DIR")),
+        (!git_common_dir.is_empty()).then(|| Path::new(git_common_dir)),
+    )
+}
+
+/// The play directory `BMP` of the main checkout, derived like `tools/check.sh` does: next to
+/// `git_common_dir` (`git rev-parse --git-common-dir`, the main checkout's `.git` also for a
+/// worktree), or `<manifest_dir>/../../BMP` when there is no git metadata (e.g. a source
+/// tarball).
+fn play_dir_of(manifest_dir: &Path, git_common_dir: Option<&Path>) -> PathBuf {
+    match git_common_dir.and_then(Path::parent) {
+        Some(main_checkout) => main_checkout.join("BMP"),
+        None => manifest_dir.join("../../BMP"),
+    }
 }
 
 /// `path` made absolute with every symbolic link resolved, also when it does not exist
@@ -400,6 +421,71 @@ mod tests {
         fs::remove_dir_all(&full).unwrap();
         assert_eq!(tree(&dir), before);
         assert_eq!(repo_play_dir().exists(), play_dir_existed);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn play_dir_follows_the_main_checkout() {
+        let manifest = Path::new("/w/tree/crates/bmp-game");
+        // A worktree: the common git directory is the main checkout's `.git`.
+        assert_eq!(
+            play_dir_of(manifest, Some(Path::new("/m/main/.git"))),
+            Path::new("/m/main/BMP")
+        );
+        // The main checkout itself: still `<repo>/BMP`.
+        assert_eq!(
+            play_dir_of(
+                Path::new("/m/main/crates/bmp-game"),
+                Some(Path::new("/m/main/.git"))
+            ),
+            Path::new("/m/main/BMP")
+        );
+        // No git metadata: next to the crate.
+        assert_eq!(
+            play_dir_of(manifest, None),
+            Path::new("/w/tree/crates/bmp-game/../../BMP")
+        );
+    }
+
+    #[test]
+    fn repo_play_dir_matches_the_check_script() {
+        // `tools/check.sh`: dirname of `git rev-parse --path-format=absolute --git-common-dir`.
+        let Ok(output) = std::process::Command::new("git")
+            .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output()
+        else {
+            return;
+        };
+        if !output.status.success() {
+            return;
+        }
+        let common = PathBuf::from(String::from_utf8(output.stdout).unwrap().trim());
+        assert_eq!(repo_play_dir(), common.parent().unwrap().join("BMP"));
+    }
+
+    #[test]
+    fn build_from_a_worktree_refuses_the_main_play_directory() {
+        let dir = temp("worktree");
+        let from = dir.join("from");
+        fs::create_dir_all(&from).unwrap();
+        fs::write(from.join("MANA.DAT"), zeroed_mana()).unwrap();
+        let main_git = dir.join("main").join(".git");
+        fs::create_dir_all(&main_git).unwrap();
+        let worktree = dir.join("worktree").join("crates").join("bmp-game");
+        fs::create_dir_all(&worktree).unwrap();
+        let before = tree(&dir);
+
+        let play_dir = play_dir_of(&worktree, Some(&main_git));
+        assert_eq!(play_dir, dir.join("main").join("BMP"));
+        let error = build_guarding(&from, &play_dir.join("sub"), &play_dir).unwrap_err();
+        assert!(
+            error.contains("is the play directory") && error.contains("never written"),
+            "{error}"
+        );
+        assert!(build_guarding(&from, &play_dir, &play_dir).is_err());
+        assert!(!play_dir.exists());
+        assert_eq!(tree(&dir), before);
         fs::remove_dir_all(&dir).unwrap();
     }
 

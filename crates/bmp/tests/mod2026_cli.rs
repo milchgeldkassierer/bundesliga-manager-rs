@@ -27,6 +27,24 @@ fn build(from: &Path, out: &Path) -> Output {
     ])
 }
 
+/// The owner's play directory `<main checkout>/BMP`, derived like `tools/check.sh` does (next
+/// to the common git directory, also from a worktree), else `<repo>/BMP` of this checkout.
+fn play_dir() -> PathBuf {
+    let output = Command::new("git")
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .ok()
+        .filter(|output| output.status.success());
+    match output {
+        Some(output) => Path::new(String::from_utf8(output.stdout).unwrap().trim())
+            .parent()
+            .unwrap()
+            .join("BMP"),
+        None => Path::new(env!("CARGO_MANIFEST_DIR")).join("../../BMP"),
+    }
+}
+
 /// A fresh directory below the system temp directory holding a single, zeroed `MANA.DAT`.
 fn source(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("bmp-mod2026-cli-{name}-{}", std::process::id()));
@@ -102,10 +120,11 @@ fn build_writes_the_copy_and_the_marker() {
 #[test]
 fn build_refuses_the_play_directory_and_the_source() {
     let dir = source("refuse");
-    let play_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../BMP");
+    let play_dir = play_dir();
     let play_dir_existed = play_dir.exists();
 
     assert_refused(&build(&dir, &play_dir), "play directory");
+    assert_refused(&build(&dir, &play_dir.join("sub")), "play directory");
     assert_refused(&build(&dir, &dir), "lies inside");
 
     assert_eq!(play_dir.exists(), play_dir_existed);
