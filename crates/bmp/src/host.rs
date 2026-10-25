@@ -1016,6 +1016,77 @@ mod tests {
         assert!(host.g.display().is_none());
     }
 
+    /// Selects an SDL video driver that never opens a window on the desktop (#210). The
+    /// hint overrides any `SDL_VIDEODRIVER` of the environment. Returns the driver with its
+    /// video subsystem, or `None` when neither `offscreen` nor `dummy` initialises on this
+    /// machine. Keep the subsystem alive while windows are opened: when the last SDL context
+    /// goes, `SDL_Quit` clears the hint.
+    fn headless_video_driver() -> Option<(&'static str, sdl2::VideoSubsystem)> {
+        ["offscreen", "dummy"].into_iter().find_map(|driver| {
+            sdl2::hint::set_with_priority("SDL_VIDEODRIVER", driver, &sdl2::hint::Hint::Override);
+            let video = sdl2::init().and_then(|sdl| sdl.video()).ok()?;
+            (video.current_video_driver() == driver).then_some((driver, video))
+        })
+    }
+
+    /// Opens `Host::with_window` on `data` and pumps until one frame is presented; returns
+    /// whether the display layer is on and the texture size of that frame.
+    fn present_one_window_frame(data: &Path, lowres: bool, driver: &str) -> (bool, (usize, usize)) {
+        let mut host = Host::with_window(data, 1, false, lowres).unwrap();
+        let Backend::Window { win, .. } = &host.backend else {
+            unreachable!("with_window builds the window backend");
+        };
+        let video = win.video_driver();
+        assert_eq!(video, driver, "the window must use the headless driver");
+        let layer = host.g.display().is_some();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            host.pump().unwrap();
+            let Backend::Window { win, .. } = &host.backend else {
+                unreachable!("with_window builds the window backend");
+            };
+            if let Some(&size) = win.presented.first() {
+                return (layer, size);
+            }
+            assert!(Instant::now() < deadline, "no frame presented within 5 s");
+        }
+    }
+
+    /// The live SDL window path (#210): `Host::with_window` with the `--lowres` flag and a
+    /// presented frame, under an offscreen SDL video driver. With Mod 2026 data the frame goes
+    /// through `Window::present_display` (the 640-wide texture), with `--lowres` and with the
+    /// original data through the 320x240 `Window::present`. Needs `BMP_DATA`; skips when no
+    /// headless SDL video driver is available. All cases run in this one test: SDL must stay
+    /// on one thread.
+    #[test]
+    fn window_host_presents_the_display_layer_with_mod_data_only() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let Some((driver, _video)) = headless_video_driver() else {
+            eprintln!(
+                "skipping window_host_presents_the_display_layer_with_mod_data_only: \
+                 no headless SDL video driver (offscreen, dummy) is available"
+            );
+            return;
+        };
+        eprintln!("SDL video driver: {driver}");
+        let mod_data = std::env::temp_dir().join(format!("bmp-window-mod-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&mod_data);
+        bmp_game::mod2026::build(&data, &mod_data).unwrap();
+        let mod_2x = present_one_window_frame(&mod_data, false, driver);
+        let mod_lowres = present_one_window_frame(&mod_data, true, driver);
+        let _ = std::fs::remove_dir_all(&mod_data);
+        let original = present_one_window_frame(&data, false, driver);
+        assert_eq!(mod_2x, (true, (640, 480)), "Mod 2026 data");
+        assert_eq!(
+            mod_lowres,
+            (false, (320, 240)),
+            "Mod 2026 data with --lowres"
+        );
+        assert_eq!(original, (false, (320, 240)), "original data");
+    }
+
     #[test]
     fn script_errors_name_the_line() {
         let err = parse_script("wait 1\nclick 1\n").unwrap_err();

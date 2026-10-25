@@ -112,6 +112,9 @@ pub struct Window {
     pub events: sdl2::EventPump,
     mouse: sdl2::mouse::MouseUtil,
     sdl: sdl2::Sdl,
+    /// Test support: the texture size of every presented frame.
+    #[cfg(test)]
+    pub(crate) presented: Vec<(usize, usize)>,
 }
 
 impl Window {
@@ -137,12 +140,20 @@ impl Window {
             events,
             mouse: sdl.mouse(),
             sdl,
+            #[cfg(test)]
+            presented: Vec::new(),
         })
     }
 
     /// The SDL audio subsystem of the window's SDL context.
     pub fn audio(&self) -> Result<sdl2::AudioSubsystem, String> {
         self.sdl.audio()
+    }
+
+    /// Test support: the name of the SDL video driver the window runs on.
+    #[cfg(test)]
+    pub(crate) fn video_driver(&self) -> &'static str {
+        self.sdl.video().map_or("", |v| v.current_video_driver())
     }
 
     /// Hides the host cursor; the game draws its own pointer into VRAM.
@@ -178,6 +189,8 @@ impl Window {
         self.canvas.clear();
         self.canvas.copy(&tex, None, None)?;
         self.canvas.present();
+        #[cfg(test)]
+        self.presented.push((width, height));
         Ok(())
     }
 }

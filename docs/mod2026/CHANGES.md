@@ -257,6 +257,13 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
 - **Off switch** (`crates/bmp/src/main.rs`, `host::display_layer_on`): the layer is off with
   the original data, in the headless (`--script`) host and with the new option `--lowres` of
   `run` and `teamed`.
+  The live window path is covered by the test
+  `host::tests::window_host_presents_the_display_layer_with_mod_data_only` (#210): it builds
+  `Host::with_window` under SDL's `offscreen` (or `dummy`) video driver, so no window opens
+  on the desktop, and checks that a frame on Mod 2026 data goes through
+  `Window::present_display` (640x480 texture) and one with `--lowres` or on the original data
+  through the 320x240 `Window::present`. It skips with a notice when no headless SDL video
+  driver is available.
 
 ## Euro sign
 
