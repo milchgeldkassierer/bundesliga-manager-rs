@@ -143,8 +143,9 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   written into it, so `blit_bitmap` from the screen and the pointer background keep the blocks
   instead of flattening them. Transparent blits are transparent per display pixel: display
   pixels 0 of the source keep the destination's, also where the logical pixel is 0. It uses
-  the same DAC, so fades and palette changes are unchanged. Text has 2x detail (**2x fonts**
-  below); every other block is the doubled logical pixel.
+  the same DAC, so fades and palette changes are unchanged. Text and the mod crests have 2x
+  detail (**2x fonts**, **High-resolution crests** below); every other block is the doubled
+  logical pixel.
   Hit tests, `get_pixel`, the cheat check, the spinners, screenshots and the visual tests read
   the logical frame as before.
 - **2x fonts** (`docs/mod2026/fonts/`, `crates/bmp-formats/src/hires_font.rs`,
@@ -156,6 +157,22 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   as its display side, in the foreground colour and the background colour (opaque) or 0
   (transparent). The logical frame, every advance, text width and centring are unchanged. The
   euro sign has no 2x glyph yet and is drawn doubled (#205). `normal.font` stays a stub.
+- **High-resolution crests** (`docs/mod2026/crests/hires/`, `tools/crest-convert.py --hires`,
+  `crates/bmp-game/build.rs`, `mod2026::hires_crest`, `Host::load_picture`,
+  `Gfx::set_display_side`, PRD R5b): every mod crest has a 2x version (76x76), converted from
+  the same logo as the crest, in the crest palette and only with colour indices the crests use,
+  and embedded in the program as `mod2026::HIRES_CRESTS` (the generator writes nothing new).
+  While the display layer is on with its 2x fonts (`Host::enable_display_layer`),
+  `Host::load_picture` gives a loaded picture the 2x crest of the same number as its display
+  side, but only when the picture is exactly the mod crest, so an original crest or one changed
+  in the team editor never shows another crest. The block propagation then carries it through
+  the crest caches (`FAR:5354`, the live screen's badges, the team editor's crests) and every
+  copy on screen: the start menu's carousel and manager slots, the office, the manager header,
+  the live match panels and the team editor's grid, boxes and preview. Doubled by design: the
+  team editor's enlarged crest (drawn pixel by pixel), painted pixels and imported pictures
+  (an edited crest no longer equals the mod crest), and the foreign clubs' live-match crests
+  (`PIC/144+`, no mod crest). The tables, cup draws and the newspaper draw no crest
+  (`docs/mod2026/crest-sites.md`).
 - **Off switch** (`crates/bmp/src/main.rs`, `host::display_layer_on`): the layer is off with
   the original data, in the headless (`--script`) host and with the new option `--lowres` of
   `run` and `teamed`.

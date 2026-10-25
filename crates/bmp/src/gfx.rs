@@ -607,6 +607,17 @@ impl Gfx {
             .get_or_insert_with(|| pixels.iter().map(|&v| [v; 4]).collect())
     }
 
+    /// MOD2026: gives a memory bitmap the display side `blocks`, one per pixel; nothing
+    /// while the display layer is off.
+    pub(crate) fn set_display_side(&mut self, id: BitmapId, blocks: Vec<Block>) {
+        if self.display.is_none() {
+            return;
+        }
+        let bm = self.bitmap_mut(id);
+        debug_assert!(matches!(&bm.storage, Storage::Mem(px) if px.len() == blocks.len()));
+        bm.blocks = Some(blocks);
+    }
+
     /// Writes pixel `idx` of a memory bitmap with its display block (MOD2026: the block
     /// goes to the display side).
     fn mem_put(&mut self, id: BitmapId, idx: usize, v: u8, block: Block) {

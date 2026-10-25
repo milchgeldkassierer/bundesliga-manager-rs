@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Converts the Mod 2026 club logos into crest pictures of the original size and palette.
 
-Usage: tools/crest-convert.py [--data DIR] [--cache DIR] [CREST ...]
+Usage: tools/crest-convert.py [--data DIR] [--cache DIR] [--hires] [CREST ...]
 
 Reads the logo URLs from docs/mod2026/crests/SOURCES.md, downloads each logo once into the
 cache directory (default ~/.cache/bmp-crest-logos; the logos are never committed) and writes
@@ -12,6 +12,11 @@ give the size and the colour indices a crest may use; PIC/1.PAL gives their colo
 is trimmed to its visible part, laid on the crest background colour, scaled to fit the crest
 with a box filter and every pixel is mapped to the nearest allowed colour. The PNG is indexed
 with the palette entries 0..31 of 1.PAL. Needs Pillow.
+
+With --hires the tool writes docs/mod2026/crests/hires/<crest>.png instead: the same logo at
+twice the crest width and height, for the 2x display layer. Its pixels may use only the colour
+indices the committed crests docs/mod2026/crests/<n>.png use, so the 2x crest never shows a
+colour its crest lacks.
 """
 import argparse
 import io
@@ -72,6 +77,17 @@ def crest_format(data_dir):
     dac = (data_dir / "PIC" / "1.PAL").read_bytes()[: 32 * 3]
     palette = [(v << 2) | (v >> 4) for v in dac]
     return size, sorted(used), palette
+
+
+def crest_indices(rows):
+    """The colour indices the committed crests of `rows` use together."""
+    used = set()
+    for crest in rows:
+        path = CRESTS / f"{crest}.png"
+        if not path.exists():
+            sys.exit(f"{path} is missing: make the crests before their 2x versions")
+        used.update(Image.open(path).getdata())
+    return sorted(used)
 
 
 def sources():
@@ -165,12 +181,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data", type=Path, default=os.environ.get("BMP_DATA"))
     parser.add_argument("--cache", type=Path, default=Path.home() / ".cache" / "bmp-crest-logos")
+    parser.add_argument("--hires", action="store_true", help="write the 2x crests")
     parser.add_argument("crests", type=int, nargs="*")
     args = parser.parse_args()
     if args.data is None:
         sys.exit("no data directory: pass --data or set BMP_DATA")
     size, allowed, palette = crest_format(args.data)
     rows = sources()
+    out = CRESTS
+    if args.hires:
+        size = (2 * size[0], 2 * size[1])
+        allowed = crest_indices(sorted(rows))
+        out = CRESTS / "hires"
+        out.mkdir(exist_ok=True)
     for crest in args.crests or sorted(rows):
         if crest not in rows:
             sys.exit(f"crest {crest} has no row in SOURCES.md")
@@ -178,7 +201,7 @@ def main():
         if logo.getchannel("A").getbbox() is None:
             sys.exit(f"crest {crest}: logo {rows[crest]} is fully transparent")
         image = convert(logo, size, allowed, palette)
-        image.save(CRESTS / f"{crest}.png", optimize=True)
+        image.save(out / f"{crest}.png", optimize=True)
         print(f"{crest}.png")
 
 

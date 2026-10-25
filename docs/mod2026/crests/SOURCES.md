@@ -2,7 +2,8 @@
 
 Each mod club's crest `<crest>.png` (the `crest` number in `../data/clubs.json`) was converted
 from the club's current logo by `tools/crest-convert.py`, which downloads the logo from the URL
-below.
+below. `hires/<crest>.png` is its 2x version for the 2x display layer, made from the same logo by
+`tools/crest-convert.py --hires`.
 
 | Crest | Club | Logo source | Fetched |
 |---|---|---|---|

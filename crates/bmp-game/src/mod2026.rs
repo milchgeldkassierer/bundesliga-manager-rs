@@ -30,6 +30,11 @@ const SQUADS_JSON: &str = include_str!("../../../docs/mod2026/data/squads.json")
 /// number (embedded by `build.rs`).
 pub const CRESTS: &[(u8, &[u8])] = include!(concat!(env!("OUT_DIR"), "/mod2026_crests.rs"));
 
+/// The 2x versions `docs/mod2026/crests/hires/<n>.png` of [`CRESTS`] for the 2x display layer,
+/// in the same shape (embedded by `build.rs`).
+pub const HIRES_CRESTS: &[(u8, &[u8])] =
+    include!(concat!(env!("OUT_DIR"), "/mod2026_hires_crests.rs"));
+
 /// Whether `data_dir` holds mod data, i.e. contains [`MARKER`].
 pub fn is_active(data_dir: &Path) -> bool {
     data_dir.join(MARKER).is_file()
@@ -111,6 +116,21 @@ pub fn decode_crest(png: &[u8]) -> Result<VgaImage, String> {
         height,
         pixels,
     })
+}
+
+/// The 2x version of picture `n` from [`HIRES_CRESTS`], when `low` is exactly the mod crest
+/// `n` of [`CRESTS`]. A picture with the same number that is not the mod crest (the original
+/// crest, or one changed in the team editor) has no 2x version: it would show another crest.
+pub fn hires_crest(n: u16, low: &VgaImage) -> Option<VgaImage> {
+    let n = u8::try_from(n).ok()?;
+    let png = |table: &[(u8, &'static [u8])]| {
+        let i = table.binary_search_by_key(&n, |&(m, _)| m).ok()?;
+        decode_crest(table[i].1).ok()
+    };
+    if png(CRESTS)? != *low {
+        return None;
+    }
+    png(HIRES_CRESTS)
 }
 
 /// The `MANA.DAT` of `source` with [`write_mod_clubs`] applied, as file bytes.
@@ -285,6 +305,23 @@ mod tests {
     /// A `MANA.DAT` that parses: every byte zero.
     fn zeroed_mana() -> Vec<u8> {
         vec![0; mana::FILE_SIZE]
+    }
+
+    #[test]
+    fn hires_crest_needs_the_mod_crest() {
+        for &(n, png) in CRESTS {
+            let low = decode_crest(png).unwrap();
+            let hires = hires_crest(n.into(), &low).unwrap();
+            assert_eq!((hires.width, hires.height), (2 * low.width, 2 * low.height));
+            let mut edited = low.clone();
+            edited.pixels[0] ^= 1;
+            assert_eq!(hires_crest(n.into(), &edited), None, "crest {n} edited");
+        }
+        let (n, png) = CRESTS[0];
+        let low = decode_crest(png).unwrap();
+        for other in [0, 22, 144, 256 + u16::from(n)] {
+            assert_eq!(hires_crest(other, &low), None, "picture {other}");
+        }
     }
 
     #[test]

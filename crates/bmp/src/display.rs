@@ -10,8 +10,11 @@
 //! While the layer is on, a bitmap in memory gets a display side of one block per pixel as
 //! soon as a block other than its doubled pixel is written into it, so a round trip through
 //! memory (the pointer background, for one) keeps the blocks. Text draws its 2x glyphs
-//! through such a side (`docs/mod2026/fonts/README.md`). A transparent blit is transparent
+//! through such a side (`docs/mod2026/fonts/README.md`), and a mod crest picture gets its 2x
+//! version as its side when it is loaded ([`hires_crest_side`]). A transparent blit is transparent
 //! per display pixel: display pixels 0 of the source keep the destination's.
+
+use bmp_formats::vga::VgaImage;
 
 use crate::video::{self, MAX_HEIGHT, WIDTH};
 
@@ -66,6 +69,27 @@ pub fn merge(dst: &mut Block, src: Block) {
             *d = s;
         }
     }
+}
+
+/// The display side of the loaded picture `n` (pixels `img`): one block of its 2x version per
+/// pixel, when `img` is the mod crest `n` ([`bmp_game::mod2026::hires_crest`]).
+pub(crate) fn hires_crest_side(n: u16, img: &VgaImage) -> Option<Vec<Block>> {
+    let hires = bmp_game::mod2026::hires_crest(n, img)?;
+    let (w, h) = (usize::from(img.width), usize::from(img.height));
+    let at = |x: usize, y: usize| hires.pixels[y * 2 * w + x];
+    Some(
+        (0..h)
+            .flat_map(|y| (0..w).map(move |x| (x, y)))
+            .map(|(x, y)| {
+                [
+                    at(2 * x, 2 * y),
+                    at(2 * x + 1, 2 * y),
+                    at(2 * x, 2 * y + 1),
+                    at(2 * x + 1, 2 * y + 1),
+                ]
+            })
+            .collect(),
+    )
 }
 
 /// A presented display frame: `height` rows of [`DISPLAY_W`] indexed pixels and the DAC.
@@ -250,9 +274,160 @@ mod tests {
         assert_eq!(g.display().unwrap().block(p, 60 * 80 + 3), detail);
     }
 
-    /// A fresh, not yet existing directory below the system temp directory.
+    /// The `w x h` logical pixels of `vga` at `(x, y)`.
+    fn logical_rect(vga: &Vga, x: usize, y: usize, w: usize, h: usize) -> Vec<u8> {
+        (y..y + h)
+            .flat_map(|row| vga.pixels[row * WIDTH + x..row * WIDTH + x + w].to_vec())
+            .collect()
+    }
+
+    /// The `2w x 2h` display pixels of `frame` that logical pixel `(x, y)` starts.
+    fn display_rect(frame: &DisplayFrame, x: usize, y: usize, w: usize, h: usize) -> Vec<u8> {
+        (2 * y..2 * (y + h))
+            .flat_map(|row| {
+                frame.pixels[row * DISPLAY_W + 2 * x..row * DISPLAY_W + 2 * (x + w)].to_vec()
+            })
+            .collect()
+    }
+
+    /// The decoded PNG of picture `n` in `table` (`CRESTS` or `HIRES_CRESTS`).
+    fn crest_png(table: &[(u8, &[u8])], n: u8) -> VgaImage {
+        let &(_, png) = table.iter().find(|&&(m, _)| m == n).unwrap();
+        bmp_game::mod2026::decode_crest(png).unwrap()
+    }
+
+    /// MOD2026: a mod crest blitted to the screen, directly and through a memory cache and
+    /// a screen-to-screen copy, is its 2x version in the display and the crest in the
+    /// logical frame.
+    #[test]
+    fn hires_crest_goes_to_the_display_and_the_crest_to_the_frame() {
+        use bmp_game::mod2026::{CRESTS, HIRES_CRESTS};
+        for &(n, png) in CRESTS {
+            let low = bmp_game::mod2026::decode_crest(png).unwrap();
+            let hires = crest_png(HIRES_CRESTS, n);
+            let (w, h) = (low.width as i16, low.height as i16);
+            let (mut g, rp) = gfx_with_display();
+            let s = rp.bitmap;
+            g.fill_rect(s, 0, 0, 320, 240, 3);
+            let crest = g.alloc(Bitmap::from_image(&low));
+            g.set_display_side(crest, hires_crest_side(n.into(), &low).unwrap());
+            g.blit_bitmap(crest, 0, 0, s, 101, 35, w, h);
+            let cache = g.alloc(Bitmap::new_mem(4 * 41, h));
+            g.blit_bitmap(crest, 0, 0, cache, 2 * 41, 0, w, h);
+            g.blit_rect(cache, 2 * 41, 0, s, 7, 150, w, h);
+            g.blit_bitmap(s, 7, 150, s, 187, 60, w, h);
+            let mut vga = Vga::new();
+            let mut frame = DisplayFrame::new();
+            g.to_vga(&mut vga);
+            assert!(g.to_display(&mut frame));
+            let (w, h) = (w as usize, h as usize);
+            let places = [(101, 35), (7, 150), (187, 60)];
+            for (x, y) in places {
+                assert_eq!(
+                    logical_rect(&vga, x, y, w, h),
+                    low.pixels,
+                    "crest {n} at ({x}, {y})"
+                );
+                assert_eq!(
+                    display_rect(&frame, x, y, w, h),
+                    hires.pixels,
+                    "2x crest {n} at ({x}, {y})"
+                );
+            }
+            let inside = |i: usize| {
+                let (x, y) = (i % DISPLAY_W / 2, i / DISPLAY_W / 2);
+                places
+                    .iter()
+                    .any(|&(px, py)| (px..px + w).contains(&x) && (py..py + h).contains(&y))
+            };
+            let stray = delta(&vga, &frame)
+                .iter()
+                .enumerate()
+                .filter(|&(i, &(_, differs))| differs && !inside(i))
+                .count();
+            assert_eq!(stray, 0, "crest {n}: 2x detail outside the crests");
+        }
+        let mut g = Gfx::new();
+        let rp = g.screen_open();
+        let (n, png) = CRESTS[0];
+        let low = bmp_game::mod2026::decode_crest(png).unwrap();
+        let crest = g.alloc(Bitmap::from_image(&low));
+        g.set_display_side(crest, hires_crest_side(n.into(), &low).unwrap());
+        g.blit_bitmap(crest, 0, 0, rp.bitmap, 101, 35, 38, 38);
+        assert!(
+            !g.to_display(&mut DisplayFrame::new()),
+            "display switched on"
+        );
+        let mut vga = Vga::new();
+        g.to_vga(&mut vga);
+        assert_eq!(logical_rect(&vga, 101, 35, 38, 38), low.pixels);
+    }
+
+    /// MOD2026: `Host::load_picture` gives the mod crest its 2x version only on mod data with
+    /// the display layer as the SDL host switches it on. Needs `BMP_DATA`.
+    #[test]
+    fn load_picture_gives_mod_crests_their_2x_version() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let (n, png) = bmp_game::mod2026::CRESTS[0];
+        let low = bmp_game::mod2026::decode_crest(png).unwrap();
+        let hires = crest_png(bmp_game::mod2026::HIRES_CRESTS, n);
+        let mod_data = temp_dir("load-picture-mod");
+        bmp_game::mod2026::build(&data, &mod_data).unwrap();
+        let original = temp_dir("load-picture-original");
+        bmp_game::mod2026::copy_tree(&data, &original).unwrap();
+        let shots = temp_dir("load-picture-shots");
+        std::fs::create_dir_all(&shots).unwrap();
+        // The logical and the display frame with crest `n` drawn at (101, 35).
+        let draw = |dir: &Path, hires_fonts: bool| {
+            let mut host = Host::with_script(dir, Vec::new(), &shots, false).unwrap();
+            if hires_fonts {
+                host.enable_display_layer();
+            } else {
+                host.g.display_on();
+            }
+            let crest = host.load_picture(n.into()).unwrap();
+            host.g
+                .blit_bitmap(crest, 0, 0, host.rp.bitmap, 101, 35, 38, 38);
+            let mut vga = Vga::new();
+            let mut frame = DisplayFrame::new();
+            host.g.to_vga(&mut vga);
+            assert!(host.g.to_display(&mut frame));
+            (vga, frame)
+        };
+        let (vga, frame) = draw(&mod_data, true);
+        assert_eq!(logical_rect(&vga, 101, 35, 38, 38), low.pixels);
+        assert_eq!(
+            display_rect(&frame, 101, 35, 38, 38),
+            hires.pixels,
+            "mod data, display layer of the SDL host"
+        );
+        let (vga, frame) = draw(&mod_data, false);
+        assert_eq!(logical_rect(&vga, 101, 35, 38, 38), low.pixels);
+        assert!(
+            doubled_at(&vga, &frame, 101, 35, 38, 38),
+            "mod data, display layer only"
+        );
+        let (vga, frame) = draw(&original, true);
+        assert_ne!(
+            logical_rect(&vga, 101, 35, 38, 38),
+            low.pixels,
+            "original crest {n} is the mod crest"
+        );
+        assert!(doubled_at(&vga, &frame, 101, 35, 38, 38), "original data");
+        for dir in [&mod_data, &original, &shots] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    /// A fresh, not yet existing directory below the system temp directory, unique per call:
+    /// tests running in parallel may run the same scenario with the same setup.
     fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("bmp-display-{tag}-{}", std::process::id()));
+        static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("bmp-display-{tag}-{}-{call}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
     }
@@ -261,24 +436,39 @@ mod tests {
     #[derive(Clone, Copy, PartialEq, Debug)]
     enum Setup {
         /// Mod 2026 data built from `BMP_DATA`, with the display layer but without the 2x
-        /// fonts.
+        /// fonts and crests.
         ModData,
         /// A copy of the original data, whose game is the frozen v1.0.0, with the display
         /// layer as the SDL host switches it on ([`Host::enable_display_layer`]).
         OriginalWithHiresFonts,
         /// Mod 2026 data built from `BMP_DATA`, with the display layer as the SDL host
-        /// switches it on ([`Host::enable_display_layer`]): what a player of the mod sees.
+        /// switches it on ([`Host::enable_display_layer`]), with the 2x fonts and crests:
+        /// what a player of the mod sees.
         ModDataWithHiresFonts,
     }
 
     /// Runs `tests/visual/<name>.port.txt` like `tools/visual-check.sh` with the display
     /// layer on; returns the logical and the display frame of every screenshot.
     fn scenario_shots(data: &Path, name: &str, setup: Setup) -> Vec<(String, Vga, DisplayFrame)> {
+        script_shots(data, name, &scenario_text(name), setup)
+    }
+
+    /// The text of `tests/visual/<name>.port.txt`.
+    fn scenario_text(name: &str) -> String {
         let path = format!(
             "{}/../../tests/visual/{name}.port.txt",
             env!("CARGO_MANIFEST_DIR")
         );
-        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::read_to_string(&path).unwrap()
+    }
+
+    /// [`scenario_shots`] for the script `text`; `name` tells its temp directories apart.
+    fn script_shots(
+        data: &Path,
+        name: &str,
+        text: &str,
+        setup: Setup,
+    ) -> Vec<(String, Vga, DisplayFrame)> {
         let header = |key: &str| {
             text.lines()
                 .find_map(|l| l.strip_prefix(&format!("# {key}:")))
@@ -286,7 +476,6 @@ mod tests {
         };
         let seed = |key: &str| header(key).map(|v| v.parse::<i32>().unwrap());
         let teamed = header("command").as_deref() == Some("teamed");
-        // Tests running in parallel may run the same scenario with another setup.
         let run_data = temp_dir(&format!("{name}-{setup:?}-data"));
         let shots = temp_dir(&format!("{name}-{setup:?}-shots"));
         match setup {
@@ -296,7 +485,7 @@ mod tests {
             Setup::OriginalWithHiresFonts => bmp_game::mod2026::copy_tree(data, &run_data).unwrap(),
         }
         std::fs::create_dir_all(&shots).unwrap();
-        let steps = parse_script(&text).unwrap();
+        let steps = parse_script(text).unwrap();
         let mut host = Host::with_script(&run_data, steps, &shots, !teamed).unwrap();
         match setup {
             Setup::ModData => host.g.display_on(),
@@ -395,30 +584,48 @@ mod tests {
         (info.width, info.height, delta)
     }
 
-    /// The newspaper of the match-day scenario with `setup` is exactly the doubled logical
-    /// frame plus the 2x detail of `tests/display/<golden>` (`tests/display/README.md`).
-    /// `BMP_DISPLAY_GOLDEN_WRITE=1` rewrites the golden first.
+    /// The logical and the display frame of screenshot `name` in `shots`.
+    fn shot<'a>(
+        shots: &'a [(String, Vga, DisplayFrame)],
+        name: &str,
+    ) -> (&'a Vga, &'a DisplayFrame) {
+        shots
+            .iter()
+            .find(|(shot, ..)| shot == name)
+            .map(|(_, vga, frame)| (vga, frame))
+            .unwrap_or_else(|| panic!("no {name} shot"))
+    }
+
+    /// The newspaper of the match-day scenario with `setup` matches `tests/display/<golden>`.
     fn check_newspaper_golden(data: &Path, setup: Setup, golden: &str) {
-        let golden = Path::new(env!("CARGO_MANIFEST_DIR"))
+        let shots = scenario_shots(data, "matchday", setup);
+        let (vga, frame) = shot(&shots, "m08-newspaper");
+        assert_display_golden(vga, frame, golden);
+    }
+
+    /// `frame` is exactly the doubled logical frame `vga` plus the 2x detail of
+    /// `tests/display/<golden>` (`tests/display/README.md`). `BMP_DISPLAY_GOLDEN_WRITE=1`
+    /// rewrites the golden first.
+    fn assert_display_golden(vga: &Vga, frame: &DisplayFrame, golden: &str) {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/display")
             .join(golden);
-        let (_, vga, frame) = scenario_shots(data, "matchday", setup)
-            .into_iter()
-            .find(|(shot, ..)| shot == "m08-newspaper")
-            .expect("no m08-newspaper shot");
         assert_eq!(frame.height, 2 * vga.height());
         assert!(frame.dac == vga.dac);
-        let got = delta(&vga, &frame);
-        assert!(got.iter().any(|&(_, differs)| differs), "no 2x detail");
+        let got = delta(vga, frame);
+        assert!(
+            got.iter().any(|&(_, differs)| differs),
+            "{golden}: no 2x detail"
+        );
         if std::env::var_os("BMP_DISPLAY_GOLDEN_WRITE").is_some() {
-            write_delta(&golden, frame.height, &got);
+            write_delta(&path, frame.height, &got);
         }
-        let (w, h, want) = read_delta(&golden);
+        let (w, h, want) = read_delta(&path);
         assert_eq!((w as usize, h as usize), (DISPLAY_W, frame.height));
         let wrong: Vec<usize> = (0..got.len()).filter(|&i| got[i] != want[i]).collect();
         assert!(
             wrong.is_empty(),
-            "{} display pixels differ from the golden, first at {:?}",
+            "{golden}: {} display pixels differ from the golden, first at {:?}",
             wrong.len(),
             wrong
                 .iter()
@@ -457,5 +664,173 @@ mod tests {
             Setup::ModDataWithHiresFonts,
             "matchday-m08-newspaper-mod.png",
         );
+    }
+
+    /// MOD2026: the office and the 2. Bundesliga table of the match day on Mod 2026 data with
+    /// the 2x fonts and crests, as a player of the mod sees them; the office shows the 2x
+    /// crest of the manager's club. Like the mod newspaper, a change to the mod's game that
+    /// changes these screens needs regenerated goldens. Needs `BMP_DATA`.
+    #[test]
+    fn mod_office_and_table_display_match_the_golden_frames() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let shots = scenario_shots(&data, "matchday", Setup::ModDataWithHiresFonts);
+        let (vga, frame) = shot(&shots, "m01-office");
+        assert!(hires_crest_at(vga, frame, 187, 60).is_some(), "no 2x crest");
+        assert_display_golden(vga, frame, "matchday-m01-office-mod.png");
+        let (vga, frame) = shot(&shots, "m07-table");
+        assert_display_golden(vga, frame, "matchday-m07-table-mod.png");
+    }
+
+    /// The mod crest whose pixels the logical frame `vga` shows at `(x, y)`, when `frame`
+    /// shows its 2x version there.
+    fn hires_crest_at(vga: &Vga, frame: &DisplayFrame, x: usize, y: usize) -> Option<u8> {
+        bmp_game::mod2026::CRESTS.iter().find_map(|&(n, png)| {
+            let low = bmp_game::mod2026::decode_crest(png).unwrap();
+            let (w, h) = (usize::from(low.width), usize::from(low.height));
+            (logical_rect(vga, x, y, w, h) == low.pixels
+                && display_rect(frame, x, y, w, h)
+                    == crest_png(bmp_game::mod2026::HIRES_CRESTS, n).pixels)
+                .then_some(n)
+        })
+    }
+
+    /// Whether `frame` shows the `w x h` logical pixels of `vga` at `(x, y)` doubled.
+    fn doubled_at(vga: &Vga, frame: &DisplayFrame, x: usize, y: usize, w: usize, h: usize) -> bool {
+        let logical = logical_rect(vga, x, y, w, h);
+        let display = display_rect(frame, x, y, w, h);
+        (0..4 * w * h).all(|i| display[i] == logical[(i / (2 * w) / 2) * w + i % (2 * w) / 2])
+    }
+
+    /// The origins of the crests of the start menu's carousel strip, `cells` of 0..6.
+    fn strip(cells: &[usize]) -> Vec<(usize, usize)> {
+        cells.iter().map(|&k| (18 + 41 * k, 48)).collect()
+    }
+
+    /// The origins of the 32 crest cells of the team editor's grid.
+    fn grid() -> Vec<(usize, usize)> {
+        (0..32).map(|i| (39 * (i % 8), 87 + 39 * (i / 8))).collect()
+    }
+
+    /// MOD2026: every crest site of `docs/mod2026/crest-sites.md` that the visual scenarios
+    /// reach on Mod 2026 data shows the 2x crest in the display (row ids in the comments);
+    /// the enlarged editor crest stays doubled. Shots whose pointer covers a crest leave that
+    /// crest out. Needs `BMP_DATA`.
+    #[test]
+    fn hires_crests_reach_the_crest_screens() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let start_menu = scenario_text("start_menu");
+        let start = &start_menu[..start_menu.find("shot r02-start").unwrap()];
+        // The strip scrolled right (`press` on its right half), then left.
+        let scrolling = format!(
+            "{start}press 250 60\nwait 600\nrelease\nwait 300\nshot c2-right\n\
+             press 60 60\nwait 300\nrelease\nwait 300\nshot c2-left\n"
+        );
+        type Sites = Vec<(&'static str, Vec<(usize, usize)>)>;
+        let runs: Vec<(&str, String, Sites)> = vec![
+            (
+                "start_menu",
+                start_menu,
+                vec![
+                    ("r02-start", strip(&[0, 1, 2, 3, 4, 5, 6])), // C1
+                    ("r05-options", vec![(22, 114)]),             // C4
+                ],
+            ),
+            (
+                "scrolling",
+                scrolling,
+                vec![
+                    ("c2-right", strip(&[0, 1, 2, 3, 4, 6])), // C2
+                    ("c2-left", strip(&[0, 2, 3, 4, 5, 6])),  // C2
+                ],
+            ),
+            (
+                "new_game",
+                scenario_text("new_game"),
+                vec![("r03-office", vec![(187, 60)])], // X3, O1
+            ),
+            (
+                "add_manager",
+                scenario_text("add_manager"),
+                vec![
+                    ("r03-start-menu", vec![(22, 114)]),    // X4, C3
+                    ("r06-office-second", vec![(187, 60)]), // X3, O1
+                ],
+            ),
+            (
+                "office",
+                scenario_text("office"),
+                vec![("r03-office", vec![(187, 60)])], // X4, O1
+            ),
+            (
+                "matchday",
+                scenario_text("matchday"),
+                vec![
+                    // M1, M2 (a computer club: X5) and the event panel M11, M12.
+                    ("m02-live", vec![(22, 35), (101, 35), (20, 118), (261, 118)]),
+                    // Redrawn from the badge cache X5.
+                    ("m05-live", vec![(22, 35), (101, 35)]),
+                ],
+            ),
+            (
+                "teamed_start",
+                scenario_text("teamed_start"),
+                vec![("t03-panel-cleared", grid()), ("t04-liga-page2", grid())], // T1, T2
+            ),
+            (
+                "teamed_club",
+                scenario_text("teamed_club"),
+                vec![("c01-selected", vec![(2, 46), (115, 46), (159, 202)])], // T3, T4, T6
+            ),
+        ];
+        for (name, text, sites) in &runs {
+            let shots = script_shots(&data, name, text, Setup::ModDataWithHiresFonts);
+            for (shot_name, origins) in sites {
+                let (vga, frame) = shot(&shots, shot_name);
+                for &(x, y) in origins {
+                    assert!(
+                        hires_crest_at(vga, frame, x, y).is_some(),
+                        "{name}/{shot_name}: no 2x crest at ({x}, {y})"
+                    );
+                }
+            }
+            if *name == "teamed_club" {
+                let (vga, frame) = shot(&shots, "c01-selected");
+                assert!(doubled_at(vga, frame, 1, 88, 152, 152), "T5 not doubled");
+            }
+        }
+    }
+
+    /// MOD2026: the manager header (X1; X2 is its copy in the season end) copies the 2x
+    /// crest from the crest cache. The scenarios reach no header on Mod 2026 data. Needs
+    /// `BMP_DATA`.
+    #[test]
+    fn manager_header_shows_the_2x_crest() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let mod_data = temp_dir("header-mod");
+        bmp_game::mod2026::build(&data, &mod_data).unwrap();
+        let shots = temp_dir("header-shots");
+        std::fs::create_dir_all(&shots).unwrap();
+        let mut host = Host::with_script(&mod_data, Vec::new(), &shots, false).unwrap();
+        host.enable_display_layer();
+        let (n, _) = bmp_game::mod2026::CRESTS[5];
+        let crest = host.load_picture(n.into()).unwrap();
+        let cache = host.g.alloc(Bitmap::new_mem(4 * 41, 38));
+        let portraits = host.g.alloc(Bitmap::new_mem(4 * 41, 40));
+        host.g.blit_bitmap(crest, 0, 0, cache, 2 * 41, 0, 38, 38);
+        crate::game::widgets::ui_draw_manager_header(&mut host, 2, b"ADI", portraits, cache);
+        let mut vga = Vga::new();
+        let mut frame = DisplayFrame::new();
+        host.g.to_vga(&mut vga);
+        assert!(host.g.to_display(&mut frame));
+        assert_eq!(hires_crest_at(&vga, &frame, 267, 62), Some(n));
+        for dir in [&mod_data, &shots] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }

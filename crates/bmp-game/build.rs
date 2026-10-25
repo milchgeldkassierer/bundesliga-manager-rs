@@ -1,15 +1,22 @@
-//! Embeds the Mod 2026 crest pictures `docs/mod2026/crests/<n>.png` into the program: writes
-//! `$OUT_DIR/mod2026_crests.rs`, a sorted array of `(n, include_bytes!(<n>.png))`.
+//! Embeds the Mod 2026 crest pictures into the program: `docs/mod2026/crests/<n>.png` as
+//! `$OUT_DIR/mod2026_crests.rs` and their 2x versions `docs/mod2026/crests/hires/<n>.png` as
+//! `$OUT_DIR/mod2026_hires_crests.rs`, each a sorted array of `(n, include_bytes!(<n>.png))`.
 
 use std::fmt::Write;
 use std::path::Path;
 
 fn main() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let dir = Path::new(&manifest).join("../../docs/mod2026/crests");
+    let crests = Path::new(&manifest).join("../../docs/mod2026/crests");
+    embed(&crests, "mod2026_crests.rs");
+    embed(&crests.join("hires"), "mod2026_hires_crests.rs");
+}
+
+/// Writes `$OUT_DIR/<out_file>` with every `<n>.png` directly in `dir`.
+fn embed(dir: &Path, out_file: &str) {
     println!("cargo:rerun-if-changed={}", dir.display());
     let mut crests: Vec<(u8, String)> = Vec::new();
-    for entry in std::fs::read_dir(&dir).unwrap() {
+    for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
         let Some(stem) = path
             .extension()
@@ -32,6 +39,6 @@ fn main() {
         writeln!(code, "    ({n}, include_bytes!({path:?})),").unwrap();
     }
     code.push(']');
-    let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join("mod2026_crests.rs");
+    let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join(out_file);
     std::fs::write(out, code).unwrap();
 }

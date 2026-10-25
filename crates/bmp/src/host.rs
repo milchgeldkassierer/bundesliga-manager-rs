@@ -191,6 +191,9 @@ pub struct Host {
     /// MOD2026: the data directory holds Mod 2026 data, read once at start-up; switches
     /// the 2x display layer on in a window.
     pub mod2026: bool,
+    /// MOD2026: loaded mod crest pictures get their 2x version as display side; set with
+    /// the display layer by [`Host::enable_display_layer`].
+    hires_crests: bool,
     /// Test support: per screenshot of the script, the logical frame and the 2x display
     /// frame (only recorded while the layer is on).
     #[cfg(test)]
@@ -249,6 +252,7 @@ impl Host {
             card,
             fatal: None,
             mod2026,
+            hires_crests: false,
             #[cfg(test)]
             display_shots: Vec::new(),
         };
@@ -258,10 +262,12 @@ impl Host {
         Ok(host)
     }
 
-    /// MOD2026: switches the 2x display layer on, with the 2x fonts that belong to it.
+    /// MOD2026: switches the 2x display layer on, with the 2x fonts and crests that belong
+    /// to it.
     pub(crate) fn enable_display_layer(&mut self) {
         self.g.display_on();
         self.g.set_hires_fonts();
+        self.hires_crests = true;
     }
 
     /// A window; `sound` = the sound flag `DS:018c`. Without an audio device
@@ -826,7 +832,14 @@ impl Host {
             .inspect_err(|e| {
                 self.fatal_error(crate::game::fatal::DISK_ERROR, e);
             })?;
-        Ok(self.g.alloc(Bitmap::from_image(&img)))
+        let id = self.g.alloc(Bitmap::from_image(&img));
+        // MOD2026: a mod crest is drawn into the display layer as its 2x version.
+        if self.hires_crests
+            && let Some(side) = crate::display::hires_crest_side(n, &img)
+        {
+            self.g.set_display_side(id, side);
+        }
+        Ok(id)
     }
 
     /// [`Host::load_picture`] for callers that end the run on a failure.
