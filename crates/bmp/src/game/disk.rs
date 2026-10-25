@@ -10,7 +10,8 @@ use bmp_formats::savegame::{
     highscore_file_name,
 };
 use bmp_game::highscore::highscore_build_entry;
-use bmp_game::rng::{Rng, format_long_thousands};
+use bmp_game::newgame::game_end_year;
+use bmp_game::rng::{NumberFormat, Rng, format_long_thousands};
 use bmp_game::state::GameState;
 
 use super::load_game::{SaveSession, file_selector, find_case_insensitive};
@@ -327,6 +328,15 @@ fn settings_cheat(session: &mut Session, state: &mut GameState, key: u8) -> bool
     true
 }
 
+/// The end year after "ENDE:" on the settings screen, or " NIE." for an endless game.
+fn end_year_text(state: &GameState, mod2026: bool, fmt: NumberFormat) -> Vec<u8> {
+    // MOD2026: a mod game shows its real end year, not the original's code.
+    match game_end_year(state, mod2026) {
+        Some(year) => format_long_thousands(i32::from(year), fmt),
+        None => NEVER.to_vec(),
+    }
+}
+
 /// "Einstellungen": the fifteen on/off options (half-time scores, results
 /// and tables per league, goal scenes, cups, rescheduled games, newspaper,
 /// fades), the game-speed slider and the cheat keys. The exit icon returns.
@@ -347,11 +357,7 @@ pub fn screen_settings(host: &mut Host, session: &mut Session, state: &mut GameS
     host.set_font(2);
     let mut line = VERSION_LINE.to_vec();
     let fmt = host.number_format();
-    if state.scenario < 2000 {
-        line.extend(format_long_thousands(i32::from(state.scenario), fmt));
-    } else {
-        line.extend_from_slice(NEVER);
-    }
+    line.extend(end_year_text(state, session.rt.mod2026, fmt));
     line.extend_from_slice(LEVEL);
     line.extend(format_long_thousands(5 - i32::from(state.level as i8), fmt));
     line.push(b')');
@@ -623,6 +629,28 @@ mod tests {
     fn shipped(name: &str) -> Option<Vec<u8>> {
         let dir = bmp_formats::data_dir()?;
         std::fs::read(dir.join(name)).ok()
+    }
+
+    #[test]
+    fn settings_show_the_real_end_year() {
+        let fmt = NumberFormat::default();
+        let year = |y| format_long_thousands(y, fmt);
+        let mut s = GameState::program_start();
+        for (start_year, logged_rounds, scenario, mod2026, want) in [
+            (2026, 0, 0x7c9, true, year(2027)),
+            (2028, 2, 0x7cb, true, year(2029)),
+            (2026, 0, 0x56eb, true, NEVER.to_vec()),
+            (0x7c8, 0, 0x7c9, false, year(0x7c9)),
+            (0x7ab, 0, 0x7ae, false, year(0x7ae)),
+            (0x7c8, 0, 0x56eb, false, NEVER.to_vec()),
+        ] {
+            (s.start_year, s.logged_rounds, s.scenario) = (start_year, logged_rounds, scenario);
+            assert_eq!(
+                end_year_text(&s, mod2026, fmt),
+                want,
+                "{start_year} {scenario:#x} mod {mod2026}"
+            );
+        }
     }
 
     #[test]

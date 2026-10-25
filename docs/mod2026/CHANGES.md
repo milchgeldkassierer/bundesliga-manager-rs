@@ -69,6 +69,32 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
 - **Not yet**: the 2. Bundesliga / 3. Liga play-off, the "3. LIGA" texts, which clubs fill the
   pool (#177) and the team editor's tier groups (`crates/bmp/src/teamed/`, still 18 / 20 / 20).
 
+## Season 2026/27
+
+- **Start year** (`crates/bmp-game/src/newgame.rs` `apply_game_options`, PRD R2): a new mod
+  game starts in 2026 (`MOD2026_START_YEAR`) for both settings of "Histor. Start". The game
+  logic reads the mod switch from `Runtime::mod2026`, which `Runtime::default` sets when the
+  selected league layout is `MOD2026`. The option still selects its end-year code and the endless and one-year
+  rules as before.
+- **End year** (`newgame::game_end_year`): save block 43 (FAR:513c) keeps the original's codes
+  (1964 / 1966 / 22222 historical, 1993 / 1995 / 22251 modern). Where the original compares or
+  shows the code as a year (the game end in `season_final`, the "ENDE:" line of the settings
+  screen), a mod game uses its first season year (`start_year - logged_rounds`) plus the code's
+  length instead: a one-year game ends in 2027, a three-year game in 2029, an endless game never.
+  An original save loaded with mod data keeps its end year.
+- **Youth players** (`season_end_youth_player`): the original lets youth players join from
+  1967 (historical) or 1996 (modern), three seasons after the start. A mod game counts the three
+  seasons from its first season year, i.e. from 2030 for a 2026 game, and also after loading
+  (the original's FAR:56f4 is not saved, so a loaded original game falls back to the 1966 rule).
+- **History season column** (`crates/bmp/src/game/stats_screens.rs`
+  `screen_manager_history`): the original prints `1963 + 28 * later start + season`, which is
+  1991 for the season 1992/93. A mod game prints the season label from the first season year in
+  the original's two-digit form, `26/27`, `27/28`, ..., `99/00`: the 30 px column holds five
+  micro4 glyphs, `2026/27` would run into the rank.
+- **No change needed**: the office calendar, the newspaper and message dates, the credits and
+  the saves use the full year number; no site hard-codes a `19` century prefix. No other screen
+  of the original shows a season label.
+
 ## 2x display layer
 
 - **Display buffer** (`crates/bmp/src/display.rs`, `crates/bmp/src/gfx.rs`, PRD R5b): with

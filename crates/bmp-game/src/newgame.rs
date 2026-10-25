@@ -52,10 +52,39 @@ const THREE_YEARS: u16 = 0x7ae;
 const MODERN_OFFSET: u16 = 0x1d;
 /// DS:07e0 of a modern start (1992).
 const MODERN_START_YEAR: u16 = 0x7c8;
+/// DS:07e0 of a historical start (1963), as the program image holds it.
+const HISTORICAL_START_YEAR: u16 = 0x7ab;
+/// MOD2026: DS:07e0 of every new game with Mod 2026 data (season 2026/27).
+pub const MOD2026_START_YEAR: u16 = 2026;
 
 /// Whether `FAR:513c` ends the game after one season.
 fn is_one_year(end_year: u16) -> bool {
     end_year == ONE_YEAR || end_year == ONE_YEAR + MODERN_OFFSET
+}
+
+/// MOD2026: the year the running game's first season started in. `season_final` advances
+/// `start_year` and `logged_rounds` together, so their difference stays fixed.
+pub fn first_season_year(state: &GameState) -> u16 {
+    state.start_year.wrapping_sub(state.logged_rounds)
+}
+
+/// MOD2026: the year whose season end ends the game, `None` for an endless game. FAR:513c
+/// holds the original's end-year codes (1964/1966 or 1993/1995, endless above 2000); a mod
+/// game counts their length from its own first season instead (`docs/mod2026/CHANGES.md`).
+pub fn game_end_year(state: &GameState, mod2026: bool) -> Option<u16> {
+    let code = state.scenario;
+    if code > 2000 {
+        return None;
+    }
+    if !mod2026 {
+        return Some(code);
+    }
+    let code_start = if code > MODERN_START_YEAR {
+        MODERN_START_YEAR
+    } else {
+        HISTORICAL_START_YEAR
+    };
+    Some(first_season_year(state).wrapping_add(code.wrapping_sub(code_start)))
 }
 
 /// The cup draws `main` makes while it sets up a new game (`docs/re/logic/cups.md`). Each hook
@@ -483,6 +512,10 @@ fn apply_game_options(state: &mut GameState, rt: &mut Runtime, options: &GameOpt
     rt.modern_start = options.modern_start();
     if rt.modern_start {
         state.start_year = MODERN_START_YEAR;
+    }
+    // MOD2026: a mod game starts in season 2026/27 whatever "Histor. Start" says.
+    if rt.mod2026 {
+        state.start_year = MOD2026_START_YEAR;
     }
     state.level = options.difficulty();
 }
@@ -1384,6 +1417,67 @@ pub(crate) mod tests {
         assert_eq!(s.competition_rounds[0], 1);
         assert_eq!(s.start_year, MODERN_START_YEAR);
         assert_eq!((s.managers[0].slot, s.managers[1].slot), (2, 1));
+    }
+
+    #[test]
+    fn mod_games_start_in_2026() {
+        let mana = synthetic_mana();
+        for (mode, mod_end) in [
+            (MODE_ONE_YEAR, 2027),
+            (MODE_THREE_YEARS, 2029),
+            (MODE_ENDLESS, 0),
+        ] {
+            for start in [0, MODE_HISTORICAL] {
+                for mod2026 in [false, true] {
+                    let c = choices(&[4], mode | start, 2, 0);
+                    let mut rt = Runtime {
+                        mod2026,
+                        ..Runtime::default()
+                    };
+                    let mut rng = Rng::default();
+                    let mut s = startup(&mana, &mut rt, &mut rng, 5, &mut TestCups);
+                    new_game(&mut s, &mut rt, &mut rng, &mana, &c, 12, &mut TestCups);
+                    let what = format!("mode {mode}, start {start}, mod {mod2026}");
+                    let code = c.options.end_year();
+                    assert_eq!(s.scenario, code, "{what}");
+                    let want_start = match (mod2026, start) {
+                        (true, _) => 2026,
+                        (false, 0) => MODERN_START_YEAR,
+                        (false, _) => HISTORICAL_START_YEAR,
+                    };
+                    assert_eq!(s.start_year, want_start, "{what}");
+                    let want_end = match (mod2026, mod_end) {
+                        (_, 0) => None,
+                        (true, _) => Some(mod_end),
+                        (false, _) => Some(code),
+                    };
+                    assert_eq!(game_end_year(&s, mod2026), want_end, "{what}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn game_end_year_off_mod_is_the_code() {
+        let mut s = GameState::program_start();
+        for code in [0x7ac, 0x7ae, 0x7c9, 0x7cb] {
+            s.scenario = code;
+            assert_eq!(game_end_year(&s, false), Some(code));
+        }
+        for code in [0x56ce, 0x56eb] {
+            s.scenario = code;
+            assert_eq!(game_end_year(&s, false), None);
+            assert_eq!(game_end_year(&s, true), None);
+        }
+        (s.start_year, s.logged_rounds, s.scenario) = (2028, 2, 0x7c9);
+        assert_eq!(game_end_year(&s, true), Some(2027));
+        (s.start_year, s.logged_rounds, s.scenario) = (2027, 1, 0x7ae);
+        assert_eq!(game_end_year(&s, true), Some(2029));
+        // An original save loaded with mod data keeps its end year.
+        (s.start_year, s.logged_rounds, s.scenario) = (1994, 2, 0x7cb);
+        assert_eq!(game_end_year(&s, true), Some(0x7cb));
+        (s.start_year, s.logged_rounds, s.scenario) = (1965, 2, 0x7ac);
+        assert_eq!(game_end_year(&s, true), Some(0x7ac));
     }
 
     #[test]

@@ -29,7 +29,7 @@ use crate::matchsim::{
     MATCH_DAY_MANAGER, MatchHooks, TickerEvent, has_rescheduled_match_today,
     league_postpone_matches_weather, match_pick_scorer, matchday_play, matchday_play_rescheduled,
 };
-use crate::newgame::manager_compute_wage_budget;
+use crate::newgame::{first_season_year, game_end_year, manager_compute_wage_budget};
 use crate::news::{
     self, EVENT_CHANCE, EVENT_GOAL, EVENT_RED_CARD, EVENT_YELLOW_CARD, MessageArg, NO_FREE_SLOT,
     NewsEnv, Newspaper, OPPONENT, message_delete, message_post, team_slot_free_index,
@@ -2089,7 +2089,8 @@ fn season_final<U: SeasonUi + ?Sized>(
     cups::season_promotion_relegation(state, rt, rng);
     league_strength_drift(state, rt, rng, 10);
     board_verdict_store(state, v);
-    if i32::from(state.scenario) == state.year {
+    // MOD2026: a mod game compares its real end year, not the original's code.
+    if game_end_year(state, rt.mod2026).map(i32::from) == Some(state.year) {
         // The original also writes 'a' into four fixture permutation strings (2a58:4180); the
         // program ends right after, so nothing reads them.
         let mut table = ui.highscores(state);
@@ -2420,11 +2421,19 @@ fn season_end_youth_player(
     m: u8,
 ) -> Option<usize> {
     let mu = usize::from(m);
+    let first_season = first_season_year(state);
     let r = &mut state.managers[mu];
     let mut yp = ((r.fatigue_sum as u16) / 12) as i16;
     let year = state.year;
     let modern = rt.modern_start;
-    if !((year > 1966 && !modern) || (year > 1995 && modern)) {
+    // MOD2026: the original's "three seasons after the start" rule, counted from a mod
+    // game's own first season.
+    let youth_allowed = if rt.mod2026 {
+        year > i32::from(first_season) + 3
+    } else {
+        (year > 1966 && !modern) || (year > 1995 && modern)
+    };
+    if !youth_allowed {
         return None;
     }
     yp += yp / -3;
@@ -4846,6 +4855,29 @@ mod tests {
     }
 
     #[test]
+    fn mod_youth_players_start_three_seasons_in() {
+        let seed = (0..u16::MAX)
+            .find(|&seed| Rng::new(seed).random_range(0, 2) == 0)
+            .unwrap();
+        let rt = Runtime {
+            mod2026: true,
+            ..Runtime::default()
+        };
+        for (year, joins) in [(2029, false), (2030, true)] {
+            let mut s = weekly_state();
+            (s.start_year, s.logged_rounds, s.year) = (2029, 3, year);
+            s.managers[1].fatigue_sum = 12 * 60;
+            for p in &mut s.players[1..] {
+                p.owner_manager = NO_OWNER;
+            }
+            let youth = season_end_youth_player(&mut s, &rt, &mut Rng::new(seed), 1);
+            assert_eq!(youth.is_some(), joins, "{year}");
+            let fatigue = if joins { 12 * 40 } else { 12 * 60 };
+            assert_eq!(s.managers[1].fatigue_sum, fatigue, "{year}");
+        }
+    }
+
+    #[test]
     fn separations_age_everyone_and_return_held_players() {
         for auto_play in [false, true] {
             let mut s = weekly_state();
@@ -5010,6 +5042,27 @@ mod tests {
         assert!(ui.table.entries[0].score >= ui.table.entries[1].score);
     }
 
+    #[test]
+    fn a_mod_one_year_game_ends_in_2027() {
+        for (mod2026, ends) in [(false, false), (true, true)] {
+            let mut s = season_final_state();
+            (s.start_year, s.logged_rounds, s.scenario) = (2026, 0, 0x7c9);
+            calendar_compute_date(&mut s, 0);
+            assert_eq!(s.year, 2027);
+            let mut rt = Runtime {
+                mod2026,
+                ..Runtime::default()
+            };
+            let mut ui = Headless::new(&s);
+            assert_eq!(
+                season_final(&mut s, &mut rt, &mut Rng::new(41), &mut ui),
+                Ok(ends),
+                "mod {mod2026}"
+            );
+            assert_eq!(ui.game_over, ends, "mod {mod2026}");
+        }
+    }
+
     /// A new mod game with managers at clubs 2 (Bundesliga) and 20 (2. Bundesliga), played by
     /// `ui`. Call inside `with_layout(&MOD2026, ..)`.
     fn play_mod_game(ui: &mut Headless) -> (GameState, Result<GameOver, Done>) {
@@ -5034,6 +5087,7 @@ mod tests {
             ui.stop_at_season_end = true;
             let (s, end) = play_mod_game(&mut ui);
             assert_eq!(end, Err(Done));
+            assert_eq!(s.start_year, crate::newgame::MOD2026_START_YEAR);
 
             assert_eq!(ui.office_turns.last().map(|t| t.1), Some(0xff));
             // Each tier had exactly its own number of match days.

@@ -1,0 +1,35 @@
+# Mod 2026 new game up to the office, whose calendar sheet shows 2026 (#185). Not a visual
+# check against DOSBox (it lives outside tests/visual/); run it by hand on a mod data
+# directory built outside the repo:
+#   bmp mod2026 build --from <original data> --out /tmp/bmp-mod2026
+#   bmp --data /tmp/bmp-mod2026 run --script tests/mod2026/office_2026.port.txt \
+#       --shots /tmp/bmp-mod2026-shots --time 45817 --time2 45841
+# The clicks are those of tests/visual/new_game.port.txt up to its office frame.
+# seed: 45817
+# seed2: 45841
+key space
+wait 500
+click 160 120
+wait 4000
+click 40 220
+wait 200
+type adi
+key enter
+wait 200
+click 40 120
+wait 300
+shot r01-manager
+rclick 160 120
+wait 500
+shot r02-options
+rclick 160 120
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 4000
+shot r03-office

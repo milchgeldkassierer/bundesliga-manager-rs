@@ -6,6 +6,7 @@ use bmp_game::finance::{
     CreditField, credit_sum, finance_monthly_expenses, finance_monthly_income,
 };
 use bmp_game::league_layout::layout;
+use bmp_game::newgame::first_season_year;
 use bmp_game::rng::NumberFormat;
 use bmp_game::state::{GameState, Manager};
 
@@ -145,6 +146,35 @@ fn ui_stage_text(index: usize) -> &'static [u8] {
 const HISTORY_MAX: i16 = 50;
 /// First season year (`0x7ab`); later starts add 28 years.
 const HISTORY_FIRST_YEAR: i16 = 1963;
+
+/// MOD2026: the season starting in `year` in two digits each (`26/27`, `99/00`); the
+/// 30 px year column of the history holds five micro4 glyphs, not seven.
+fn season_label(year: u16) -> Vec<u8> {
+    format!("{:02}/{:02}", year % 100, year.wrapping_add(1) % 100).into_bytes()
+}
+
+/// The year column of history row `k` for a manager who joined in season `joined` of the game
+/// (`values_13a[1]`).
+fn history_year_text(
+    state: &GameState,
+    joined: u8,
+    k: u8,
+    mod2026: bool,
+    fmt: NumberFormat,
+) -> Vec<u8> {
+    // MOD2026: mod games show the season of the real year (`26/27`).
+    if mod2026 {
+        return season_label(
+            first_season_year(state)
+                .wrapping_add(u16::from(joined))
+                .wrapping_add(u16::from(k)),
+        );
+    }
+    let later_start = state.year.wrapping_sub(i32::from(state.logged_rounds)) > 1970;
+    let year =
+        0x1c * i16::from(later_start) + i16::from(joined) + i16::from(k) + HISTORY_FIRST_YEAR;
+    num(fmt, i32::from(year))
+}
 
 fn current(state: &GameState) -> usize {
     (state.current_manager as usize).min(3)
@@ -778,7 +808,6 @@ pub fn screen_manager_history(
         line(host, x0, y, x1, y, color);
     }
     host.set_font(2);
-    let later_start = state.year.wrapping_sub(i32::from(logged)) > 1970;
     if logged == 0 {
         centered(host, HISTORY_EMPTY, 0, 0x140, 0x1d, 1, 7);
         host.screen_fade(1)?;
@@ -788,11 +817,13 @@ pub fn screen_manager_history(
         let mut k: u8 = 0;
         loop {
             let log = mgr.round_log[usize::from(k)];
-            let year = 0x1c * i16::from(later_start)
-                + i16::from(mgr.values_13a[1])
-                + i16::from(k)
-                + HISTORY_FIRST_YEAR;
-            let buf = num(host.number_format(), i32::from(year));
+            let buf = history_year_text(
+                state,
+                mgr.values_13a[1],
+                k,
+                session.rt.mod2026,
+                host.number_format(),
+            );
             text_at(host, &buf, 0xc, y, 1);
             host.number_pad = 2;
             if log[0] == 0xff {
@@ -856,6 +887,37 @@ mod tests {
         NumberFormat {
             pad_width: 1,
             ..Default::default()
+        }
+    }
+
+    #[test]
+    fn season_labels_use_the_real_year() {
+        for (year, label) in [
+            (2026, &b"26/27"[..]),
+            (2027, b"27/28"),
+            (2099, b"99/00"),
+            (2100, b"00/01"),
+        ] {
+            let got = season_label(year);
+            assert_eq!(got, label, "{year}");
+            assert!(!got.windows(2).any(|w| w == b"19"), "{year}");
+        }
+    }
+
+    #[test]
+    fn history_rows_show_the_season_played() {
+        let mut s = Box::new(GameState::zeroed());
+        (s.start_year, s.logged_rounds, s.year) = (2028, 2, 2028);
+        assert_eq!(history_year_text(&s, 1, 0, true, fmt()), b"27/28");
+        assert_eq!(history_year_text(&s, 1, 1, true, fmt()), b"28/29");
+        assert_eq!(history_year_text(&s, 0, 0, true, fmt()), b"26/27");
+        for (year, joined, k, want) in [(1965, 1, 1, 1965), (1994, 0, 1, 1992)] {
+            (s.year, s.logged_rounds) = (year, 2);
+            assert_eq!(
+                history_year_text(&s, joined, k, false, fmt()),
+                num(fmt(), want),
+                "{year}"
+            );
         }
     }
 

@@ -8,7 +8,7 @@
 
 use bmp_formats::savegame::HighScoreEntry;
 
-use crate::league_layout::layout;
+use crate::league_layout::{MOD2026, layout};
 use crate::matchsim::CUP_ROW_CELLS;
 use crate::squad::LineupRules;
 use crate::state::{Layout, MANAGER_SLOTS, NewsRecord};
@@ -119,6 +119,9 @@ pub struct Runtime {
     /// FAR:56f4: the game started in 1992 rather than 1963; set by the new-game options
     /// dialog, not saved.
     pub modern_start: bool,
+    /// MOD2026: the game runs on Mod 2026 data; mirrors the selected
+    /// [`crate::league_layout::layout`] like the `tier_*` fields. Not part of the original.
+    pub mod2026: bool,
     /// FAR:513e / FAR:56ee: the lineup rules the office dispatcher (18bc:0b5f) last set,
     /// read by the weekly `auto_lineup` (2ecd:3360) of the season loop. Both bytes are 0 in
     /// the program image.
@@ -163,6 +166,7 @@ impl Default for Runtime {
             relegation_mode: 0,
             euro_qualified_count: 0,
             modern_start: false,
+            mod2026: *l == MOD2026,
             lineup_rules: LineupRules {
                 suspended_allowed: false,
                 max_lineup_slot: 0,
