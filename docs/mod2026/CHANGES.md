@@ -52,8 +52,11 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   the original's amateurs (group 2, random strengths), the 3. Liga and the pool get strengths
   from their 2025/26 table. Ranks are used as stored (a promoted club's rank in its 2025/26
   league). The 2. Bundesliga scaling is unchanged; the RNG starts at the MSC start state
-  (`srand(1)`), so the output is deterministic. The team editor's save keeps the original
-  grouping (#224).
+  (`srand(1)`), so the output is deterministic. The team editor's save ("MACH MAL !",
+  `crates/bmp/src/teamed/save.rs`) follows the data: `strength::grouping(Host::mod2026)` picks
+  `MOD2026` on mod data, so saving in the editor keeps the table-based 3. Liga and pool
+  strengths instead of replacing them with random ones (#224), and `ORIGINAL` on the original
+  data, unchanged from v1.0.0.
 - **Mod switch** (`bmp_game::mod2026::is_active`): the game and the team editor read it once at
   start-up into `Host::mod2026`, the flag mod behaviour switches on.
 
@@ -98,9 +101,9 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   like the game, and the editor's league groups, rank limits and rank swap read it: on mod data
   ids 18..=35 are the 2. Liga (ranks 1..18, the swap scans only those ids), 36..=55 the third
   tier (ranks 0..20), 56..=63 the pool, and the panel names the third group `3. LIGA` instead
-  of `REGIONALLIGA`.
-- **Not yet**: which clubs fill the pool (#177) and the team editor's save-time strength
-  recomputation (`crates/bmp/src/teamed/save.rs`, still 18 / 20 / 20 groups, #224).
+  of `REGIONALLIGA`. Its save recomputes the strengths with the generator's grouping
+  (`crates/bmp/src/teamed/save.rs`, `strength::grouping`, see "Strength grouping", #224).
+- **Not yet**: which clubs fill the pool (#177).
 
 ## Texts
 

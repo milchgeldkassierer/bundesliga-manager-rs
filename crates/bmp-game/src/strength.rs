@@ -86,6 +86,12 @@ pub const MOD2026: Grouping = Grouping(&[
     },
 ]);
 
+/// The grouping for the data in use: [`MOD2026`] on Mod 2026 data, else [`ORIGINAL`].
+pub fn grouping(mod2026: bool) -> &'static Grouping {
+    // MOD2026: mod data keeps the generator's grouping when the team editor saves.
+    if mod2026 { &MOD2026 } else { &ORIGINAL }
+}
+
 /// [`recompute_strengths_grouped`] with the original grouping.
 ///
 /// Origin: TEAMED.EXE 1579:006d (teamed_save_mana, strength recomputation)
@@ -202,6 +208,13 @@ mod tests {
     fn mod_grouping_follows_the_mod_slot_table() {
         let groups = [17, 18, 35, 36, 55, 56, 63].map(|i| MOD2026.group(i));
         assert_eq!(groups, [0, 1, 1, 2, 2, 3, 3]);
+    }
+
+    #[test]
+    fn grouping_follows_the_data() {
+        let ends = |g: &Grouping| g.0.iter().map(|g| (g.end, g.random)).collect::<Vec<_>>();
+        assert_eq!(ends(grouping(false)), ends(&ORIGINAL));
+        assert_eq!(ends(grouping(true)), ends(&MOD2026));
     }
 
     /// The shipped `MANA.DAT` was last written by the editor: the computed (not random)

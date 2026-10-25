@@ -1,6 +1,6 @@
 //! "PROGRAMM-ENDE": the save question and writing `MANA.DAT`.
 
-use bmp_game::strength::recompute_strengths;
+use bmp_game::strength;
 
 use crate::host::{Host, Run};
 
@@ -19,7 +19,8 @@ pub enum SaveResult {
 }
 
 /// Asks "Daten / unwiederbringlich / abspeichern ?" and on "MACH MAL !" recomputes the
-/// strengths of the German clubs and writes all blocks of `MANA.DAT`.
+/// strengths of the German clubs (with [`strength::grouping`] of the data) and writes all
+/// blocks of `MANA.DAT`.
 ///
 /// Origin: TEAMED.EXE 1579:0030 (teamed_save_mana)
 pub fn teamed_save_mana(host: &mut Host, ed: &mut Editor) -> Run<SaveResult> {
@@ -35,7 +36,10 @@ pub fn teamed_save_mana(host: &mut Host, ed: &mut Editor) -> Run<SaveResult> {
         Choice::Outside => return Ok(SaveResult::Cancelled),
         Choice::Left => {}
     }
-    recompute_strengths(&mut ed.mana, &mut ed.rng);
+    // MOD2026: on Mod 2026 data the generator's grouping (3. Liga and pool table-based), so a
+    // save does not replace their strengths with random ones (#224).
+    let grouping = strength::grouping(host.mod2026);
+    strength::recompute_strengths_grouped(&mut ed.mana, &mut ed.rng, grouping);
     let path = host.data.join("MANA.DAT");
     // The original ignores write errors (file_open/file_write results are not checked
     // after the open succeeded); the port reports them on stderr and carries on.
