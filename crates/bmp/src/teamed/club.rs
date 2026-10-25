@@ -6,6 +6,7 @@
 //! UEBERNEHMEN" only ends the selection. The league swap exchanges two clubs in both.
 
 use bmp_formats::mana::{self, CLUB_NAME_LEN, GERMAN_CLUB_COUNT, ManaDat, PLAYER_NAME_LEN};
+use bmp_game::league_layout;
 
 use crate::gfx::{self, Gfx};
 use crate::host::{Host, LEFT_DOWN, Run};
@@ -16,11 +17,20 @@ use super::{
     league_group, screen_set_visible, set_font,
 };
 
-/// First club of each league group (`DS:0338`).
-pub const GROUP_FIRST: [u8; 4] = [0, 18, 38, 58];
-/// Highest rank the panel accepts per league group (`DS:033C`; also the number of clubs
-/// the rank swap scans in groups 0 and 1).
-pub const GROUP_RANKS: [u8; 4] = [18, 20, 20, 20];
+/// Highest rank the panel accepts for the pool (`DS:033C` entry 3).
+const POOL_RANKS: u8 = 20;
+
+/// Highest rank the panel accepts in league group `group` (`DS:033C`: 18, 20, 20, 20): the
+/// tier's club count, [`POOL_RANKS`] for the pool.
+///
+/// MOD2026: the club counts come from the selected league layout.
+pub fn group_ranks(group: usize) -> u8 {
+    league_layout::layout()
+        .team_count
+        .get(group)
+        .copied()
+        .unwrap_or(POOL_RANKS)
+}
 
 /// The two 38x38 boxes beside the buttons that show the selected crest.
 const BOX_LEFT_X: i16 = 2;
@@ -180,18 +190,18 @@ fn strncpy(dst: &mut [u8], src: &[u8]) {
 /// Sets the rank of club `sel` (league group `group`) in the copy. In the two
 /// Bundesligas the club that had that rank gets `sel`'s old one. Returns `false` for a
 /// rank the group does not have: below 1 (0 is allowed in groups 2 and 3) or above
-/// [`GROUP_RANKS`].
+/// [`group_ranks`].
 ///
 /// Origin: TEAMED.EXE 12a5:0e7a (teamed_main_loop, rank input)
 pub fn set_rank(copy: &mut ManaDat, sel: u8, group: usize, value: i16) -> bool {
-    if value < 0 || (value == 0 && group <= 1) || i16::from(GROUP_RANKS[group]) < value {
+    if value < 0 || (value == 0 && group <= 1) || i16::from(group_ranks(group)) < value {
         return false;
     }
     let sel = usize::from(sel);
     if group < 2 {
-        let first = usize::from(GROUP_FIRST[group]);
-        let end = first + usize::from(GROUP_RANKS[group]);
-        if let Some(j) = (first..end).find(|&j| i16::from(copy.rank[j]) == value) {
+        // The original scans `DS:033C` clubs from `DS:0338` (0, 18): the tier's club ids.
+        let mut ids = league_layout::layout().team_ids(group).map(usize::from);
+        if let Some(j) = ids.find(|&j| i16::from(copy.rank[j]) == value) {
             copy.rank[j] = copy.rank[sel];
         }
     }
@@ -483,6 +493,27 @@ mod tests {
         assert!(set_rank(&mut m, 40, 2, 3));
         assert_eq!(m.rank[..40], before[..40]);
         assert!(!set_rank(&mut m, 40, 2, 21));
+    }
+
+    /// MOD2026: the rank limits and the swap follow the mod's 18 / 18 / 20 tiers.
+    #[test]
+    fn mod_ranks_follow_the_league_layout() {
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        set_layout(&MOD2026);
+        let mut m = sample();
+        let group = super::league_group;
+        assert_eq!((group(20), group(40)), (1, 2));
+        assert_eq!([0, 1, 2, 3].map(group_ranks), [18, 18, 20, 20]);
+        assert!(!set_rank(&mut m, 20, 1, 19));
+        // No 2. Liga club has rank 18, so club 36 (now 3. Liga) keeps its 18.
+        m.rank[35] = 0;
+        m.rank[36] = 18;
+        assert!(set_rank(&mut m, 20, 1, 18));
+        assert_eq!((m.rank[20], m.rank[36]), (18, 18));
+        assert!(set_rank(&mut m, 40, 2, 20));
+        assert!(!set_rank(&mut m, 40, 2, 21));
+        set_layout(&ORIGINAL);
+        assert_eq!([0, 1, 2, 3].map(group_ranks), [18, 20, 20, 20]);
     }
 
     #[test]

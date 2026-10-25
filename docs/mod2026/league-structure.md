@@ -11,8 +11,9 @@ structure from one owner, `bmp_game::league_layout` (`ORIGINAL` / `MOD2026`): th
 below (`LEAGUE_*`, `league_team_ids`, `TIER_*`, `TIER_BASE`, `TIER_RANGE`, `RELEGATION_PLACES`,
 `RELEGATION_PLAYOFF`, `HAS_RELEGATION_PLAYOFF`, `PROMOTION_PLACES`, `DFB_LAST_TEAM`) are gone, and
 the `file:line` pointers have moved. The `history_graph_lines` height and the
-`highscore_compute_score` immediates read the owner too. Open are the team editor's rows
-(`crates/bmp/src/teamed/`).
+`highscore_compute_score` immediates read the owner too. Open is the team editor's strength
+recomputation (`crates/bmp/src/teamed/save.rs`, #224); its league groups and rank limits read the
+owner since #217.
 
 ## How the list was built
 
@@ -27,8 +28,9 @@ the `file:line` pointers have moved. The `history_graph_lines` height and the
   `DFB_LAST_TEAM` and `POINTS_PER_WIN` (now `LeagueLayout::points_per_win`) in `crates/` is listed as a `reader` row by function.
 - **Hex and fixed indices.** `0x39`, `0x3f`, `0x40`, `[u8; 60]`, row 114 and the play-off ranks
   `[0][15]` / `[1][2]` are league values the decimal grep cannot see (`hex` and `index` rows).
-- **Team editor.** The team editor (`crates/bmp/src/teamed/`, `TEAMED.EXE`) keeps its own copies
-  of the sizes and is outside the grep roots. Its sites come from reading
+- **Team editor.** The team editor (`crates/bmp/src/teamed/`, `TEAMED.EXE`) kept its own copies
+  of the sizes (its league groups and rank limits read the owner since #217; its strength
+  recomputation still does not, #224) and is outside the grep roots. Its sites come from reading
   `grep -rnE '\b(17|18|19|20|34|37|38|57|58|64)\b|0x11|0x25|0x39|GROUP_|_group' crates/bmp/src/teamed`;
   its Ghidra addresses are `TEAMED.EXE` addresses, not `BMMAIN.EXE` ones. The other directories
   of `crates/bmp/src` (`audio`, `compare`, `gfx`, `host`, `intro`, `main`, `video`) have no
@@ -67,7 +69,7 @@ the category sections below list only the sites that use them.
 | Cup qualification | `crates/bmp-game/src/cups.rs:60` | `DFB_LAST_TEAM` | DS:2277 | 57 | last league club id, also the top of the DFB-Pokal draw |
 | Season end | `crates/bmp-game/src/cups.rs:832`, 835 | `season_promotion_relegation` | DS:2278 | 58 | first non-league club id (58..63 are the non-league German clubs); the port computes it as the sum of the tier counts |
 | Fixture generator | `crates/bmp-game/src/league.rs:57` | `PAIRINGS` | DS:06fc, DS:0744 | 17, 19, 37 | round permutations: strings 1..17 for 18-club tiers, 19..37 for 20-club tiers |
-| League order lists | `crates/bmp/src/teamed/club.rs:20`, 23 | `GROUP_FIRST`, `GROUP_RANKS` | TEAMED.EXE DS:0338, DS:033c | 0, 18, 38, 58 / 18, 20, 20, 20 | team editor: first club and highest rank per league group (group 3 = clubs 58..63) |
+| League order lists | `crates/bmp/src/teamed/club.rs:27`, `crates/bmp/src/teamed/mod.rs:98` | `group_ranks`, `league_group` | TEAMED.EXE DS:0338, DS:033c | 0, 18, 38, 58 / 18, 20, 20, 20 | team editor: first club and highest rank per league group (group 3 = clubs 58..63); read from `league_layout`, only the pool's highest rank 20 is the editor's own (`POOL_RANKS`) |
 | Tables | `crates/bmp-game/src/strength.rs:36` | `ORIGINAL` | TEAMED.EXE DS:0554, DS:033c | 70, 34, 20 / 18, 20, 20 | team editor: base strength and clubs per league per group of the strength recomputation (rank term `size - rank`) |
 | League order lists | `crates/bmp-game/src/state.rs:785` | `GameState::league_teams` | FAR:535a | 20 | order list `[tier][20]`; the stride 20 is the largest tier |
 | Fixture generator | `crates/bmp-game/src/state.rs:719` | `GameState::league_results` | FAR:6ddc | 38, 20 | results `[tier][38][20]`; stride of 38 rounds and 20 slots |
@@ -76,9 +78,8 @@ Before #186 the same values were defined more than once in the port: `league.rs`
 `runtime.rs` (`TIER_*` and the `Runtime` copies), `cups.rs` and `tables.rs`
 (`RELEGATION_PLACES`), `finance.rs` (`RELEGATION_PLAYOFF`), `highscore.rs` (`TIER_BASE`) and
 `scorers.rs` (`TIER_RANGE`). The game crates now read `league_layout` (the `Runtime` fields are
-its run-time copy). Duplicates remain only in the team editor, `teamed/club.rs` (`GROUP_FIRST`,
-`GROUP_RANKS`) and `teamed/mod.rs` (`league_group`), and in its strength recomputation in
-`bmp-game` `strength.rs` (`ORIGINAL`, and the generator's `MOD2026`, which repeats the slot table
+its run-time copy), and so do the team editor's league groups and rank limits (#217).
+Duplicates remain only in the team editor's strength recomputation in `bmp-game` `strength.rs` (`ORIGINAL`, and the generator's `MOD2026`, which repeats the slot table
 of `clubs.json`).
 
 ## League order lists

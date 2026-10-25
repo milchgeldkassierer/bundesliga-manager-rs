@@ -52,7 +52,8 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   the original's amateurs (group 2, random strengths), the 3. Liga and the pool get strengths
   from their 2025/26 table. Ranks are used as stored (a promoted club's rank in its 2025/26
   league). The 2. Bundesliga scaling is unchanged; the RNG starts at the MSC start state
-  (`srand(1)`), so the output is deterministic. The team editor keeps the original grouping.
+  (`srand(1)`), so the output is deterministic. The team editor's save keeps the original
+  grouping (#224).
 - **Mod switch** (`bmp_game::mod2026::is_active`): the game and the team editor read it once at
   start-up into `Host::mod2026`, the flag mod behaviour switches on.
 
@@ -92,8 +93,14 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   goals, result and leg flag live in save block 59 (`DS:05b8`, read by no original code), so the
   save format is unchanged. The season end skips the swap of a play-off place whose club won
   (`season_promotion_relegation`).
-- **Not yet**: which clubs fill the pool (#177) and the team editor's tier groups and their
-  names (`crates/bmp/src/teamed/`, still 18 / 20 / 20, `REGIONALLIGA` for its third group).
+- **Team editor** (`crates/bmp/src/teamed/mod.rs` `league_group`, `league_name`,
+  `crates/bmp/src/teamed/club.rs` `group_ranks`, `set_rank`): `teamed::run` selects the layout
+  like the game, and the editor's league groups, rank limits and rank swap read it: on mod data
+  ids 18..=35 are the 2. Liga (ranks 1..18, the swap scans only those ids), 36..=55 the third
+  tier (ranks 0..20), 56..=63 the pool, and the panel names the third group `3. LIGA` instead
+  of `REGIONALLIGA`.
+- **Not yet**: which clubs fill the pool (#177) and the team editor's save-time strength
+  recomputation (`crates/bmp/src/teamed/save.rs`, still 18 / 20 / 20 groups, #224).
 
 ## Texts
 

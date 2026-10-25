@@ -26,9 +26,14 @@ pub mod dialog;
 pub mod save;
 pub mod uefa;
 
+use std::borrow::Cow;
+
 use bmp_formats::mana::{self, ManaDat};
+use bmp_game::league_layout::{self, MOD2026, ORIGINAL, is_mod2026};
 use bmp_game::rng::{NumberFormat, Rng, format_long_thousands};
 
+use crate::game::tables::league_names;
+use crate::game::text_to_upper_de;
 use crate::gfx::{self, Bitmap, BitmapId, Gfx, RastPort, TEAMED_SCREEN_H};
 use crate::host::{Host, LEFT_DOWN, Run};
 
@@ -65,6 +70,16 @@ pub const LEAGUE_NAMES: [&[u8]; 4] = [
     b"OBERLIGA    ",
 ];
 
+/// The name of league group `group` in the information panel.
+fn league_name(group: usize) -> Cow<'static, [u8]> {
+    // MOD2026: a mod game names the third group as the game names its third tier, upper-cased.
+    if group == 2 && is_mod2026() {
+        Cow::Owned(text_to_upper_de(league_names()[2]))
+    } else {
+        Cow::Borrowed(LEAGUE_NAMES[group])
+    }
+}
+
 /// TEAMED's game font numbers for `ui_set_font` (`1000:0e47`, name table at `DS:0060`
 /// with a 0x14 stride: 1 newbold, 2 flow, 3 micro4) mapped to library indices
 /// ([`gfx::FONT_NAMES`]).
@@ -77,9 +92,13 @@ pub fn set_font(rp: &mut RastPort, n: usize) {
     rp.font = Some(FONT_TO_LIBRARY[n]);
 }
 
-/// League group of a German club: `(i > 17) + (i > 37) + (i > 57)`.
+/// League group of a German club: `(i > 17) + (i > 37) + (i > 57)`, the last club ids of
+/// the three tiers; group 3 is the pool.
+///
+/// MOD2026: the last club ids come from the selected [`LeagueLayout`](league_layout::LeagueLayout).
 pub fn league_group(club: u8) -> usize {
-    usize::from(club > 0x11) + usize::from(club > 0x25) + usize::from(club > 0x39)
+    let l = league_layout::layout();
+    (0..3).filter(|&tier| club > l.last_team(tier)).count()
 }
 
 /// Size of the main loop's input buffer `[BP-AA]..[BP-58]`.
@@ -241,6 +260,8 @@ pub fn screen_set_visible(g: &mut Gfx, on: bool) {
 ///
 /// Origin: TEAMED.EXE 1000:111a (main)
 pub fn run(host: &mut Host) -> Result<Run<Exit>, String> {
+    // MOD2026: the league structure of the mod data, selected before the editor starts.
+    league_layout::set_layout(if host.mod2026 { &MOD2026 } else { &ORIGINAL });
     let mut ed = match init(host) {
         Ok(ed) => ed,
         // A picture or MANA.DAT that cannot be opened: fatal_error_exit("DISK").
@@ -391,7 +412,7 @@ pub fn draw_panel(g: &mut Gfx, rp: &mut RastPort, m: &ManaDat, club: u8) {
     let c = usize::from(club);
     let name = mana::c_str(&m.clubs[c].name).to_vec();
     gfx::ui_draw_text_at(g, rp, &name, 0x35, 7, 0x1d);
-    gfx::ui_draw_text_at(g, rp, LEAGUE_NAMES[league_group(club)], 0x35, 0xf, 0x1d);
+    gfx::ui_draw_text_at(g, rp, &league_name(league_group(club)), 0x35, 0xf, 0x1d);
     let rank = format_number(i32::from(m.rank[c]));
     gfx::ui_draw_text_at(g, rp, &rank, 0x35, 0x17, 0x1d);
     let pair = |v: [u8; 2]| {
@@ -560,6 +581,36 @@ mod tests {
         assert_eq!(league_group(57), 2);
         assert_eq!(league_group(58), 3);
         assert_eq!(league_group(63), 3);
+    }
+
+    /// MOD2026: the groups and the third group's name follow the selected league layout.
+    #[test]
+    fn mod_league_groups_follow_the_league_layout() {
+        let ids = [17, 18, 35, 36, 55, 56, 57];
+        assert_eq!(ids.map(league_group), [0, 1, 1, 1, 2, 2, 2]);
+        assert_eq!(*league_name(2), *b"REGIONALLIGA    ");
+        league_layout::set_layout(&MOD2026);
+        assert_eq!(ids.map(league_group), [0, 1, 1, 2, 2, 3, 3]);
+        assert_eq!(*league_name(2), *b"3. LIGA");
+        assert_eq!(*league_name(3), *b"OBERLIGA    ");
+        league_layout::set_layout(&ORIGINAL);
+    }
+
+    /// MOD2026: `run` selects the league layout from the host's data. Needs `BMP_DATA`.
+    #[test]
+    fn run_selects_the_league_layout_of_the_data() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let shots = std::env::temp_dir().join(format!("bmp-teamed-layout-{}", std::process::id()));
+        let mut host = Host::with_script(&data, Vec::new(), &shots, false).unwrap();
+        host.mod2026 = true;
+        let _ = run(&mut host).unwrap();
+        assert_eq!(*league_layout::layout(), MOD2026);
+        host.mod2026 = false;
+        let _ = run(&mut host).unwrap();
+        assert_eq!(*league_layout::layout(), ORIGINAL);
+        let _ = std::fs::remove_dir_all(&shots);
     }
 
     #[test]
