@@ -181,6 +181,20 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   1991 for the season 1992/93. A mod game prints the season label from the first season year in
   the original's two-digit form, `26/27`, `27/28`, ..., `99/00`: the 30 px column holds five
   micro4 glyphs, `2026/27` would run into the rank.
+- **History places of an original save** (`crates/bmp/src/game/stats_screens.rs`
+  `history_place`, no behaviour change, #260): a season's place is not stored as such. The season end
+  (`crates/bmp-game/src/season.rs` `season_record_manager`) stores the overall rank across all
+  league clubs, `table position + 1 + first_team[tier]`, under the layout in force then, and the
+  history subtracts `first_team[tier]` of the layout in force when it is shown. A mod game writes
+  and reads under the mod layout and shows every place exactly. The save keeps the original format
+  and carries no layout marker, so an original save loaded with Mod 2026 data shows each 3.
+  Liga/Amateur season two places lower (`first_team[2]` is 38 in the original, 36 in the mod;
+  e.g. 5./2. become 7./4.); Bundesliga and 2. Liga seasons are unchanged. Accepted: the bytes of
+  an original and a mod save are indistinguishable, and an original save under mod data is a
+  foreign-layout reading anyway (other club ids, other club data). The high-score term and the
+  history graph bars read the same stored byte; the season-end rank line reads it right after the
+  season end wrote it, so it is foreign-layout only for a manager already recorded when an
+  original save was taken in a later manager's season-end office turn.
 - **No change needed**: the office calendar, the newspaper and message dates, the credits and
   the saves use the full year number; no site hard-codes a `19` century prefix. No other screen
   of the original shows a season label.

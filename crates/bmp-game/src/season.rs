@@ -4301,6 +4301,25 @@ mod tests {
     }
 
     #[test]
+    fn season_record_manager_stores_a_tier_2_rank_under_the_layout_in_force() {
+        use crate::league_layout::{MOD2026, ORIGINAL, with_layout};
+        // The history (`history_place` in the bmp crate) reads 5th place back by subtracting
+        // `first_team[2]` of the layout in force: 38 in the original, 36 in the mod.
+        for (l, rank) in [(&ORIGINAL, 43), (&MOD2026, 41)] {
+            with_layout(l, || {
+                let rt = Runtime::default();
+                let mut s = record_state();
+                let m = &mut s.managers[0];
+                m.league = 2;
+                m.position_history[37] = 4;
+                let mut ui = Headless::new(&s);
+                season_record_manager(&mut s, &rt, 0, &mut ui).unwrap();
+                assert_eq!(s.managers[0].round_log[2][..2], [rank, 2]);
+            });
+        }
+    }
+
+    #[test]
     fn season_record_manager_shifts_a_full_log() {
         let rt = Runtime::default();
         let mut s = record_state();

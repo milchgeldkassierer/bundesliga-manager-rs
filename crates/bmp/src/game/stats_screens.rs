@@ -829,6 +829,22 @@ pub fn history_graph_lines(ranks: &[u8]) -> Vec<(i16, i16, u8, u8)> {
     out
 }
 
+/// The place a history line prints for the stored `rank` in `tier`. The
+/// save stores the overall rank across all league clubs under the layout in
+/// force when the season ended and carries no layout marker, so an original
+/// save read with Mod 2026 data shows its tier-2 seasons two places lower
+/// (`first_team[2]` is 38 there, 36 in the mod).
+///
+/// Origin: BMMAIN.EXE 362f:390e (screen_manager_history)
+pub fn history_place(rank: u8, tier: u8) -> i16 {
+    let first = layout()
+        .first_team
+        .get(usize::from(tier))
+        .copied()
+        .unwrap_or(0);
+    i16::from(rank) - i16::from(first as i8)
+}
+
 /// The manager's past seasons and the development graph. A click on the
 /// list shows the next 16 seasons.
 ///
@@ -888,12 +904,7 @@ pub fn screen_manager_history(
             if log[0] == 0xff {
                 text_at(host, HISTORY_NOT_YET, 0x2a, y, 1);
             } else {
-                let first = layout()
-                    .first_team
-                    .get(usize::from(log[1]))
-                    .copied()
-                    .unwrap_or(0);
-                let pos = i16::from(log[0]) - i16::from(first as i8);
+                let pos = history_place(log[0], log[1]);
                 let mut buf = num(host.number_format(), i32::from(pos));
                 cat(&mut buf, b".");
                 let color = if log[0] == 1 && log[1] == 0 { 0xb } else { 1 };
@@ -1293,6 +1304,27 @@ mod tests {
             let lines = history_graph_lines(&[l.league_club_count()]);
             assert_eq!(lines.len(), 1);
         }
+        set_layout(&ORIGINAL);
+    }
+
+    #[test]
+    fn history_places_of_an_original_save_shift_in_tier_2_with_mod_data() {
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        // [rank, tier] of manager 0 in the original AUTOSAVE.MAN of issue #260.
+        // The rank was stored as table position + 1 + ORIGINAL.first_team[tier]
+        // (0, 18, 38). MOD2026.first_team is (0, 18, 36): tiers 0 and 1 read
+        // the same place, every tier-2 season reads two places lower, and the
+        // save cannot tell which layout wrote it.
+        let rows = [(43, 2), (48, 2), (40, 2), (33, 1)];
+        let places = || rows.map(|(rank, tier)| history_place(rank, tier));
+        set_layout(&ORIGINAL);
+        assert_eq!(places(), [5, 10, 2, 15]);
+        set_layout(&MOD2026);
+        assert_eq!(places(), [7, 12, 4, 15]);
+        // A mod game stores 5th place in tier 2 as 5 + 36 (pinned by bmp-game's
+        // `season_record_manager_stores_a_tier_2_rank_under_the_layout_in_force`)
+        // and shows it exactly.
+        assert_eq!(history_place(41, 2), 5);
         set_layout(&ORIGINAL);
     }
 }
