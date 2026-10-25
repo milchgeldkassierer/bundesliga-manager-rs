@@ -66,8 +66,20 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   (59 or 60, then 58, 57, 56). Only the Bundesliga play-off is played, so for now the
   2. Bundesliga's play-off place goes down directly and three clubs of the 3. Liga go up; the
   tables mark three promotion places in the 3. Liga.
-- **Not yet**: the 2. Bundesliga / 3. Liga play-off, the "3. LIGA" texts, which clubs fill the
-  pool (#177) and the team editor's tier groups (`crates/bmp/src/teamed/`, still 18 / 20 / 20).
+- **Not yet**: the 2. Bundesliga / 3. Liga play-off, which clubs fill the pool (#177) and the
+  team editor's tier groups and their names (`crates/bmp/src/teamed/`, still 18 / 20 / 20,
+  `REGIONALLIGA` for its third group).
+
+## Texts
+
+- **Third tier** (`crates/bmp/src/game/tables.rs` `league_names`,
+  `crates/bmp/src/game/season_events.rs` `christmas_bonus_lines`, `league_layout::is_mod2026`):
+  a mod game names the third tier `3. Liga` instead of `Am.-Oberliga` (`UI[44]`), and
+  `3. LIGA` where the original upper-cases it or prints `AMATEUR-OBERLIGA`. This covers the
+  table, fixture and strength titles, the club info, the DFB-Pokal group headings, the
+  season-end rank line, the manager history and the Christmas bonus line. Every replacement is
+  narrower than the original in all three fonts, so no short form is used. The newspaper, the
+  offers and the start menu name no tier; the settings screen already reads `3.Liga`.
 
 ## Three-point rule
 

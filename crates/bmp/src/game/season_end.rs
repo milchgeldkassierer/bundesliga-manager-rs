@@ -13,7 +13,7 @@ use bmp_game::state::GameState;
 use super::messages::screen_messages;
 use super::season::ScreenSeason;
 use super::squad_screen::squad_list_draw;
-use super::tables::LEAGUE_NAMES;
+use super::tables::league_names;
 use super::widgets::{dialog_okay, input_wait_click};
 use super::{
     GAME_OPTION_A, GAME_OPTION_B, append_ordinal_suffix, office_show_cached_background,
@@ -137,7 +137,10 @@ fn rank_text(host: &Host, rank: i32, tier: u8) -> Vec<u8> {
     let mut buf = format_long_thousands(rank, host.number_format());
     append_ordinal_suffix(&mut buf, rank as u8, GAME_OPTION_A, GAME_OPTION_B);
     buf.extend_from_slice(PLACE_OF);
-    let name = LEAGUE_NAMES.get(usize::from(tier)).copied().unwrap_or(b"");
+    let name = league_names()
+        .get(usize::from(tier))
+        .copied()
+        .unwrap_or(b"");
     buf.extend(text_to_upper_de(name));
     buf
 }

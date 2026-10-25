@@ -1,0 +1,44 @@
+# Mod 2026 new game up to the office and its 3. Liga table, whose title reads "Tabelle 3. Liga"
+# (#189). Not a visual check against DOSBox (it lives outside tests/visual/); run it by hand on
+# a mod data directory built outside the repo:
+#   bmp mod2026 build --from <original data> --out /tmp/bmp-mod2026
+#   bmp --data /tmp/bmp-mod2026 run --script tests/mod2026/third_tier_names.port.txt \
+#       --shots /tmp/bmp-mod2026-shots --time 45817 --time2 45841
+# The clicks are those of office_2026.port.txt, then those of tests/visual/tables.port.txt
+# for the third-tier table.
+# seed: 45817
+# seed2: 45841
+key space
+wait 500
+click 160 120
+wait 4000
+shot start-menu
+click 40 220
+wait 200
+type adi
+key enter
+wait 200
+click 40 120
+wait 300
+rclick 160 120
+wait 500
+rclick 160 120
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 4000
+shot office
+move 30 173
+wait 100
+click 30 173
+wait 500
+move 107 216
+wait 100
+click 107 216
+wait 1000
+shot third-tier-table

@@ -4,12 +4,15 @@
 //! `docs/re/logic/season.md` §3.1, §3.2, §3.5 and `docs/re/logic/finance.md` §3.
 
 use bmp_game::finance::{BANK, FinanceEvent};
+use bmp_game::league_layout::is_mod2026;
 use bmp_game::rng::{NumberFormat, format_long_thousands, ldiv};
 use bmp_game::season::SpecialDate;
 use bmp_game::state::GameState;
 
 use super::messages::screen_messages;
 use super::office_show_cached_background;
+use super::tables::league_names;
+use super::text_to_upper_de;
 use super::widgets::{dialog_okay_auto, ui_draw_manager_header};
 use crate::gfx::{BitmapId, ui_draw_frame, ui_draw_text_centered_shadow, ui_fill_rect};
 use crate::host::{Host, LEFT_DOWN, Run};
@@ -71,16 +74,17 @@ fn bonus_line(fmt: NumberFormat, prefix: &[u8], amount: i32, suffix: &[u8]) -> V
 }
 
 /// The text lines of a Christmas bonus of `bonus` DM: what a Bundesliga club, a 2. Bundesliga
-/// club (half) and an Amateur-Oberliga club (a third) paid.
+/// club (half) and a third-tier club (a third) paid.
 pub fn christmas_bonus_lines(fmt: NumberFormat, bonus: i32) -> [Vec<u8>; 2] {
     let mut l1 = bonus_line(fmt, b"BUNDESLIGA: ", bonus, b"");
     l1.extend(bonus_line(fmt, b" DM, 2.LIGA: ", bonus >> 1, b" DM,"));
-    let l2 = bonus_line(
-        fmt,
-        b"AMATEUR-OBERLIGA: ",
-        ldiv(bonus, 3),
-        b" DM (INCL. MWST.)",
-    );
+    // MOD2026: a mod game names its third tier the 3. Liga.
+    let third = if is_mod2026() {
+        [text_to_upper_de(league_names()[2]), b": ".to_vec()].concat()
+    } else {
+        b"AMATEUR-OBERLIGA: ".to_vec()
+    };
+    let l2 = bonus_line(fmt, &third, ldiv(bonus, 3), b" DM (INCL. MWST.)");
     [l1, l2]
 }
 
@@ -258,6 +262,7 @@ pub fn finance_dialogs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
 
     /// A construction finished in the winter break opens the mail viewer with its message;
     /// a click on the exit button closes it and the screen goes off (1000:2295..234c).
@@ -303,5 +308,19 @@ mod tests {
         let [l1, l2] = christmas_bonus_lines(fmt, 850_000);
         assert_eq!(l1, b"BUNDESLIGA: 850.000 DM, 2.LIGA: 425.000 DM,");
         assert_eq!(l2, b"AMATEUR-OBERLIGA: 283.333 DM (INCL. MWST.)");
+    }
+
+    #[test]
+    fn a_mod_game_pays_the_third_bonus_to_the_3_liga() {
+        let fmt = NumberFormat {
+            pad_width: 1,
+            ..NumberFormat::default()
+        };
+        let original = christmas_bonus_lines(fmt, 850_000);
+        set_layout(&MOD2026);
+        let modded = christmas_bonus_lines(fmt, 850_000);
+        set_layout(&ORIGINAL);
+        assert_eq!(modded[0], original[0]);
+        assert_eq!(modded[1], b"3. LIGA: 283.333 DM (INCL. MWST.)");
     }
 }

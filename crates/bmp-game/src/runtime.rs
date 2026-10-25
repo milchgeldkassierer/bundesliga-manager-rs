@@ -8,7 +8,7 @@
 
 use bmp_formats::savegame::HighScoreEntry;
 
-use crate::league_layout::{MOD2026, layout};
+use crate::league_layout::{is_mod2026, layout};
 use crate::matchsim::CUP_ROW_CELLS;
 use crate::squad::LineupRules;
 use crate::state::{Layout, MANAGER_SLOTS, NewsRecord};
@@ -166,7 +166,7 @@ impl Default for Runtime {
             relegation_mode: 0,
             euro_qualified_count: 0,
             modern_start: false,
-            mod2026: *l == MOD2026,
+            mod2026: is_mod2026(),
             lineup_rules: LineupRules {
                 suspended_allowed: false,
                 max_lineup_slot: 0,

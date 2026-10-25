@@ -146,6 +146,11 @@ pub fn set_layout(layout: &'static LeagueLayout) {
     ACTIVE.set(layout);
 }
 
+/// MOD2026: whether the selected league structure is the mod's.
+pub fn is_mod2026() -> bool {
+    *layout() == MOD2026
+}
+
 /// Runs `f` with `layout` selected and selects the previous layout again afterwards.
 #[cfg(test)]
 pub fn with_layout<R>(layout: &'static LeagueLayout, f: impl FnOnce() -> R) -> R {
@@ -180,6 +185,13 @@ mod tests {
         assert_eq!(l.league_club_count()..GERMAN_CLUBS as u8, 58..64);
         assert_eq!(l.points_per_win, 2);
         assert!(!l.single_points_column());
+    }
+
+    #[test]
+    fn mod_predicate_follows_the_selected_layout() {
+        assert!(!is_mod2026());
+        assert!(with_layout(&MOD2026, is_mod2026));
+        assert!(!with_layout(&ORIGINAL, is_mod2026));
     }
 
     #[test]

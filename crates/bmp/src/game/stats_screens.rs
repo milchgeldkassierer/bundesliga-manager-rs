@@ -11,7 +11,7 @@ use bmp_game::rng::NumberFormat;
 use bmp_game::state::{GameState, Manager};
 
 use super::tables::{
-    LEAGUE_NAMES, cat, centered, club_name, fill, format_goals_per_game, format_team_record, icon,
+    cat, centered, club_name, fill, format_goals_per_game, format_team_record, icon, league_names,
     line, num, panel, text_at,
 };
 use super::widgets::ui_wait_right_click_button;
@@ -715,7 +715,7 @@ pub fn screen_eternal_table(
 /// Origin: BMMAIN.EXE 362f:390e (screen_manager_history, 362f:3de1..3fa6)
 pub fn history_cup_texts(league: u8, dfb: u8, euro: u8) -> ((Vec<u8>, u8), (Vec<u8>, u8)) {
     // The buffer FAR [BP-0x9e] keeps the last string copied into it.
-    let mut scratch: Vec<u8> = LEAGUE_NAMES
+    let mut scratch: Vec<u8> = league_names()
         .get(usize::from(league))
         .map_or_else(Vec::new, |s| s.to_vec());
     let dfb_col = if dfb & 0x80 != 0 {
@@ -844,7 +844,7 @@ pub fn screen_manager_history(
                 cat(&mut buf, b".");
                 let color = if log[0] == 1 && log[1] == 0 { 0xb } else { 1 };
                 text_at(host, &buf, 0x2a, y, color);
-                let league = LEAGUE_NAMES
+                let league = league_names()
                     .get(usize::from(log[1]))
                     .copied()
                     .unwrap_or(b"");
@@ -1055,6 +1055,17 @@ mod tests {
         // DFB-Pokal.
         let (_, (e, _)) = history_cup_texts(1, 0x80, 0x18);
         assert_eq!(e, b"ZWEITE LIGAUEFA-POKAL");
+    }
+
+    #[test]
+    fn a_mod_game_carries_the_3_liga_in_the_history_buffer() {
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        set_layout(&MOD2026);
+        let (_, (modded, _)) = history_cup_texts(2, 0x80, 0x18);
+        set_layout(&ORIGINAL);
+        let (_, (original, _)) = history_cup_texts(2, 0x80, 0x18);
+        assert_eq!(modded, b"3. LIGAUEFA-POKAL");
+        assert_eq!(original, b"AM.-OBERLIGAUEFA-POKAL");
     }
 
     #[test]

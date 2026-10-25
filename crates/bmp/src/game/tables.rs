@@ -10,7 +10,7 @@ use bmp_game::ai::squad_recalc_team_strength;
 use bmp_game::league::{
     NO_MATCH, NOT_PLAYED, RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort,
 };
-use bmp_game::league_layout::layout;
+use bmp_game::league_layout::{is_mod2026, layout};
 use bmp_game::rng::{NumberFormat, format_long_thousands, long_abs_diff};
 use bmp_game::season::calendar_compute_date;
 use bmp_game::state::{
@@ -25,7 +25,19 @@ use crate::gfx::{
 use crate::host::{Host, LEFT_DOWN, Run};
 
 /// `UI[42..44]` (`DS:2388`): league names.
-pub(crate) const LEAGUE_NAMES: [&[u8]; 3] = [b"Bundesliga", b"Zweite Liga", b"Am.-Oberliga"];
+const LEAGUE_NAMES: [&[u8]; 3] = [b"Bundesliga", b"Zweite Liga", b"Am.-Oberliga"];
+/// MOD2026: the league names of a mod game, whose third tier is the 3. Liga.
+const MOD2026_LEAGUE_NAMES: [&[u8]; 3] = [b"Bundesliga", b"Zweite Liga", b"3. Liga"];
+
+/// The league names (`UI[42..44]`) of the running game.
+pub(crate) fn league_names() -> [&'static [u8]; 3] {
+    // MOD2026: a mod game names its third tier the 3. Liga.
+    if is_mod2026() {
+        MOD2026_LEAGUE_NAMES
+    } else {
+        LEAGUE_NAMES
+    }
+}
 /// `LBL[75..77]` (`DS:4b94`): league table modes.
 const TABLE_MODES: [&[u8]; 3] = [b"HEIM", b"GESAMT", b"AUSW[RTS"];
 /// `LBL[78]`: league table column header.
@@ -529,7 +541,7 @@ pub fn screen_league_table(
     let mut redraw = true;
     let mut cols: u8 = 1;
     let mut title = TABLE_TITLE.to_vec();
-    cat(&mut title, LEAGUE_NAMES[league]);
+    cat(&mut title, league_names()[league]);
     // copy_protection_penalty: the protection is treated as passed (DS:05ac != 0).
     host.set_font(1);
     centered(host, &title, 0, 0x10c, 0xdc, 0xb, 0);
@@ -674,7 +686,7 @@ pub fn screen_fixtures(
             let mut head;
             if by_round {
                 head = FIXTURES_GAMES.to_vec();
-                cat(&mut head, LEAGUE_NAMES[league]);
+                cat(&mut head, league_names()[league]);
                 cat(&mut head, b"   ");
                 cat(&mut head, &num(host.number_format(), i32::from(round)));
                 append_ordinal_suffix(&mut head, round as u8, GAME_OPTION_A, GAME_OPTION_B);
@@ -882,7 +894,7 @@ pub fn screen_strength_table(
     line(host, 0x3f, 0xb2, 0xf6, 0xb2, 1);
     host.set_font(1);
     let mut title = STRENGTH_TITLE.to_vec();
-    cat(&mut title, LEAGUE_NAMES[league]);
+    cat(&mut title, league_names()[league]);
     centered(host, &title, 0x3d, 0xf8, 0x19, 1, 7);
     host.set_font(2);
     text_at(host, STRENGTH_HEADER, 0x41, 0x21, 1);
@@ -1197,7 +1209,7 @@ fn draw_opponent_info_body(host: &mut Host, state: &GameState, t: u8, side: u8, 
     append_ordinal_suffix(&mut buf, pos, GAME_OPTION_A, GAME_OPTION_B);
     cat(&mut buf, INFO_PLACE);
     let tier = usize::from(league_tier_of_team(t) >> 1);
-    cat(&mut buf, &text_to_upper_de(LEAGUE_NAMES[tier]));
+    cat(&mut buf, &text_to_upper_de(league_names()[tier]));
     cat(&mut buf, INFO_STRENGTH);
     let c = &state.clubs[ti];
     let total: i16 = (0..3)
@@ -1334,7 +1346,50 @@ fn draw_opponent_info_body(host: &mut Host, state: &GameState, t: u8, side: u8, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
     use bmp_game::state::GameState;
+
+    #[test]
+    fn third_tier_is_the_3_liga_in_a_mod_game() {
+        let original = league_names();
+        set_layout(&MOD2026);
+        let modded = league_names();
+        set_layout(&ORIGINAL);
+        let expected: [&[u8]; 3] = [b"Bundesliga", b"Zweite Liga", b"Am.-Oberliga"];
+        assert_eq!(original, expected);
+        let expected: [&[u8]; 3] = [b"Bundesliga", b"Zweite Liga", b"3. Liga"];
+        assert_eq!(modded, expected);
+        assert_eq!(text_to_upper_de(modded[2]), b"3. LIGA");
+    }
+
+    /// Every third-tier text of a mod game is at most as wide as the original's in each
+    /// game font. Needs `BMP_DATA`.
+    #[test]
+    fn third_tier_names_fit_their_fields() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let set = bmp_formats::font::FontSet::load(&data).expect("fonts");
+        let mut g = Gfx::new();
+        g.set_fonts(&set);
+        let name = MOD2026_LEAGUE_NAMES[2];
+        let upper = text_to_upper_de(name);
+        let bonus = [upper.clone(), b": ".to_vec()].concat();
+        let original = LEAGUE_NAMES[2];
+        let fields: [(&[u8], Vec<u8>); 3] = [
+            (name, original.to_vec()),
+            (&upper, text_to_upper_de(original)),
+            (&bonus, b"AMATEUR-OBERLIGA: ".to_vec()),
+        ];
+        for font in 1..=3u16 {
+            for (text, field) in &fields {
+                assert!(
+                    g.text_width(font, text) <= g.text_width(font, field),
+                    "font {font}: {text:?} wider than {field:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn the_last_matching_rescheduled_record_gives_the_day() {

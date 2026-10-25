@@ -18,7 +18,7 @@ use bmp_game::state::GameState;
 
 use super::stats_screens::{CUP_NAMES, DFB_STAGES};
 use super::tables::{
-    LEAGUE_NAMES, cat, centered, club_name, icon, league_tier_of_team, line, num, panel,
+    cat, centered, club_name, icon, league_names, league_tier_of_team, line, num, panel,
     screen_opponent_info, text_at,
 };
 use super::widgets::{dialog_two_choice, input_wait_click, ui_wait_right_click_button};
@@ -195,9 +195,9 @@ pub fn cup_tier_pairing_label(k: u8) -> Vec<u8> {
         2 | 4 => 2,
         _ => 3,
     };
-    let mut buf = text_to_upper_de(LEAGUE_NAMES[a - 1]);
+    let mut buf = text_to_upper_de(league_names()[a - 1]);
     cat(&mut buf, b" GEGEN ");
-    cat(&mut buf, &text_to_upper_de(LEAGUE_NAMES[b - 1]));
+    cat(&mut buf, &text_to_upper_de(league_names()[b - 1]));
     cat(&mut buf, b":");
     buf
 }
@@ -853,6 +853,18 @@ mod tests {
             cup_tier_pairing_label(6),
             b"AM.-OBERLIGA GEGEN AM.-OBERLIGA:"
         );
+    }
+
+    #[test]
+    fn group_labels_of_a_mod_game_name_the_3_liga() {
+        use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
+        set_layout(&MOD2026);
+        let labels = [3, 5, 6].map(cup_tier_pairing_label);
+        set_layout(&ORIGINAL);
+        assert_eq!(labels[0], b"BUNDESLIGA GEGEN 3. LIGA:");
+        assert_eq!(labels[1], b"ZWEITE LIGA GEGEN 3. LIGA:");
+        assert_eq!(labels[2], b"3. LIGA GEGEN 3. LIGA:");
+        assert_eq!(cup_tier_pairing_label(3), b"BUNDESLIGA GEGEN AM.-OBERLIGA:");
     }
 
     #[test]
