@@ -28,6 +28,7 @@ pub mod widgets;
 
 use bmp_formats::font::EURO;
 use bmp_formats::mana::ManaDat;
+use bmp_formats::vga;
 use bmp_game::league_layout::{MOD2026, ORIGINAL, set_layout};
 use bmp_game::newgame::{self, CupDraws};
 use bmp_game::rng::Rng;
@@ -259,7 +260,7 @@ fn run_main(
     let pics = start_menu::Pictures::load(host)?;
     // The 32x23 picture of icon code 0x23, cut from the icon sheet.
     let icon_alt = host.blank_bitmap(0x20, 0x17, 0);
-    let icons = host.load_picture(3)?;
+    let icons = host.load_picture(vga::ICON_SHEET.into())?;
     host.g
         .blit_bitmap(icons, 0xa5, 0x78, icon_alt, 0, 0, 0x20, 0x17);
     host.ui.icons = Some(icons);

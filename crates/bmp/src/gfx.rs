@@ -19,7 +19,7 @@
 #![allow(dead_code)]
 
 use bmp_formats::font::{EURO, Font, FontSet, Glyph, map_char};
-use bmp_formats::vga::VgaImage;
+use bmp_formats::vga::{self, VgaImage};
 
 use crate::display::{self, Block, Display, DisplayFrame};
 use crate::video::{Mode, Vga, WIDTH};
@@ -2432,8 +2432,7 @@ impl Ui {
         if code == 0x96 {
             code = 0x26;
         }
-        let isy = (code / 6) * 0x18;
-        let isx = (code % 6) * 0x21;
+        let (isx, isy) = vga::icon_origin(code);
         if transparent_frame {
             return (i as u8, rect);
         }
@@ -2443,7 +2442,8 @@ impl Ui {
                 ui_fill_rect(g, rp, ix, iy, x.wrapping_add(0x28), y.wrapping_add(0x1f), 8);
             }
             if let Some(ic) = self.icons {
-                g.blit_bitmap_transparent(ic, isx, isy, rp.bitmap, ix, iy, 0x20, 0x17);
+                let (w, h) = vga::ICON_SIZE;
+                g.blit_bitmap_transparent(ic, isx, isy, rp.bitmap, ix, iy, w, h);
             }
         } else if orig == 0xc8 {
             if let Some(p) = self.picture_37 {
@@ -2454,7 +2454,8 @@ impl Ui {
                 g.blit_bitmap(p, 0, 0, rp.bitmap, ix, iy, 0x20, 0x17);
             }
         } else if let Some(ic) = self.icons {
-            g.blit_bitmap(ic, isx, isy, rp.bitmap, ix, iy, 0x20, 0x17);
+            let (w, h) = vga::ICON_SIZE;
+            g.blit_bitmap(ic, isx, isy, rp.bitmap, ix, iy, w, h);
         }
         (i as u8, rect)
     }

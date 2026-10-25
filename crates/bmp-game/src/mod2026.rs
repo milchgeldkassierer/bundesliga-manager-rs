@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use bmp_formats::font::encode_cp437;
 use bmp_formats::mana::{GERMAN_CLUB_COUNT, ManaDat, PLAYER_NAME_LEN, PLAYERS_PER_CLUB};
-use bmp_formats::vga::{self, VgaImage};
+use bmp_formats::vga::{self, ICON_SHEET, VgaImage};
 use serde_json::Value;
 
 use crate::rng::Rng;
@@ -42,12 +42,14 @@ pub fn is_active(data_dir: &Path) -> bool {
 
 /// Writes the mod data directory `out`: a copy of every file below `from` with the mod clubs
 /// written into `MANA.DAT` and every crest of [`CRESTS`] written as `PIC/<n>.VGA` (replacing
-/// the copied original picture; numbers without a PNG keep it), then [`MARKER`].
+/// the copied original picture; numbers without a PNG keep it), the icon sheet `PIC/3.VGA`
+/// with [`third_tier_captions`] (when `from` has one), then [`MARKER`].
 ///
 /// Refuses, before anything is created or written, an `out` that is `from` or lies inside
 /// it, one that is or lies inside the owner's play directory `<repo>/BMP`, one that
-/// already holds files, a `from` without a valid `MANA.DAT`, a dataset that does not fit it
-/// and a crest PNG that is not an 8-bit indexed picture. The
+/// already holds files, a `from` without a valid `MANA.DAT`, a dataset that does not fit it,
+/// a crest PNG that is not an 8-bit indexed picture and an icon sheet whose captions are not
+/// laid out as in the original. The
 /// copies are written as new files, so they do not inherit the read-only permissions of the
 /// pristine copy.
 pub fn build(from: &Path, out: &Path) -> Result<(), String> {
@@ -91,6 +93,8 @@ fn build_guarding(from: &Path, out: &Path, play_dir: &Path) -> Result<(), String
             ))
         })
         .collect::<Result<Vec<_>, String>>()?;
+    // MOD2026: the office's third-tier buttons read "3. LIGA" instead of "AM-OBERL.".
+    let icon_sheet = mod_icon_sheet(&source)?;
     copy_tree(&source, &target).map_err(|e| format!("{}: {e}", out.display()))?;
     fs::write(target.join("MANA.DAT"), mana).map_err(|e| format!("{}: {e}", out.display()))?;
     for (n, bytes) in crests {
@@ -98,6 +102,10 @@ fn build_guarding(from: &Path, out: &Path, play_dir: &Path) -> Result<(), String
         fs::create_dir_all(path.parent().expect("PIC/<n>.VGA has a parent"))
             .and_then(|()| fs::write(&path, bytes))
             .map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    if let Some(bytes) = icon_sheet {
+        let path = target.join(vga::file_name(ICON_SHEET));
+        fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
     }
     fs::write(target.join(MARKER), MARKER_CONTENT).map_err(|e| format!("{}: {e}", out.display()))
 }
@@ -136,6 +144,126 @@ pub fn hires_crest(n: u16, low: &VgaImage) -> Option<VgaImage> {
         return None;
     }
     png(HIRES_CRESTS)
+}
+
+/// The columns of a cell that a button shows.
+const ICON_WIDTH: usize = vga::ICON_SIZE.0 as usize;
+/// The (`2. LIGA`, `AM-OBERL.`) icon codes of the tables submenu's table, fixtures and
+/// strength buttons (pinned to the office's submenu by a test in `bmp`).
+pub const CAPTION_CELLS: [(i16, i16); 3] = [(13, 14), (16, 17), (19, 20)];
+/// The rows of a cell that hold its caption: five glyph rows and the shadow row.
+const CAPTION_ROWS: std::ops::Range<usize> = 16..22;
+/// The first column of the box of the caption's digit, three glyph columns and the shadow.
+const DIGIT_X: usize = 6;
+/// The caption's `2`: `W` white, `A` anti-alias, `.` background.
+const DIGIT_TWO: [&[u8; 3]; 5] = [b"WWA", b"..W", b"AWA", b"W..", b"WWW"];
+/// The `3` drawn in its place, in the same style.
+const DIGIT_THREE: [&[u8; 3]; 5] = [b"WWA", b"..W", b".WA", b"..W", b"WWA"];
+
+/// The digit box of `mask` in the colours `[background, white, anti-alias, shadow]`: every
+/// glyph pixel casts a shadow one pixel right and down, below the glyph pixels.
+fn render_digit(mask: &[&[u8; 3]; 5], [background, white, anti, shadow]: [u8; 4]) -> [[u8; 4]; 6] {
+    let mut digit = [[background; 4]; 6];
+    let glyph = || {
+        mask.iter()
+            .enumerate()
+            .flat_map(|(y, row)| row.iter().enumerate().map(move |(x, &c)| (x, y, c)))
+            .filter(|&(_, _, c)| c != b'.')
+    };
+    for (x, y, _) in glyph() {
+        digit[y + 1][x + 1] = shadow;
+    }
+    for (x, y, c) in glyph() {
+        digit[y][x] = if c == b'W' { white } else { anti };
+    }
+    digit
+}
+
+/// The index in `pixels` of pixel (`x`, `y`) of icon `code` in a sheet `width` pixels wide.
+fn icon_index(width: usize, code: i16, x: usize, y: usize) -> usize {
+    let (left, top) = vga::icon_origin(code);
+    (index(top) + y) * width + index(left) + x
+}
+
+/// A non-negative coordinate of the icon sheet as an index.
+fn index(v: i16) -> usize {
+    usize::try_from(v).expect("icon codes and their origins are non-negative")
+}
+
+/// Makes the tables submenu's third-tier buttons read `3. LIGA`: copies the `2. LIGA` caption
+/// of each [`CAPTION_CELLS`] pair over the `AM-OBERL.` caption and draws a `3` over its `2`, in
+/// the caption's own colours. Refuses, leaving `sheet` unchanged, a sheet whose captions are
+/// not laid out as in the original.
+fn third_tier_captions(sheet: &mut VgaImage) -> Result<(), String> {
+    let (width, height) = (usize::from(sheet.width), usize::from(sheet.height));
+    let codes = CAPTION_CELLS.iter().flat_map(|&(from, to)| [from, to]);
+    let (left, top) = codes
+        .map(vga::icon_origin)
+        .fold((0, 0), |(l, t), (x, y)| (l.max(x), t.max(y)));
+    if width < index(left) + ICON_WIDTH || height < index(top) + CAPTION_ROWS.end {
+        return Err(format!("{width}x{height} is too small for the captions"));
+    }
+    let at = |code, x, y| icon_index(width, code, x, y);
+    let band = |sheet: &VgaImage, code: i16| -> Vec<u8> {
+        CAPTION_ROWS
+            .flat_map(|y| (0..ICON_WIDTH).map(move |x| (x, y)))
+            .map(|(x, y)| sheet.pixels[at(code, x, y)])
+            .collect()
+    };
+    let digit = |sheet: &VgaImage, code: i16| -> Vec<u8> {
+        CAPTION_ROWS
+            .flat_map(|y| (DIGIT_X..DIGIT_X + 4).map(move |x| sheet.pixels[at(code, x, y)]))
+            .collect()
+    };
+    let (source, target) = (CAPTION_CELLS[0].0, CAPTION_CELLS[0].1);
+    for (from, to) in CAPTION_CELLS {
+        if band(sheet, from) != band(sheet, source) || band(sheet, to) != band(sheet, target) {
+            return Err(format!(
+                "the captions of icons {from} and {to} differ from their row's"
+            ));
+        }
+    }
+    let top = CAPTION_ROWS.start;
+    let roles = [
+        (0, top),
+        (DIGIT_X, top),
+        (DIGIT_X + 2, top),
+        (DIGIT_X + 1, top + 1),
+    ]
+    .map(|(x, y)| sheet.pixels[at(source, x, y)]);
+    if (1..4).any(|i| roles[..i].contains(&roles[i])) {
+        return Err("the caption's colours are not four distinct ones".into());
+    }
+    if render_digit(&DIGIT_TWO, roles).concat() != digit(sheet, source) {
+        return Err(format!("icon {source} does not read 2. LIGA"));
+    }
+    let three = render_digit(&DIGIT_THREE, roles);
+    for (from, to) in CAPTION_CELLS {
+        for y in CAPTION_ROWS {
+            for x in 0..ICON_WIDTH {
+                sheet.pixels[at(to, x, y)] = match x.checked_sub(DIGIT_X) {
+                    Some(dx) if dx < 4 => three[y - top][dx],
+                    _ => sheet.pixels[at(from, x, y)],
+                };
+            }
+        }
+    }
+    Ok(())
+}
+
+/// [`ICON_SHEET`] of `source` with [`third_tier_captions`] applied, as file bytes; `None` when
+/// `source` has none.
+fn mod_icon_sheet(source: &Path) -> Result<Option<Vec<u8>>, String> {
+    let path = source.join(vga::file_name(ICON_SHEET));
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    let mut sheet = vga::parse(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    third_tier_captions(&mut sheet)
+        .map_err(|e| format!("{}: not the original icon sheet: {e}", path.display()))?;
+    Ok(Some(vga::encode(&sheet)))
 }
 
 /// The `MANA.DAT` of `source` with [`write_mod_clubs`] applied, as file bytes.
@@ -328,6 +456,199 @@ mod tests {
         vec![0; mana::FILE_SIZE]
     }
 
+    /// Pixel `(x, y)` of icon `code` in `sheet`.
+    fn icon_pixel(sheet: &mut VgaImage, code: i16, x: usize, y: usize) -> &mut u8 {
+        &mut sheet.pixels[icon_index(usize::from(sheet.width), code, x, y)]
+    }
+
+    /// A sheet of the original's size in background 1 whose `2. LIGA` captions hold the `2` in
+    /// white 15, anti-alias 7 and shadow 0 and a period, and whose `AM-OBERL.` captions hold
+    /// marks in 9.
+    fn synthetic_icon_sheet() -> VgaImage {
+        let mut sheet = VgaImage {
+            width: 197,
+            height: 167,
+            pixels: vec![1; 197 * 167],
+        };
+        let two = render_digit(&DIGIT_TWO, [1, 15, 7, 0]);
+        for (from, to) in CAPTION_CELLS {
+            for (dy, row) in two.iter().enumerate() {
+                for (dx, &c) in row.iter().enumerate() {
+                    *icon_pixel(&mut sheet, from, DIGIT_X + dx, CAPTION_ROWS.start + dy) = c;
+                }
+            }
+            *icon_pixel(&mut sheet, from, 10, 20) = 15;
+            for (x, y) in [(2, 16), (20, 18), (31, 21)] {
+                *icon_pixel(&mut sheet, to, x, y) = 9;
+            }
+        }
+        *icon_pixel(&mut sheet, 14, 0, 0) = 5;
+        sheet
+    }
+
+    /// Asserts that `patched` is `original` with only the captions of the three `AM-OBERL.`
+    /// buttons changed, each to its `2. LIGA` caption outside the digit box; returns the
+    /// digit boxes of those captions.
+    fn assert_captions_copied_from_2_liga(original: &VgaImage, patched: &VgaImage) -> Vec<Vec<u8>> {
+        assert_eq!(
+            (patched.width, patched.height),
+            (original.width, original.height)
+        );
+        let at = |code, x, y| icon_index(usize::from(original.width), code, x, y);
+        let captions: Vec<usize> = CAPTION_CELLS
+            .iter()
+            .flat_map(|&(_, to)| {
+                CAPTION_ROWS.flat_map(move |y| (0..ICON_WIDTH).map(move |x| at(to, x, y)))
+            })
+            .collect();
+        for (i, (a, b)) in original.pixels.iter().zip(&patched.pixels).enumerate() {
+            assert!(
+                a == b || captions.contains(&i),
+                "pixel {i} outside the captions changed"
+            );
+        }
+        let mut digits = Vec::new();
+        for (from, to) in CAPTION_CELLS {
+            let mut differs = false;
+            let mut digit = Vec::new();
+            for y in CAPTION_ROWS {
+                for x in 0..ICON_WIDTH {
+                    let new = patched.pixels[at(to, x, y)];
+                    differs |= new != original.pixels[at(to, x, y)];
+                    if (DIGIT_X..DIGIT_X + 4).contains(&x) {
+                        digit.push(new);
+                    } else {
+                        assert_eq!(new, original.pixels[at(from, x, y)], "icon {to}");
+                    }
+                }
+            }
+            assert!(differs, "icon {to} unchanged");
+            digits.push(digit);
+        }
+        digits
+    }
+
+    #[test]
+    fn third_tier_captions_draw_3_liga() {
+        let original = synthetic_icon_sheet();
+        let mut sheet = original.clone();
+        third_tier_captions(&mut sheet).unwrap();
+        let three = render_digit(&DIGIT_THREE, [1, 15, 7, 0]).concat();
+        assert_eq!(
+            assert_captions_copied_from_2_liga(&original, &sheet),
+            vec![three; 3]
+        );
+    }
+
+    #[test]
+    fn third_tier_captions_refuse_an_unexpected_sheet() {
+        let resized = |width: u16, height: u16| VgaImage {
+            width,
+            height,
+            pixels: vec![1; usize::from(width) * usize::from(height)],
+        };
+        let changed = |cells: &[i16], x: usize, y: usize| {
+            let mut sheet = synthetic_icon_sheet();
+            for &code in cells {
+                *icon_pixel(&mut sheet, code, x, y) = 3;
+            }
+            sheet
+        };
+        let mut one_colour = synthetic_icon_sheet();
+        for (from, _) in CAPTION_CELLS {
+            for y in CAPTION_ROWS {
+                for x in DIGIT_X..DIGIT_X + 4 {
+                    *icon_pixel(&mut one_colour, from, x, y) = 1;
+                }
+            }
+        }
+        for sheet in [
+            resized(196, 167),
+            resized(197, 93),
+            changed(&[16], 20, 18),
+            changed(&[17], 20, 19),
+            changed(&[13, 16, 19], 8, 18),
+            one_colour,
+        ] {
+            let mut patched = sheet.clone();
+            assert!(third_tier_captions(&mut patched).is_err());
+            assert_eq!(patched, sheet);
+        }
+    }
+
+    /// The size check covers every cell read: icon 17 reaches column 196, icon 20 the caption
+    /// row 93.
+    #[test]
+    fn third_tier_captions_need_every_caption_inside_the_sheet() {
+        let cropped = |height: u16| {
+            let mut sheet = synthetic_icon_sheet();
+            sheet.height = height;
+            sheet
+                .pixels
+                .truncate(usize::from(sheet.width) * usize::from(height));
+            sheet
+        };
+        third_tier_captions(&mut cropped(94)).unwrap();
+        let mut narrow = synthetic_icon_sheet();
+        narrow.width = 150;
+        narrow.pixels.truncate(150 * usize::from(narrow.height));
+        for mut sheet in [narrow, cropped(93)] {
+            let error = third_tier_captions(&mut sheet).unwrap_err();
+            assert!(error.contains("too small"), "{error}");
+        }
+    }
+
+    #[test]
+    fn build_refuses_an_unexpected_icon_sheet_and_writes_nothing() {
+        let dir = temp("sheet");
+        let from = dir.join("from");
+        fs::create_dir_all(from.join("PIC")).unwrap();
+        fs::write(from.join("MANA.DAT"), zeroed_mana()).unwrap();
+        let small = VgaImage {
+            width: 10,
+            height: 10,
+            pixels: vec![0; 100],
+        };
+        fs::write(from.join(vga::file_name(ICON_SHEET)), vga::encode(&small)).unwrap();
+        let out = dir.join("out");
+
+        let error = build(&from, &out).unwrap_err();
+
+        assert!(error.contains("3.VGA"), "{error}");
+        assert!(!out.exists());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// With the original data, only the captions of the three `AM-OBERL.` buttons change, each
+    /// to the `2. LIGA` caption with another digit. A `.VGA` file holds no palette (that is
+    /// `PIC/1.PAL`, which the copy test keeps byte-identical); its header keeps the original
+    /// width and height bytes, and only the packed length follows the new pixels.
+    #[test]
+    fn build_writes_3_liga_captions_into_the_icon_sheet() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let file = vga::file_name(ICON_SHEET);
+        let before = fs::read(data.join(&file)).unwrap();
+        let dir = temp("captions");
+        let out = dir.join("out");
+        build(&data, &out).unwrap();
+        assert_eq!(fs::read(data.join(&file)).unwrap(), before);
+        let after = fs::read(out.join(&file)).unwrap();
+        assert_eq!(after[..4], before[..4], "width and height bytes");
+        for bytes in [&before, &after] {
+            let header = vga::parse_header(bytes).unwrap();
+            assert_eq!(
+                bytes.len(),
+                vga::HEADER_LEN + usize::from(header.packed_len)
+            );
+        }
+        let original = vga::parse(&before).unwrap();
+        let patched = vga::parse(&after).unwrap();
+        assert_captions_copied_from_2_liga(&original, &patched);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn hires_crest_needs_the_mod_crest() {
         for &(n, png) in CRESTS {
@@ -369,7 +690,10 @@ mod tests {
             .map(|&(n, _)| PathBuf::from(vga::file_name(n)))
             .collect();
         for file in &original {
-            if file.0 == Path::new("MANA.DAT") || crests.contains(&file.0) {
+            if file.0 == Path::new("MANA.DAT")
+                || file.0 == Path::new(&vga::file_name(ICON_SHEET))
+                || crests.contains(&file.0)
+            {
                 continue;
             }
             assert!(copied.contains(file), "{} not copied", file.0.display());
@@ -390,12 +714,18 @@ mod tests {
         fs::create_dir_all(from.join("PIC")).unwrap();
         fs::write(from.join("MANA.DAT"), zeroed_mana()).unwrap();
         fs::write(from.join("PIC").join("80.VGA"), [4, 5]).unwrap();
+        let sheet = vga::encode(&synthetic_icon_sheet());
+        fs::write(from.join(vga::file_name(ICON_SHEET)), &sheet).unwrap();
         build(&from, &dir.join("a")).unwrap();
         build(&from, &dir.join("b")).unwrap();
         let a = tree(&dir.join("a"));
-        // MANA.DAT, the marker and the crests; PIC/80.VGA is one of them.
-        assert_eq!(a.len(), 2 + CRESTS.len());
+        // MANA.DAT, the marker, the icon sheet and the crests; PIC/80.VGA is one of them.
+        assert_eq!(a.len(), 3 + CRESTS.len());
         assert_eq!(a, tree(&dir.join("b")));
+        assert_ne!(
+            fs::read(dir.join("a").join(vga::file_name(ICON_SHEET))).unwrap(),
+            sheet
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 

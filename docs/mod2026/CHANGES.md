@@ -26,6 +26,13 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   without a PNG keep the original. A crest PNG that is not 8-bit indexed is refused before
   anything is written. The game and the team editor load the crests unchanged, so the mod
   clubs show their 2026 crests wherever a crest is drawn.
+- **Office captions** (`crates/bmp-game/src/mod2026.rs` `third_tier_captions`, PRD R1): the
+  generator copies the "2. LIGA" caption of the tables submenu's table, fixtures and strength
+  icons (`PIC/3.VGA` codes 13/16/19) over their "AM-OBERL." captions (14/17/20) and draws a
+  "3" in place of the "2" (a 3 x 5 mask in the caption's own colours and shadow), so the
+  buttons read "3. LIGA". Nothing of the original sheet is committed; a sheet whose captions
+  are not laid out as in the original is refused before anything is written, a source without
+  one gets none.
 - **Strength grouping** (`crates/bmp-game/src/strength.rs`, `strength::MOD2026`): the team
   editor's strength recomputation moved unchanged from `bmp` to `bmp-game`, with its league
   grouping as a parameter. The generator runs it with the groups 0..17 / 18..35 / 36..55 /
@@ -79,7 +86,8 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   table, fixture and strength titles, the club info, the DFB-Pokal group headings, the
   season-end rank line, the manager history and the Christmas bonus line. Every replacement is
   narrower than the original in all three fonts, so no short form is used. The newspaper, the
-  offers and the start menu name no tier; the settings screen already reads `3.Liga`.
+  offers and the start menu name no tier; the settings screen already reads `3.Liga`. The
+  office's button captions are pictures, which the generator changes (see "Office captions").
 
 ## Three-point rule
 
@@ -210,4 +218,5 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   special-day pictures. None has "DM" or another currency unit painted in: the contract
   board's amount fields are empty and filled at run time, and the negotiation, transfer
   market, finance and season-end screens load no screen-specific picture, only the shared
-  buttons (`37`) and value spinner (`21`). The generator copies these pictures unchanged.
+  buttons (`37`) and value spinner (`21`). The generator copies these pictures unchanged,
+  except `3` (`PIC/3.VGA`), whose third-tier captions it redraws (see "Office captions").

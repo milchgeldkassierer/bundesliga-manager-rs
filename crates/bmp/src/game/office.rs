@@ -2,6 +2,7 @@
 //! competition of the day and the league-position curve, the date panel and the
 //! six main icons with their 3x3 submenus. Spec: `docs/re/logic/flow.md` §6.
 
+use bmp_formats::vga;
 use bmp_game::finance::season_goal_messages;
 use bmp_game::league::{RoundMode, fixtures_build_round_pairings, league_apply_round_and_sort};
 use bmp_game::league_layout::layout;
@@ -54,7 +55,7 @@ impl OfficeBitmaps {
         let header = host.load_picture(4)?;
         let desk = host.load_picture(0x17)?;
         if mode != 1 {
-            let icons = host.load_picture(3)?;
+            let icons = host.load_picture(vga::ICON_SHEET.into())?;
             host.ui.icons = Some(icons);
         }
         Ok(Self { header, desk })
@@ -99,6 +100,22 @@ pub(crate) const MONTHS: [&[u8]; 12] = [
 /// icon 1..6.
 const SUB_BASE: [i16; 7] = [0, 0x00, 0x06, 0x0f, 0x15, 0x19, 0x00];
 const SUB_COUNT: [i16; 7] = [0, 0x06, 0x09, 0x06, 0x04, 0x05, 0x00];
+
+/// The button code of entry `cnt` (`0x63` = the empty slots after the last) of main icon
+/// `si`'s submenu.
+fn submenu_icon_code(si: i16, cnt: i16) -> i16 {
+    let icon = if cnt == 0x63 {
+        0x1023
+    } else {
+        cnt + SUB_BASE[si as usize]
+    };
+    let icon = match icon {
+        0x1c => 0x5e,
+        0x1d => 0x90,
+        _ => icon,
+    };
+    icon + 6
+}
 
 /// The competition-of-the-day banner and what it implies for the lineup.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -585,19 +602,8 @@ pub fn office_menu_dispatcher(
             let mut cnt: i16 = 0;
             for col in 0..3i16 {
                 for row in 0..3i16 {
-                    let mut icon = if cnt == 0x63 {
-                        0x1023
-                    } else {
-                        cnt + SUB_BASE[si as usize]
-                    };
-                    if icon == 0x1c {
-                        icon = 0x5e;
-                    }
-                    if icon == 0x1d {
-                        icon = 0x90;
-                    }
                     let (x, y) = (col * 0x36 + 0x52, row * 0x2a + 0x70);
-                    let code = (i16::from(quick) << 14) + icon + 6;
+                    let code = (i16::from(quick) << 14) + submenu_icon_code(si, cnt);
                     let r = host
                         .ui
                         .draw_button(&mut host.g, &mut host.rp, x, y, 0, code, false, 8)
@@ -752,6 +758,20 @@ pub fn office_menu_dispatcher(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The mod generator's caption cells are the tables submenu's second- and third-tier
+    /// buttons: rows 1 and 2 of each column.
+    #[test]
+    fn the_mod_caption_cells_are_the_tables_submenus_lower_tiers() {
+        const TABLES: i16 = 2;
+        let cells: Vec<_> = (0..3)
+            .map(|col| {
+                let code = |row: i16| submenu_icon_code(TABLES, col * 3 + row);
+                (code(1), code(2))
+            })
+            .collect();
+        assert_eq!(cells, bmp_game::mod2026::CAPTION_CELLS);
+    }
 
     #[test]
     fn the_info_panel_texts_unscramble_to_the_credits() {

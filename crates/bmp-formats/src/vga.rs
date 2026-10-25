@@ -337,6 +337,26 @@ pub fn file_name(id: u8) -> String {
     format!("PIC/{id}.VGA")
 }
 
+/// The picture number of the office's icon sheet `PIC\3.VGA`.
+///
+/// Origin: BMMAIN.EXE 18bc:034d (office_load_bitmaps)
+pub const ICON_SHEET: u8 = 3;
+
+/// The size of one icon cell in the office's icon sheet `PIC\3.VGA`: six cells per row.
+pub const ICON_CELL: (i16, i16) = (0x21, 0x18);
+
+/// The part of a cell, from its top-left pixel, that a button shows.
+///
+/// Origin: BMMAIN.EXE 16c7:00a7 (ui_draw_button)
+pub const ICON_SIZE: (i16, i16) = (0x20, 0x17);
+
+/// The top-left pixel of icon `code` in the icon sheet, in the original's 16-bit `int`s.
+///
+/// Origin: BMMAIN.EXE 16c7:00a7 (ui_draw_button)
+pub fn icon_origin(code: i16) -> (i16, i16) {
+    (code % 6 * ICON_CELL.0, code / 6 * ICON_CELL.1)
+}
+
 /// Converts one `0x0RGB` colour to 6-bit DAC values `[r, g, b]`, each channel
 /// shifted left by two (`(w >> 6) & 0x3c`, `(w >> 2) & 0x3c`, `(w & 0x0f) << 2`).
 ///
