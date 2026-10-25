@@ -263,6 +263,9 @@ pub struct Gfx {
     /// for a glyph whose cell is not exactly twice the installed one
     /// ([`Gfx::set_hires_fonts`]); empty everywhere is v1.0.0.
     hires: [Vec<Option<Glyph>>; 4],
+    /// MOD2026: the 2x euro glyph of each font for the display layer
+    /// ([`Gfx::set_hires_fonts`]); drawn only with the mod's euro glyph installed.
+    hires_euro: [Option<Glyph>; 4],
     /// BIOS tick counter `0040:006C` (advanced by the host at 18.2 Hz).
     pub bios_ticks: u32,
     /// `CS:0038/003A`: timer deadline.
@@ -458,6 +461,7 @@ impl Gfx {
             fonts: [None, None, None, None],
             euro: [None, None, None, None],
             hires: Default::default(),
+            hires_euro: Default::default(),
             bios_ticks: 0,
             deadline: 0,
             bitmaps: Vec::new(),
@@ -495,8 +499,8 @@ impl Gfx {
     }
 
     /// MOD2026: gives the installed glyph fonts their 2x glyphs for the display layer
-    /// (`docs/mod2026/fonts/README.md`). A glyph of another `BMMAIN.EXE` whose cell does
-    /// not match its 2x glyph keeps being drawn doubled.
+    /// (`docs/mod2026/fonts/README.md`), the 2x euro glyph included. A glyph of another
+    /// `BMMAIN.EXE` whose cell does not match its 2x glyph keeps being drawn doubled.
     pub fn set_hires_fonts(&mut self) {
         use bmp_formats::font::FontId;
         for id in FontId::ALL {
@@ -514,6 +518,7 @@ impl Gfx {
                 })
                 .collect();
             self.hires[id as usize] = glyphs;
+            self.hires_euro[id as usize] = Some(bmp_formats::hires_font::euro(id));
         }
     }
 
@@ -528,12 +533,16 @@ impl Gfx {
     }
 
     /// MOD2026: the 2x glyph of byte `c` in font `font`, if it has one. The mod's euro
-    /// glyph has none yet and is drawn doubled.
+    /// glyph has its 2x glyph when its cell is exactly twice the installed euro glyph's.
     fn hires_glyph(&self, font: u16, c: u8) -> Option<&Glyph> {
-        self.hires
-            .get(font as usize)?
-            .get(self.glyph_slot(font, c)?)?
-            .as_ref()
+        let Some(slot) = self.glyph_slot(font, c) else {
+            let euro = self.euro[font as usize].as_ref()?;
+            let big = self.hires_euro[font as usize].as_ref()?;
+            let fits = big.width as usize == 2 * euro.width as usize
+                && big.bits.len() * euro.row_bytes() == 2 * euro.bits.len() * big.row_bytes();
+            return fits.then_some(big);
+        };
+        self.hires.get(font as usize)?.get(slot)?.as_ref()
     }
 
     /// The glyph of byte `c` in font `font` (see [`Gfx::glyph_slot`]).
@@ -3431,10 +3440,11 @@ mod tests {
         }
     }
 
-    /// MOD2026: the euro sign has no 2x glyph yet; it is drawn as its 1x glyph doubled
-    /// (#205; needs `BMP_DATA`).
+    /// MOD2026: with the display layer on the euro sign shows its 2x glyph in the display,
+    /// set pixels in the foreground and clear ones in the background colour (#205; needs
+    /// `BMP_DATA`).
     #[test]
-    fn euro_has_no_hires_glyph_yet() {
+    fn euro_draws_its_hires_glyph() {
         let Some((mut g, rp, set)) = gfx_with_fonts(true, true) else {
             return;
         };
@@ -3442,14 +3452,104 @@ mod tests {
         for id in bmp_formats::font::FontId::ALL {
             let f = set.get(id);
             let euro = bmp_formats::font::euro_glyph(id);
+            let big = bmp_formats::hires_font::euro(id);
             let top = 100 - (f.height - f.descent - 1) as i16;
             g.draw_text(rp.bitmap, 10, 100, id as u16, 15, 4, 1, &[EURO]);
-            for row in 0..f.height as i16 {
-                for col in 0..euro.width as i16 {
-                    let v = screen_px(&g, 10 + col, top + row);
-                    assert_eq!(page0_block(&g, 10 + col, top + row), [v; 4]);
+            for row in 0..f.height as usize {
+                for col in 0..euro.width as usize {
+                    let (x, y) = (10 + col as i16, top + row as i16);
+                    assert_eq!(
+                        page0_block(&g, x, y),
+                        want_block(&big, col, row, 15, 4),
+                        "{} {col},{row}",
+                        id.name()
+                    );
                 }
             }
         }
+    }
+
+    /// MOD2026: without the mod's euro glyph the euro code stays a space in the display
+    /// too (v1.0.0's glyph doubled; needs `BMP_DATA`).
+    #[test]
+    fn euro_code_without_the_mod_has_no_hires_euro() {
+        let text = bmp_formats::font::encode_cp437("1.000.000 €");
+        let spaced = bmp_formats::font::encode_cp437("1.000.000  ");
+        for id in bmp_formats::font::FontId::ALL {
+            let draw = |text: &[u8]| {
+                let (mut g, rp, _) = gfx_with_fonts(true, true)?;
+                g.draw_text(rp.bitmap, 3, 40, id as u16, 15, 4, 1, text);
+                let mut frame = DisplayFrame::new();
+                assert!(g.to_display(&mut frame));
+                Some(frame.pixels)
+            };
+            let Some(euro) = draw(&text) else { return };
+            assert!(Some(euro) == draw(&spaced), "{}", id.name());
+        }
+    }
+
+    /// MOD2026: "1.000.000 €" with the 2x euro glyph changes neither the pen, nor the text
+    /// width, nor any logical pixel (#205; needs `BMP_DATA`).
+    #[test]
+    fn hires_euro_keeps_the_logical_frame() {
+        let text = bmp_formats::font::encode_cp437("1.000.000 €");
+        for id in bmp_formats::font::FontId::ALL {
+            let font = id as u16;
+            for mode in [0, 1] {
+                let draw = |display: bool| {
+                    let (mut g, rp, _) = gfx_with_fonts(display, display)?;
+                    g.set_euro_glyphs();
+                    g.fill_rect(rp.bitmap, 0, 0, 320, 240, 7);
+                    let x = g.draw_text(rp.bitmap, 3, 40, font, 15, 4, mode, &text);
+                    Some((x, g.text_width(font, &text), page0_frame(&g)))
+                };
+                let Some(plain) = draw(false) else { return };
+                assert!(draw(true) == Some(plain), "{} mode {mode}", id.name());
+            }
+        }
+    }
+
+    /// Writes the 2x display buffer of "1.000.000 €" in micro4, flow and newbold with the
+    /// mod's euro glyph as a PNG to `$BMP_EURO_2X_OUT` when that is set (evidence aid,
+    /// #205): on the left with the display layer only (every glyph doubled), on the right
+    /// with the 2x fonts and the 2x euro glyph.
+    #[test]
+    fn render_hires_euro_sample() {
+        let Some(out) = std::env::var_os("BMP_EURO_2X_OUT") else {
+            return;
+        };
+        let text = bmp_formats::font::encode_cp437("1.000.000 €");
+        let capture = |hires: bool| {
+            let (mut g, rp, _) = gfx_with_fonts(true, hires)?;
+            g.set_euro_glyphs();
+            for (font, y) in [(1u16, 10i16), (2, 26), (3, 50)] {
+                g.draw_text(rp.bitmap, 6, y, font, 15, 0, 0, &text);
+            }
+            let mut frame = DisplayFrame::new();
+            assert!(g.to_display(&mut frame));
+            Some(frame.pixels)
+        };
+        let (Some(doubled), Some(hires)) = (capture(false), capture(true)) else {
+            return;
+        };
+        let (w, h) = (2 * 150usize, 2 * 56usize);
+        let rgb: Vec<u8> = (0..h)
+            .flat_map(|y| (0..2 * w + 4).map(move |x| (x, y)))
+            .flat_map(|(x, y)| {
+                let px = match x {
+                    _ if x < w => doubled[y * crate::display::DISPLAY_W + x],
+                    _ if x >= w + 4 => hires[y * crate::display::DISPLAY_W + x - w - 4],
+                    _ => return [96, 96, 96],
+                };
+                if px == 0 { [0, 0, 48] } else { [255, 255, 255] }
+            })
+            .collect();
+        crate::video::write_rgb_png(
+            std::path::Path::new(&out),
+            (2 * w + 4) as u32,
+            h as u32,
+            &rgb,
+        )
+        .expect("write sample");
     }
 }

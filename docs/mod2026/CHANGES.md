@@ -155,8 +155,10 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   (`docs/mod2026/fonts/README.md`). The host installs them with the display layer
   (`Gfx::set_hires_fonts`); `draw_text` then gives each glyph's temporary bitmap the 2x glyph
   as its display side, in the foreground colour and the background colour (opaque) or 0
-  (transparent). The logical frame, every advance, text width and centring are unchanged. The
-  euro sign has no 2x glyph yet and is drawn doubled (#205). `normal.font` stays a stub.
+  (transparent). The logical frame, every advance, text width and centring are unchanged. Each
+  file also holds the 2x euro glyph (`glyph 0xd5`, #205), the Scale2x image of the mod's 1x
+  euro glyph (**Euro sign** below) with twice its advance and height; `draw_text` uses it for
+  0xd5 when the mod's euro glyph is installed. `normal.font` stays a stub.
 - **High-resolution crests** (`docs/mod2026/crests/hires/`, `tools/crest-convert.py --hires`,
   `crates/bmp-game/build.rs`, `mod2026::hires_crest`, `Host::load_picture`,
   `Gfx::set_display_side`, PRD R5b): every mod crest has a 2x version (76x76), converted from

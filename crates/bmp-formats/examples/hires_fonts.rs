@@ -22,7 +22,7 @@ fn main() {
     ));
     for id in FontId::ALL {
         let path = dir.join(hires_font::file_name(id));
-        std::fs::write(&path, hires_font::font_text(set.get(id))).unwrap_or_else(|e| {
+        std::fs::write(&path, hires_font::font_file(id, set.get(id))).unwrap_or_else(|e| {
             eprintln!("{}: {e}", path.display());
             std::process::exit(1);
         });

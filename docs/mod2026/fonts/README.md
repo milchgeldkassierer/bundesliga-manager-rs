@@ -46,10 +46,14 @@ The argument is a data directory with the original `BMMAIN.EXE`, which is only r
 
 Lines starting with `# ` are comments. `font <name>` names the original font and `height <n>`
 gives the 2x cell height. Then one block per character code `0x20..=0x7e` (the glyph slots after
-the game's character translation) follows: `glyph 0xNN` and `height` rows of `#` (set) and `.`
-(clear); the row length is the 2x advance. The program embeds the files
-(`crates/bmp-formats/src/hires_font.rs`).
+the game's character translation) and the euro block `0xd5` follow: `glyph 0xNN` and `height`
+rows of `#` (set) and `.` (clear); the row length is the 2x advance. The program embeds the
+files (`crates/bmp-formats/src/hires_font.rs`).
 
-## Not yet included
+## Euro sign
 
-The euro sign (#205): the 2x display draws the mod's 1x euro glyph doubled.
+After the glyph `0x7e` each file has the block `glyph 0xd5`: the 2x euro glyph, the Scale2x
+image of the mod's 1x euro glyph (`crates/bmp-formats/data/euro_glyphs.txt`, byte code 0xd5,
+see `docs/mod2026/CHANGES.md`). Like every other glyph it is exactly twice the 1x glyph's
+advance and height. The 2x display uses it only when the mod's euro glyph is installed;
+without it 0xd5 stays v1.0.0's space.
