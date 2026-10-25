@@ -327,6 +327,47 @@ pub fn fade_frames(words: &[u16; FADE_COLORS], dir: FadeDirection) -> Vec<[[u8; 
     frames
 }
 
+/// MOD2026: [`fade_frames`] for any number of 6-bit DAC colours, the same 60 steps of
+/// `acc += target; if acc >= 60 { acc -= 60; out ± 1 }` per channel and an upload after every
+/// second step. The mod fades its crest colours (entries 64..127) with it, alongside the
+/// original's 32 entries.
+///
+/// The original's colours never exceed 60 (4-bit words times 4); above that the signed
+/// accumulator overflows and the fade stalls. So a value above 60 steps as 60, and a fade in
+/// ends on the exact colours.
+pub fn fade_frames_rgb6(targets: &[[u8; 3]], dir: FadeDirection) -> Vec<Vec<[u8; 3]>> {
+    let exact = targets;
+    let stepped: Vec<[u8; 3]> = targets.iter().map(|c| c.map(|v| v.min(0x3c))).collect();
+    let targets = stepped.as_slice();
+    let mut cur: Vec<[u8; 3]> = match dir {
+        FadeDirection::In => vec![[0; 3]; targets.len()],
+        FadeDirection::Out => stepped.clone(),
+    };
+    let mut acc = vec![[0u8; 3]; targets.len()];
+    let mut frames = Vec::with_capacity(FADE_FRAMES);
+    for cx in (1..=FADE_STEPS as u16).rev() {
+        for ((a, t), c) in acc.iter_mut().zip(targets).zip(cur.iter_mut()) {
+            for k in 0..3 {
+                a[k] = a[k].wrapping_add(t[k]);
+                if (a[k] as i8) >= 0x3c {
+                    a[k] = a[k].wrapping_sub(0x3c);
+                    c[k] = match dir {
+                        FadeDirection::In => c[k].wrapping_add(1),
+                        FadeDirection::Out => c[k].wrapping_sub(1),
+                    };
+                }
+            }
+        }
+        if cx & 1 != 0 {
+            frames.push(cur.clone());
+        }
+    }
+    if let (Some(last), FadeDirection::In) = (frames.last_mut(), dir) {
+        last.copy_from_slice(exact);
+    }
+    frames
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,5 +491,24 @@ mod tests {
             .flat_map(|w| w.to_le_bytes())
             .collect();
         assert!(exe.windows(needle.len()).any(|w| w == needle.as_slice()));
+    }
+
+    #[test]
+    fn fade_frames_rgb6_matches_the_32_colour_fade() {
+        let words: [u16; FADE_COLORS] = std::array::from_fn(|i| (i as u16 * 0x123) & 0xfff);
+        let targets: Vec<[u8; 3]> = words.iter().map(|&w| fade_word_to_rgb6(w)).collect();
+        for dir in [FadeDirection::In, FadeDirection::Out] {
+            let original = fade_frames(&words, dir);
+            let generic = fade_frames_rgb6(&targets, dir);
+            assert_eq!(generic.len(), FADE_FRAMES);
+            for (o, g) in original.iter().zip(&generic) {
+                assert_eq!(&o[..], &g[..]);
+            }
+        }
+        // A 6-bit value above 60 still ends exactly on its colour, or on black.
+        let fade_in = fade_frames_rgb6(&[[63, 61, 1]], FadeDirection::In);
+        assert_eq!(fade_in.last().unwrap()[0], [63, 61, 1]);
+        let fade_out = fade_frames_rgb6(&[[63, 61, 1]], FadeDirection::Out);
+        assert_eq!(fade_out.last().unwrap()[0], [0, 0, 0]);
     }
 }

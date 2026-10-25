@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use bmp_formats::font::{EURO, encode_cp437};
 use bmp_formats::mana::{GERMAN_CLUB_COUNT, ManaDat, PLAYER_NAME_LEN, PLAYERS_PER_CLUB};
+use bmp_formats::pal;
 use bmp_formats::vga::{self, ICON_SHEET, VgaImage};
 use serde_json::Value;
 
@@ -30,6 +31,51 @@ const SQUADS_JSON: &str = include_str!("../../../docs/mod2026/data/squads.json")
 /// number (embedded by `build.rs`).
 pub const CRESTS: &[(u8, &[u8])] = include!(concat!(env!("OUT_DIR"), "/mod2026_crests.rs"));
 
+/// MOD2026: the first palette entry of the mod's own crest colours. No original picture uses
+/// an entry above 31 and TEAMED keeps entry 32 black, so entries 64..127 are free; the
+/// generator writes the colours into `PIC/1.PAL` and the fade covers them
+/// (`docs/mod2026/CHANGES.md`).
+pub const CREST_COLOUR_FIRST: usize = 64;
+/// The number of crest colours.
+pub const CREST_COLOUR_COUNT: usize = 64;
+
+/// The crest colours as 6-bit DAC values: entries 64..127 of the palette every crest PNG
+/// carries (`tools/crest-convert.py` writes them as `(v << 2) | (v >> 4)`).
+pub fn crest_colours() -> Result<[[u8; 3]; CREST_COLOUR_COUNT], String> {
+    let &(n, png) = CRESTS.first().ok_or("no crest PNG")?;
+    let reader = png::Decoder::new(png)
+        .read_info()
+        .map_err(|e| format!("crest {n}.png: {e}"))?;
+    let palette = reader.info().palette.as_deref().unwrap_or_default();
+    let bytes = palette
+        .get(3 * CREST_COLOUR_FIRST..3 * (CREST_COLOUR_FIRST + CREST_COLOUR_COUNT))
+        .ok_or_else(|| format!("crest {n}.png: no crest colours in its palette"))?;
+    let mut colours = [[0; 3]; CREST_COLOUR_COUNT];
+    for (colour, [r, g, b]) in colours.iter_mut().zip(bytes.as_chunks::<3>().0) {
+        *colour = [r >> 2, g >> 2, b >> 2];
+    }
+    Ok(colours)
+}
+
+/// `PIC/1.PAL` of `source` with the crest colours in entries 64..127 of all three palettes,
+/// or `None` when `source` has no palette file.
+fn mod_palette(source: &Path) -> Result<Option<Vec<u8>>, String> {
+    let path = source.join(pal::PAL_FILE_PATH);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut file = pal::PalFile::parse(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    let colours = crest_colours()?;
+    let mut out = Vec::with_capacity(bytes.len());
+    for palette in &mut file.palettes {
+        palette.entries[CREST_COLOUR_FIRST..CREST_COLOUR_FIRST + CREST_COLOUR_COUNT]
+            .copy_from_slice(&colours);
+        out.extend_from_slice(&palette.to_dac_bytes());
+    }
+    Ok(Some(out))
+}
+
 /// The currency after an amount, v1.0.0's `" DM"` or the mod's `" €"` (one glyph where `DM`
 /// has two, so a text never gets wider; `docs/mod2026/CHANGES.md`).
 pub fn currency(mod2026: bool) -> &'static [u8] {
@@ -49,7 +95,8 @@ pub fn is_active(data_dir: &Path) -> bool {
 /// Writes the mod data directory `out`: a copy of every file below `from` with the mod clubs
 /// written into `MANA.DAT` and every crest of [`CRESTS`] written as `PIC/<n>.VGA` (replacing
 /// the copied original picture; numbers without a PNG keep it), the icon sheet `PIC/3.VGA`
-/// with [`third_tier_captions`] and [`cup_captions`] (when `from` has one), then [`MARKER`].
+/// with [`third_tier_captions`] and [`cup_captions`] (when `from` has one), `PIC/1.PAL` with
+/// the [`crest_colours`] (when `from` has one), then [`MARKER`].
 ///
 /// Refuses, before anything is created or written, an `out` that is `from` or lies inside
 /// it, one that is or lies inside the owner's play directory `<repo>/BMP`, one that
@@ -101,6 +148,8 @@ fn build_guarding(from: &Path, out: &Path, play_dir: &Path) -> Result<(), String
         .collect::<Result<Vec<_>, String>>()?;
     // MOD2026: the office's third-tier buttons read "3. LIGA" instead of "AM-OBERL.".
     let icon_sheet = mod_icon_sheet(&source)?;
+    // MOD2026: the crest colours in palette entries 64..127.
+    let palette = mod_palette(&source)?;
     copy_tree(&source, &target).map_err(|e| format!("{}: {e}", out.display()))?;
     fs::write(target.join("MANA.DAT"), mana).map_err(|e| format!("{}: {e}", out.display()))?;
     for (n, bytes) in crests {
@@ -111,6 +160,10 @@ fn build_guarding(from: &Path, out: &Path, play_dir: &Path) -> Result<(), String
     }
     if let Some(bytes) = icon_sheet {
         let path = target.join(vga::file_name(ICON_SHEET));
+        fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    if let Some(bytes) = palette {
+        let path = target.join(pal::PAL_FILE_PATH);
         fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
     }
     fs::write(target.join(MARKER), MARKER_CONTENT).map_err(|e| format!("{}: {e}", out.display()))
@@ -1069,6 +1122,7 @@ mod tests {
         for file in &original {
             if file.0 == Path::new("MANA.DAT")
                 || file.0 == Path::new(&vga::file_name(ICON_SHEET))
+                || file.0 == Path::new(pal::PAL_FILE_PATH)
                 || crests.contains(&file.0)
             {
                 continue;
@@ -1081,6 +1135,44 @@ mod tests {
             copied.len(),
             original.len() + usize::from(!is_active(&data))
         );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The mod's `PIC/1.PAL` differs from the original only in entries 64..127, which hold the
+    /// crest colours in all three palettes; no original picture uses an entry above 31.
+    #[test]
+    fn build_writes_the_crest_colours_into_the_palette() {
+        let Some(data) = bmp_formats::data_dir() else {
+            return;
+        };
+        let dir = temp("palette");
+        let out = dir.join("out");
+        build(&data, &out).unwrap();
+        let original = pal::PalFile::load(&data).unwrap();
+        let modded = pal::PalFile::load(&out).unwrap();
+        let colours = crest_colours().unwrap();
+        let crest_entries = CREST_COLOUR_FIRST..CREST_COLOUR_FIRST + CREST_COLOUR_COUNT;
+        for (o, m) in original.palettes.iter().zip(&modded.palettes) {
+            for i in 0..pal::PALETTE_ENTRIES {
+                if crest_entries.contains(&i) {
+                    assert_eq!(m.entries[i], colours[i - CREST_COLOUR_FIRST], "entry {i}");
+                } else {
+                    assert_eq!(m.entries[i], o.entries[i], "entry {i}");
+                }
+            }
+        }
+        for n in 0..=255u8 {
+            let Ok(bytes) = fs::read(data.join(vga::file_name(n))) else {
+                continue;
+            };
+            let Ok(picture) = vga::parse(&bytes) else {
+                continue;
+            };
+            assert!(
+                picture.pixels.iter().all(|&p| p < 32),
+                "{n}.VGA uses an entry above 31"
+            );
+        }
         fs::remove_dir_all(&dir).unwrap();
     }
 

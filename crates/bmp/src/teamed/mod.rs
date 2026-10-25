@@ -296,6 +296,14 @@ pub fn init(host: &mut Host) -> Result<Editor, String> {
     screen_set_visible(g, false);
     g.palette_load_rgb4(&PALETTE, 0x20);
     g.palette_set_entry(0x20, 0, 0, 0);
+    // MOD2026: the mod crests also use the crest colours in entries 64..127.
+    if host.mod2026 {
+        let colours = bmp_game::mod2026::crest_colours()?;
+        for (i, [r, gr, b]) in colours.into_iter().enumerate() {
+            let index = bmp_game::mod2026::CREST_COLOUR_FIRST + i;
+            g.palette_set_entry(index as u8, r, gr, b);
+        }
+    }
     let bar = host.load_picture(PIC_BAR)?;
     let crest_import_pic = host.load_picture(PIC_CREST_IMPORT)?;
     let crest_editor_pic = host.load_picture(PIC_CREST_EDITOR)?;

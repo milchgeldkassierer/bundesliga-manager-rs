@@ -30,6 +30,9 @@ const TICKS_PER_SECOND: f64 = 1_193_182.0 / 65_536.0;
 const SCRIPT_MS_PER_PUMP: u64 = 1;
 /// The refresh rate of VGA mode X: one DAC upload of a palette fade per retrace.
 const VRETRACE_HZ: f64 = 70.0;
+/// MOD2026: the palette entries of the mod's crest colours.
+const CREST_COLOURS: std::ops::Range<usize> = bmp_game::mod2026::CREST_COLOUR_FIRST
+    ..bmp_game::mod2026::CREST_COLOUR_FIRST + bmp_game::mod2026::CREST_COLOUR_COUNT;
 /// `GameState::options` index of "Blenden" (`DS:060c` = `DS:05fe + 14`).
 pub const PALETTE_FADE_OPTION: usize = 14;
 
@@ -765,14 +768,26 @@ impl Host {
                 self.g.palette_set_entry(i as u8, 0, 0, 0);
             }
         }
+        // MOD2026: the crest colours (entries 64..127, no original picture uses them) fade
+        // with entries 0..31, so a crest does not stay on a screen that fades to black.
+        let crest_colours = if self.mod2026 {
+            self.g.dac[CREST_COLOURS].to_vec()
+        } else {
+            Vec::new()
+        };
+        if on != 0 {
+            self.g.dac[CREST_COLOURS.start..CREST_COLOURS.start + crest_colours.len()].fill([0; 3]);
+        }
         if on == 0 {
-            self.palette_fade_frames(&words, false)?;
+            self.palette_fade_frames(&words, false, &crest_colours)?;
             self.g.video_screen_off();
         } else {
             self.g.video_screen_on();
-            self.palette_fade_frames(&words, true)?;
+            self.palette_fade_frames(&words, true, &crest_colours)?;
         }
         self.g.palette_load_rgb4(&words, 32);
+        self.g.dac[CREST_COLOURS.start..CREST_COLOURS.start + crest_colours.len()]
+            .copy_from_slice(&crest_colours);
         self.pump()
     }
 
@@ -780,13 +795,29 @@ impl Host {
     /// vertical retrace (1/70 s): the routine waits for the retrace before every upload.
     ///
     /// Origin: BMMAIN.EXE 45ac:33ca (vga_set_palette_rgb4)
-    fn palette_fade_frames(&mut self, words: &[u16; 32], fade_in: bool) -> Run<()> {
+    ///
+    /// MOD2026: `crest_colours` (entries 64..127, empty without mod data) fade along.
+    fn palette_fade_frames(
+        &mut self,
+        words: &[u16; 32],
+        fade_in: bool,
+        crest_colours: &[[u8; 3]],
+    ) -> Run<()> {
         let frames = self.g.vga_set_palette_rgb4(words, fade_in);
+        let dir = if fade_in {
+            pal::FadeDirection::In
+        } else {
+            pal::FadeDirection::Out
+        };
+        let crest_frames = pal::fade_frames_rgb6(crest_colours, dir);
         let last = self.g.dac;
         let start = self.now_secs();
         for (k, f) in frames.iter().enumerate() {
             for (e, c) in f.iter().enumerate() {
                 self.g.dac[e] = [c[0] & 0x3f, c[1] & 0x3f, c[2] & 0x3f];
+            }
+            for (e, c) in crest_frames[k].iter().enumerate() {
+                self.g.dac[CREST_COLOURS.start + e] = [c[0] & 0x3f, c[1] & 0x3f, c[2] & 0x3f];
             }
             let until = start + (k + 1) as f64 / VRETRACE_HZ;
             while self.now_secs() < until {

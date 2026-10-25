@@ -235,6 +235,9 @@ Beside it, when the mod data is active, the SDL host keeps a second indexed **di
   game is unchanged.
   - The layer is off with the original data, and in the headless host.
   - A command-line switch `--lowres` turns it off.
+  - **Crest colours** (owner decision 2026-10-25): the crests may use 64 colours of their own in
+    palette entries 64..127 (no original picture uses an entry above 31); the mod's `PIC/1.PAL`
+    holds them and the fade covers them.
   - The 2x fonts are off by default (owner decision 2026-10-25): the display layer shows the
     original glyphs pixel-doubled, and `--hires-fonts` switches the 2x fonts on.
 - **Tests:**

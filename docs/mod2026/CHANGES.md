@@ -253,6 +253,18 @@ layout").
   file also holds the 2x euro glyph (`glyph 0xd5`, #205), the Scale2x image of the mod's 1x
   euro glyph (**Euro sign** below) with twice its advance and height; `draw_text` uses it for
   0xd5 when the mod's euro glyph is installed. `normal.font` stays a stub.
+- **Crest colours** (`tools/crest-convert.py`, `docs/mod2026/crests/`, `mod2026::crest_colours`,
+  `mod2026::build`, `Host::screen_fade`, `teamed::init`, owner decision 2026-10-25): the original
+  crests use only the 32 colours of palette entries 0..31, which have no violet, no medium blue
+  and only olive greens, so many logos came out grey-blue. No original picture uses an entry above
+  31 (a test checks every `PIC/<n>.VGA`), so the mod gives the crests 64 colours of their own in
+  entries 64..127: k-means centres of the logo pixels the 32 colours show worst, in 6-bit DAC
+  precision, stored as entries 64..127 of the palette every crest PNG carries. The converter maps
+  each logo pixel to the allowed colour that keeps its hue (a Lab distance that weighs chroma and
+  hue more for saturated colours). The generator writes them into all three palettes of
+  `PIC/1.PAL`; the fade (`screen_fade`), which in the original covers only entries 0..31, fades
+  them along with the same stepping (`pal::fade_frames_rgb6`), and the team editor loads them
+  after its own 32-colour palette. Without mod data nothing changes.
 - **High-resolution crests** (`docs/mod2026/crests/hires/`, `tools/crest-convert.py --hires`,
   `crates/bmp-game/build.rs`, `mod2026::hires_crest`, `Host::load_picture`,
   `Gfx::set_display_side`, PRD R5b): every mod crest has a 2x version (76x76), converted from

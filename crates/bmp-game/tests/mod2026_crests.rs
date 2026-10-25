@@ -1,11 +1,12 @@
 //! Validates the Mod 2026 crest pictures `docs/mod2026/crests/<crest>.png` (PRD R5): one per
-//! `crest` of `clubs.json`, each listed in `SOURCES.md`, and in the size and the colour indices
-//! of the original crest pictures `PIC/80.VGA`..`PIC/143.VGA`.
+//! `crest` of `clubs.json`, each listed in `SOURCES.md`, in the size of the original crest
+//! pictures `PIC/80.VGA`..`PIC/143.VGA` and with their colour indices or the mod's crest colours.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use bmp_formats::{pal, vga};
+use bmp_game::mod2026;
 use serde_json::Value;
 
 const CLUBS_JSON: &str = include_str!("../../../docs/mod2026/data/clubs.json");
@@ -15,7 +16,7 @@ const SOURCES_MD: &str = include_str!("../../../docs/mod2026/crests/SOURCES.md")
 const ORIGINAL_CRESTS: std::ops::RangeInclusive<u8> = 80..=143;
 
 /// The crest PNGs carry the first 32 entries of the main palette, which cover every index the
-/// original crests use.
+/// original crests use, then black up to the mod's crest colours (entries 64..127).
 const CREST_PALETTE_ENTRIES: usize = 32;
 
 fn crests_dir() -> PathBuf {
@@ -110,11 +111,19 @@ fn crests_have_the_original_size_and_colour_indices() {
         let first = original(*ORIGINAL_CRESTS.start());
         (u32::from(first.width), u32::from(first.height))
     };
+    let crest_colours =
+        mod2026::CREST_COLOUR_FIRST..mod2026::CREST_COLOUR_FIRST + mod2026::CREST_COLOUR_COUNT;
     let allowed: BTreeSet<u8> = ORIGINAL_CRESTS
         .flat_map(|crest| original(crest).pixels)
+        .chain(crest_colours.clone().map(|i| i as u8))
         .collect();
     let pal_file = pal::PalFile::load(&data).expect("PIC/1.PAL");
-    let palette = pal_file.palettes[pal::PALETTE_MAIN].to_rgb8()[..CREST_PALETTE_ENTRIES].concat();
+    let mut palette =
+        pal_file.palettes[pal::PALETTE_MAIN].to_rgb8()[..CREST_PALETTE_ENTRIES].concat();
+    palette.resize(3 * crest_colours.start, 0);
+    for [r, g, b] in mod2026::crest_colours().unwrap() {
+        palette.extend([r, g, b].map(|v| (v << 2) | (v >> 4)));
+    }
 
     for crest in club_crests().keys() {
         let path = crests_dir().join(format!("{crest}.png"));
@@ -132,7 +141,7 @@ fn crests_have_the_original_size_and_colour_indices() {
         assert_eq!(
             info.palette.as_deref(),
             Some(palette.as_slice()),
-            "{crest}.png palette must be entries 0..{CREST_PALETTE_ENTRIES} of 1.PAL"
+            "{crest}.png palette must be entries 0..{CREST_PALETTE_ENTRIES} of 1.PAL, black and the crest colours"
         );
         let mut pixels = vec![0; reader.output_buffer_size()];
         reader
@@ -145,7 +154,7 @@ fn crests_have_the_original_size_and_colour_indices() {
             .collect();
         assert!(
             stray.is_empty(),
-            "{crest}.png uses indices {stray:?} that no original crest uses"
+            "{crest}.png uses indices {stray:?} that are neither original crest colours nor mod crest colours"
         );
     }
 }
