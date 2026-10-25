@@ -17,8 +17,8 @@ use video::{Mode, Vga, Window};
 const USAGE: &str = "usage: bmp [--data <dir>] [--version]
        bmp [--data <dir>] show-pic <name> [--palette <0..2>] [--screenshot <out.png>]
        bmp [--data <dir>] run [--script <file> --shots <dir>] [--time <seconds>] [--time2 <seconds>]
-                              [--nosound] [--skip-intro] [--lowres] [0]
-       bmp [--data <dir>] teamed [--script <file> --shots <dir>] [--lowres]
+                              [--nosound] [--skip-intro] [--lowres] [--hires-fonts] [0]
+       bmp [--data <dir>] teamed [--script <file> --shots <dir>] [--lowres] [--hires-fonts]
        bmp [--data <dir>] render-music <out.wav> [--tail <ms>] [--opl-log <out.txt>]
        bmp [--data <dir>] play-sound music|1..5
        bmp mod2026 build --from <dir> --out <dir>
@@ -35,6 +35,8 @@ const USAGE: &str = "usage: bmp [--data <dir>] [--version]
   directory; with --script it runs headless like run
   --lowres (run, teamed) shows the original 320x240 frame instead of the Mod 2026 2x
   display; the 2x display is used only with Mod 2026 data in a window
+  --hires-fonts (run, teamed) draws the text of the Mod 2026 2x display with the 2x fonts
+  instead of the original fonts pixel-doubled
   render-music writes the title tune (SOUND/BM2TITLE.CMF) as rendered by the OPL2
   emulation to a 16-bit mono WAV file at 49716 Hz, plus <ms> (default 1000) of release;
   --opl-log lists the OPL register writes as \"<ms> <register> <value>\" lines (hex)
@@ -205,6 +207,7 @@ fn run_game(args: &Args) -> Result<(), String> {
     let time = time.unwrap_or_else(game::time_now);
     let skip_intro = take_flag(&mut rest, "--skip-intro");
     let lowres = take_flag(&mut rest, "--lowres");
+    let hires_fonts = take_flag(&mut rest, "--hires-fonts");
     let sound = sound_enabled(&mut rest);
     if let Some(extra) = rest.first() {
         return Err(format!("unexpected argument '{extra}'\n{USAGE}"));
@@ -216,7 +219,7 @@ fn run_game(args: &Args) -> Result<(), String> {
             std::fs::create_dir_all(&shots).map_err(|e| format!("{shots}: {e}"))?;
             host::Host::with_script(&dir, host::parse_script(&text)?, Path::new(&shots), sound)?
         }
-        None => host::Host::with_window(&dir, 3, sound, lowres)?,
+        None => host::Host::with_window(&dir, 3, sound, lowres, hires_fonts)?,
     };
     // BMP.BAT: `bmintro`, then `bmmain %1`.
     if !skip_intro && intro::run(&mut host)?.is_err() {
@@ -237,6 +240,7 @@ fn run_teamed(args: &Args) -> Result<(), String> {
     let script = take_opt(&mut rest, "--script")?;
     let shots = take_opt(&mut rest, "--shots")?.unwrap_or_else(|| ".".into());
     let lowres = take_flag(&mut rest, "--lowres");
+    let hires_fonts = take_flag(&mut rest, "--hires-fonts");
     if let Some(extra) = rest.first() {
         return Err(format!("unexpected argument '{extra}'\n{USAGE}"));
     }
@@ -248,7 +252,7 @@ fn run_teamed(args: &Args) -> Result<(), String> {
             std::fs::create_dir_all(&shots).map_err(|e| format!("{shots}: {e}"))?;
             host::Host::with_script(&dir, host::parse_script(&text)?, Path::new(&shots), false)?
         }
-        None => host::Host::with_window(&dir, 3, false, lowres)?,
+        None => host::Host::with_window(&dir, 3, false, lowres, hires_fonts)?,
     };
     match teamed::run(&mut host)? {
         Ok(teamed::Exit::Ended | teamed::Exit::Fatal) | Err(host::Quit) => Ok(()),

@@ -235,6 +235,8 @@ Beside it, when the mod data is active, the SDL host keeps a second indexed **di
   game is unchanged.
   - The layer is off with the original data, and in the headless host.
   - A command-line switch `--lowres` turns it off.
+  - The 2x fonts are off by default (owner decision 2026-10-25): the display layer shows the
+    original glyphs pixel-doubled, and `--hires-fonts` switches the 2x fonts on.
 - **Tests:**
   - Unit tests check that a doubled-only frame equals the nearest-neighbour scale of the logical
     frame for a sample of existing scenarios.

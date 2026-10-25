@@ -212,6 +212,7 @@ impl Host {
         backend: Backend,
         card: Option<SoundCard>,
         lowres: bool,
+        hires_fonts: bool,
     ) -> Result<Self, String> {
         let mut g = Gfx::new();
         // `font_load_all() == 0` is `fatal_error_exit(3)`; without fonts there is nothing to draw
@@ -257,22 +258,38 @@ impl Host {
             display_shots: Vec::new(),
         };
         if display_layer_on(host.mod2026, window, lowres) {
-            host.enable_display_layer();
+            host.enable_display_layer_with(hires_fonts);
         }
         Ok(host)
     }
 
     /// MOD2026: switches the 2x display layer on, with the 2x fonts and crests that belong
-    /// to it.
+    /// to it (`--hires-fonts`), as the display tests use it.
+    #[cfg(test)]
     pub(crate) fn enable_display_layer(&mut self) {
+        self.enable_display_layer_with(true);
+    }
+
+    /// MOD2026: switches the 2x display layer on with the 2x crests; the 2x fonts only with
+    /// `hires_fonts` (`--hires-fonts`), else the original glyphs show pixel-doubled.
+    pub(crate) fn enable_display_layer_with(&mut self, hires_fonts: bool) {
         self.g.display_on();
-        self.g.set_hires_fonts();
+        if hires_fonts {
+            self.g.set_hires_fonts();
+        }
         self.hires_crests = true;
     }
 
     /// A window; `sound` = the sound flag `DS:018c`. Without an audio device
-    /// the card runs silently. `lowres` keeps the Mod 2026 2x display off.
-    pub fn with_window(data: &Path, scale: u32, sound: bool, lowres: bool) -> Result<Self, String> {
+    /// the card runs silently. `lowres` keeps the Mod 2026 2x display off; `hires_fonts`
+    /// gives it the 2x fonts.
+    pub fn with_window(
+        data: &Path,
+        scale: u32,
+        sound: bool,
+        lowres: bool,
+        hires_fonts: bool,
+    ) -> Result<Self, String> {
         // A failed `screen_open` is `fatal_error_exit(0)`; without a screen the port only
         // reports it.
         let win = Window::open(scale).map_err(|e| {
@@ -299,6 +316,7 @@ impl Host {
             },
             card,
             lowres,
+            hires_fonts,
         )
     }
 
@@ -318,6 +336,7 @@ impl Host {
                 shots: shots.to_path_buf(),
             },
             sound.then(SoundCard::silent),
+            false,
             false,
         )
     }
@@ -1030,15 +1049,22 @@ mod tests {
     }
 
     /// Opens `Host::with_window` on `data` and pumps until one frame is presented; returns
-    /// whether the display layer is on and the texture size of that frame.
-    fn present_one_window_frame(data: &Path, lowres: bool, driver: &str) -> (bool, (usize, usize)) {
-        let mut host = Host::with_window(data, 1, false, lowres).unwrap();
+    /// whether the display layer is on, whether it has the 2x fonts and the texture size of
+    /// that frame.
+    fn present_one_window_frame(
+        data: &Path,
+        lowres: bool,
+        hires_fonts: bool,
+        driver: &str,
+    ) -> (bool, bool, (usize, usize)) {
+        let mut host = Host::with_window(data, 1, false, lowres, hires_fonts).unwrap();
         let Backend::Window { win, .. } = &host.backend else {
             unreachable!("with_window builds the window backend");
         };
         let video = win.video_driver();
         assert_eq!(video, driver, "the window must use the headless driver");
         let layer = host.g.display().is_some();
+        let fonts = host.g.hires_fonts_on();
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             host.pump().unwrap();
@@ -1046,7 +1072,7 @@ mod tests {
                 unreachable!("with_window builds the window backend");
             };
             if let Some(&size) = win.presented.first() {
-                return (layer, size);
+                return (layer, fonts, size);
             }
             assert!(Instant::now() < deadline, "no frame presented within 5 s");
         }
@@ -1074,17 +1100,23 @@ mod tests {
         let mod_data = std::env::temp_dir().join(format!("bmp-window-mod-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&mod_data);
         bmp_game::mod2026::build(&data, &mod_data).unwrap();
-        let mod_2x = present_one_window_frame(&mod_data, false, driver);
-        let mod_lowres = present_one_window_frame(&mod_data, true, driver);
+        let mod_2x = present_one_window_frame(&mod_data, false, false, driver);
+        let mod_hires_fonts = present_one_window_frame(&mod_data, false, true, driver);
+        let mod_lowres = present_one_window_frame(&mod_data, true, false, driver);
         let _ = std::fs::remove_dir_all(&mod_data);
-        let original = present_one_window_frame(&data, false, driver);
-        assert_eq!(mod_2x, (true, (640, 480)), "Mod 2026 data");
+        let original = present_one_window_frame(&data, false, true, driver);
+        assert_eq!(mod_2x, (true, false, (640, 480)), "Mod 2026 data");
+        assert_eq!(
+            mod_hires_fonts,
+            (true, true, (640, 480)),
+            "Mod 2026 data with --hires-fonts"
+        );
         assert_eq!(
             mod_lowres,
-            (false, (320, 240)),
+            (false, false, (320, 240)),
             "Mod 2026 data with --lowres"
         );
-        assert_eq!(original, (false, (320, 240)), "original data");
+        assert_eq!(original, (false, false, (320, 240)), "original data");
     }
 
     #[test]

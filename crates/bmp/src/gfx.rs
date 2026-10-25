@@ -498,6 +498,11 @@ impl Gfx {
         }
     }
 
+    /// MOD2026: whether [`Gfx::set_hires_fonts`] installed the 2x fonts.
+    pub fn hires_fonts_on(&self) -> bool {
+        self.hires.iter().any(|glyphs| !glyphs.is_empty())
+    }
+
     /// MOD2026: gives the installed glyph fonts their 2x glyphs for the display layer
     /// (`docs/mod2026/fonts/README.md`), the 2x euro glyph included. A glyph of another
     /// `BMMAIN.EXE` whose cell does not match its 2x glyph keeps being drawn doubled.
