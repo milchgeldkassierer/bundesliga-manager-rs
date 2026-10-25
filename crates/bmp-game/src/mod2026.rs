@@ -429,15 +429,15 @@ mod tests {
         let mut m = ManaDat::parse(&zeroed_mana()).unwrap();
         write_mod_clubs(&mut m).unwrap();
         assert_eq!(m.clubs[40].name_bytes(), b"HANSA ROSTOCK");
-        // Group averages: points 40, scored 64, conceded 54; the rank term is 20 - 5.
+        // Group averages: points 39, scored 63, conceded 55; the rank term is 20 - 5.
         assert_eq!(m.strength[40], [37, 37, 37]);
         // Slot 9 (FSV MAINZ 05, Bundesliga): base 70, size 18, rank 10, averages 38/58/50.
         assert_eq!(m.strength[9], [80, 80, 79]);
         // Slot 25 (1.FC NÜRNBERG, 2. Bundesliga): base 34, size 18, rank 8, averages
         // 33/50/53; [46, 46, 46] scaled by 125/100.
         assert_eq!(m.strength[25], [57, 57, 57]);
-        // Slot 60 (ROT-WEIß OBERHAUSEN, pool): base 20, size 20, rank 2, averages 35/56/55.
-        assert_eq!(m.strength[60], [42, 40, 40]);
+        // Slot 57 (1.FC LOK LEIPZIG, pool): base 20, size 20, rank 1, averages 42/60/44.
+        assert_eq!(m.strength[57], [42, 40, 40]);
 
         m.rank[40] = 15;
         let mut rng = Rng::default();

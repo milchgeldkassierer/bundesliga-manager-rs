@@ -2,7 +2,7 @@
 
 Each mod club's crest `<crest>.png` (the `crest` number in `../data/clubs.json`) was converted
 from the club's current logo by `tools/crest-convert.py`, which downloads the logo from the URL
-below. The reserve teams (128, 130) use the crest of their first team.
+below.
 
 | Crest | Club | Logo source | Fetched |
 |---|---|---|---|
@@ -54,19 +54,19 @@ below. The reserve teams (128, 130) use the crest of their first team.
 | 125 | VIKTORIA KÖLN | https://upload.wikimedia.org/wikipedia/commons/d/dc/FC_Viktoria_K%C3%B6ln_1904_Logo.svg | 2026-10-24 |
 | 126 | FC INGOLSTADT 04 | https://upload.wikimedia.org/wikipedia/de/5/55/FC-Ingolstadt_logo.svg | 2026-10-24 |
 | 127 | JAHN REGENSBURG | https://upload.wikimedia.org/wikipedia/commons/3/3d/Jahn_Regensburg_logo2014.svg | 2026-10-24 |
-| 128 | VFB STUTTGART II | https://upload.wikimedia.org/wikipedia/commons/e/eb/VfB_Stuttgart_1893_Logo.svg | 2026-10-24 |
-| 129 | 1.FC SAARBRÜCKEN | https://upload.wikimedia.org/wikipedia/de/f/ff/1._FC_Saarbr%C3%BCcken.svg | 2026-10-24 |
-| 130 | TSG HOFFENHEIM II | https://upload.wikimedia.org/wikipedia/commons/e/e7/Logo_TSG_Hoffenheim.svg | 2026-10-24 |
-| 131 | TSV HAVELSE | https://upload.wikimedia.org/wikipedia/commons/8/89/TSV_Havelse_logo.svg | 2026-10-24 |
+| 128 | 1.FC SAARBRÜCKEN | https://upload.wikimedia.org/wikipedia/de/f/ff/1._FC_Saarbr%C3%BCcken.svg | 2026-10-24 |
+| 129 | TSV HAVELSE | https://upload.wikimedia.org/wikipedia/commons/8/89/TSV_Havelse_logo.svg | 2026-10-24 |
+| 130 | FC ERZGEBIRGE AUE | https://upload.wikimedia.org/wikipedia/de/1/13/Fc_erzgebirge_aue.svg | 2026-10-24 |
+| 131 | SSV ULM 1846 | https://upload.wikimedia.org/wikipedia/commons/6/6c/SSV_Ulm_1846_Fussball.svg | 2026-10-24 |
 | 132 | SV MEPPEN | https://upload.wikimedia.org/wikipedia/commons/f/f0/SV_Meppen_Logo_2022.svg | 2026-10-24 |
 | 133 | SONNENH. GROßASPACH | https://upload.wikimedia.org/wikipedia/de/1/1d/SG_Sonnenhof.svg | 2026-10-24 |
 | 134 | FORTUNA KÖLN | https://upload.wikimedia.org/wikipedia/commons/d/d0/SC_Fortuna_Koeln_Logo_2013%E2%80%932019%2C_2026%E2%80%93.svg | 2026-10-24 |
 | 135 | WÜRZBURGER KICKERS | https://upload.wikimedia.org/wikipedia/commons/0/0c/W%C3%BCrzburger_Kickers_Logo.svg | 2026-10-24 |
-| 136 | FC ERZGEBIRGE AUE | https://upload.wikimedia.org/wikipedia/de/1/13/Fc_erzgebirge_aue.svg | 2026-10-24 |
-| 137 | SSV ULM 1846 | https://upload.wikimedia.org/wikipedia/commons/6/6c/SSV_Ulm_1846_Fussball.svg | 2026-10-24 |
-| 138 | TSV 1860 MÜNCHEN | https://upload.wikimedia.org/wikipedia/commons/4/48/TSV_1860_M%C3%BCnchen.svg | 2026-10-24 |
-| 139 | HEILBRONN-FREIBERG | https://upload.wikimedia.org/wikipedia/commons/7/7a/SGV_Heilbronn-Freiberg_Logo.svg | 2026-10-24 |
-| 140 | ROT-WEIß OBERHAUSEN | https://upload.wikimedia.org/wikipedia/de/0/0f/Rot_Weiss_Oberhausen_Logo.svg | 2026-10-24 |
-| 141 | CHEMNITZER FC | https://upload.wikimedia.org/wikipedia/commons/c/c5/Chemnitzer_FC_Logo.svg | 2026-10-24 |
-| 142 | SC WEICHE FLENSBURG | https://upload.wikimedia.org/wikipedia/commons/5/57/SC_Weiche_Flensburg_08.svg | 2026-10-24 |
-| 143 | FC MEMMINGEN | https://upload.wikimedia.org/wikipedia/commons/9/99/Logo_FC_Memmingen.svg | 2026-10-24 |
+| 136 | TSV 1860 MÜNCHEN | https://upload.wikimedia.org/wikipedia/commons/4/48/TSV_1860_M%C3%BCnchen.svg | 2026-10-24 |
+| 137 | 1.FC LOK LEIPZIG | https://upload.wikimedia.org/wikipedia/commons/b/b5/Logo_1._FC_Lokomotive_Leipzig.svg | 2026-10-25 |
+| 138 | CARL ZEISS JENA | https://upload.wikimedia.org/wikipedia/commons/e/e4/Logo_FC_Carl_Zeiss_Jena.svg | 2026-10-25 |
+| 139 | FSV ZWICKAU | https://upload.wikimedia.org/wikipedia/de/0/01/FSV_Zwickau_Logo.svg | 2026-10-25 |
+| 140 | HALLESCHER FC | https://upload.wikimedia.org/wikipedia/commons/0/00/Hallescher_FC_Logo_2012.svg | 2026-10-25 |
+| 141 | FC RW ERFURT | https://upload.wikimedia.org/wikipedia/commons/2/26/Logo_of_FC_Rot-Wei%C3%9F_Erfurt.svg | 2026-10-25 |
+| 142 | CHEMNITZER FC | https://upload.wikimedia.org/wikipedia/commons/c/c5/Chemnitzer_FC_Logo.svg | 2026-10-24 |
+| 143 | KICKERS OFFENBACH | https://upload.wikimedia.org/wikipedia/de/f/f9/Logo_Kickers_Offenbach.svg | 2026-10-25 |

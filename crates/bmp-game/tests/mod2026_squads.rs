@@ -154,10 +154,8 @@ fn squads_are_the_cut_of_the_uncut_research_data() {
             "{}",
             label(squad)
         );
-        // A player the first team keeps is not counted for its reserve team.
         let candidates: Vec<Candidate> = players(research)
             .iter()
-            .filter(|p| !p["kept_by_first_team"].as_bool().unwrap_or(false))
             .map(|p| Candidate {
                 name: text(p, "full_name"),
                 position: text(p, "position"),

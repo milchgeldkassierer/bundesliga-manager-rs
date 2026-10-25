@@ -1201,16 +1201,16 @@
   },
   {
     "slot": 48,
-    "name": "VFB STUTTGART II",
+    "name": "1.FC SAARBRÜCKEN",
     "league": "3-liga",
     "table_league": "3-liga",
     "table_2025_26": {
-      "wins": 13,
-      "draws": 7,
-      "losses": 18,
-      "goals_for": 57,
-      "goals_against": 69,
-      "rank": 13
+      "wins": 10,
+      "draws": 14,
+      "losses": 14,
+      "goals_for": 51,
+      "goals_against": 57,
+      "rank": 14
     },
     "crest": 128,
     "sources": [
@@ -1226,16 +1226,16 @@
   },
   {
     "slot": 49,
-    "name": "1.FC SAARBRÜCKEN",
+    "name": "TSV HAVELSE",
     "league": "3-liga",
     "table_league": "3-liga",
     "table_2025_26": {
-      "wins": 10,
-      "draws": 14,
-      "losses": 14,
-      "goals_for": 51,
-      "goals_against": 57,
-      "rank": 14
+      "wins": 9,
+      "draws": 8,
+      "losses": 21,
+      "goals_for": 57,
+      "goals_against": 89,
+      "rank": 16
     },
     "crest": 129,
     "sources": [
@@ -1251,16 +1251,16 @@
   },
   {
     "slot": 50,
-    "name": "TSG HOFFENHEIM II",
+    "name": "FC ERZGEBIRGE AUE",
     "league": "3-liga",
     "table_league": "3-liga",
     "table_2025_26": {
-      "wins": 12,
-      "draws": 7,
-      "losses": 19,
-      "goals_for": 65,
-      "goals_against": 71,
-      "rank": 15
+      "wins": 7,
+      "draws": 13,
+      "losses": 18,
+      "goals_for": 51,
+      "goals_against": 70,
+      "rank": 17
     },
     "crest": 130,
     "sources": [
@@ -1269,23 +1269,23 @@
         "fetched": "2026-10-24"
       },
       {
-        "url": "https://de.wikipedia.org/wiki/3._Fu%C3%9Fball-Liga_2026/27",
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2026/27",
         "fetched": "2026-10-24"
       }
     ]
   },
   {
     "slot": 51,
-    "name": "TSV HAVELSE",
+    "name": "SSV ULM 1846",
     "league": "3-liga",
     "table_league": "3-liga",
     "table_2025_26": {
       "wins": 9,
-      "draws": 8,
-      "losses": 21,
-      "goals_for": 57,
-      "goals_against": 89,
-      "rank": 16
+      "draws": 6,
+      "losses": 23,
+      "goals_for": 49,
+      "goals_against": 78,
+      "rank": 18
     },
     "crest": 131,
     "sources": [
@@ -1294,7 +1294,7 @@
         "fetched": "2026-10-24"
       },
       {
-        "url": "https://de.wikipedia.org/wiki/3._Fu%C3%9Fball-Liga_2026/27",
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_S%C3%BCdwest_2026/27",
         "fetched": "2026-10-24"
       }
     ]
@@ -1401,56 +1401,6 @@
   },
   {
     "slot": 56,
-    "name": "FC ERZGEBIRGE AUE",
-    "league": "regionalliga",
-    "table_league": "3-liga",
-    "table_2025_26": {
-      "wins": 7,
-      "draws": 13,
-      "losses": 18,
-      "goals_for": 51,
-      "goals_against": 70,
-      "rank": 17
-    },
-    "crest": 136,
-    "sources": [
-      {
-        "url": "https://de.wikipedia.org/wiki/3._Fu%C3%9Fball-Liga_2025/26",
-        "fetched": "2026-10-24"
-      },
-      {
-        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2026/27",
-        "fetched": "2026-10-24"
-      }
-    ]
-  },
-  {
-    "slot": 57,
-    "name": "SSV ULM 1846",
-    "league": "regionalliga",
-    "table_league": "3-liga",
-    "table_2025_26": {
-      "wins": 9,
-      "draws": 6,
-      "losses": 23,
-      "goals_for": 49,
-      "goals_against": 78,
-      "rank": 18
-    },
-    "crest": 137,
-    "sources": [
-      {
-        "url": "https://de.wikipedia.org/wiki/3._Fu%C3%9Fball-Liga_2025/26",
-        "fetched": "2026-10-24"
-      },
-      {
-        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_S%C3%BCdwest_2026/27",
-        "fetched": "2026-10-24"
-      }
-    ]
-  },
-  {
-    "slot": 58,
     "name": "TSV 1860 MÜNCHEN",
     "league": "regionalliga",
     "table_league": "3-liga",
@@ -1462,7 +1412,7 @@
       "goals_against": 53,
       "rank": 20
     },
-    "crest": 138,
+    "crest": 136,
     "sources": [
       {
         "url": "https://de.wikipedia.org/wiki/3._Fu%C3%9Fball-Liga_2025/26",
@@ -1475,57 +1425,132 @@
     ]
   },
   {
-    "slot": 59,
-    "name": "HEILBRONN-FREIBERG",
+    "slot": 57,
+    "name": "1.FC LOK LEIPZIG",
     "league": "regionalliga",
-    "table_league": "regionalliga-suedwest",
+    "table_league": "regionalliga-nordost",
     "table_2025_26": {
-      "wins": 18,
-      "draws": 8,
+      "wins": 23,
+      "draws": 3,
       "losses": 8,
-      "goals_for": 68,
-      "goals_against": 38,
+      "goals_for": 65,
+      "goals_against": 30,
+      "rank": 1
+    },
+    "crest": 137,
+    "sources": [
+      {
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2025/26",
+        "fetched": "2026-10-25"
+      },
+      {
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2026/27",
+        "fetched": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "slot": 58,
+    "name": "CARL ZEISS JENA",
+    "league": "regionalliga",
+    "table_league": "regionalliga-nordost",
+    "table_2025_26": {
+      "wins": 22,
+      "draws": 6,
+      "losses": 6,
+      "goals_for": 65,
+      "goals_against": 35,
       "rank": 2
+    },
+    "crest": 138,
+    "sources": [
+      {
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2025/26",
+        "fetched": "2026-10-25"
+      },
+      {
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2026/27",
+        "fetched": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "slot": 59,
+    "name": "FSV ZWICKAU",
+    "league": "regionalliga",
+    "table_league": "regionalliga-nordost",
+    "table_2025_26": {
+      "wins": 19,
+      "draws": 7,
+      "losses": 8,
+      "goals_for": 52,
+      "goals_against": 44,
+      "rank": 3
     },
     "crest": 139,
     "sources": [
       {
-        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_S%C3%BCdwest_2025/26",
-        "fetched": "2026-10-24"
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2025/26",
+        "fetched": "2026-10-25"
       },
       {
-        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_S%C3%BCdwest_2026/27",
-        "fetched": "2026-10-24"
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2026/27",
+        "fetched": "2026-10-25"
       }
     ]
   },
   {
     "slot": 60,
-    "name": "ROT-WEIß OBERHAUSEN",
+    "name": "HALLESCHER FC",
     "league": "regionalliga",
-    "table_league": "regionalliga-west",
+    "table_league": "regionalliga-nordost",
     "table_2025_26": {
       "wins": 19,
-      "draws": 9,
-      "losses": 6,
-      "goals_for": 60,
-      "goals_against": 40,
-      "rank": 2
+      "draws": 6,
+      "losses": 9,
+      "goals_for": 63,
+      "goals_against": 36,
+      "rank": 4
     },
     "crest": 140,
     "sources": [
       {
-        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_West_2025/26",
-        "fetched": "2026-10-24"
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2025/26",
+        "fetched": "2026-10-25"
       },
       {
-        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_West_2026/27",
-        "fetched": "2026-10-24"
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2026/27",
+        "fetched": "2026-10-25"
       }
     ]
   },
   {
     "slot": 61,
+    "name": "FC RW ERFURT",
+    "league": "regionalliga",
+    "table_league": "regionalliga-nordost",
+    "table_2025_26": {
+      "wins": 17,
+      "draws": 10,
+      "losses": 7,
+      "goals_for": 68,
+      "goals_against": 47,
+      "rank": 5
+    },
+    "crest": 141,
+    "sources": [
+      {
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2025/26",
+        "fetched": "2026-10-25"
+      },
+      {
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2026/27",
+        "fetched": "2026-10-25"
+      }
+    ]
+  },
+  {
+    "slot": 62,
     "name": "CHEMNITZER FC",
     "league": "regionalliga",
     "table_league": "regionalliga-nordost",
@@ -1537,7 +1562,7 @@
       "goals_against": 52,
       "rank": 7
     },
-    "crest": 141,
+    "crest": 142,
     "sources": [
       {
         "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nordost_2025/26",
@@ -1550,52 +1575,27 @@
     ]
   },
   {
-    "slot": 62,
-    "name": "SC WEICHE FLENSBURG",
-    "league": "regionalliga",
-    "table_league": "regionalliga-nord",
-    "table_2025_26": {
-      "wins": 14,
-      "draws": 7,
-      "losses": 13,
-      "goals_for": 69,
-      "goals_against": 63,
-      "rank": 9
-    },
-    "crest": 142,
-    "sources": [
-      {
-        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nord_2025/26",
-        "fetched": "2026-10-24"
-      },
-      {
-        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Nord_2026/27",
-        "fetched": "2026-10-24"
-      }
-    ]
-  },
-  {
     "slot": 63,
-    "name": "FC MEMMINGEN",
+    "name": "KICKERS OFFENBACH",
     "league": "regionalliga",
-    "table_league": "regionalliga-bayern",
+    "table_league": "regionalliga-suedwest",
     "table_2025_26": {
-      "wins": 10,
-      "draws": 12,
-      "losses": 12,
-      "goals_for": 43,
-      "goals_against": 47,
-      "rank": 12
+      "wins": 11,
+      "draws": 10,
+      "losses": 13,
+      "goals_for": 57,
+      "goals_against": 58,
+      "rank": 14
     },
     "crest": 143,
     "sources": [
       {
-        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Bayern_2025/26",
-        "fetched": "2026-10-24"
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_S%C3%BCdwest_2025/26",
+        "fetched": "2026-10-25"
       },
       {
-        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_Bayern_2026/27",
-        "fetched": "2026-10-24"
+        "url": "https://de.wikipedia.org/wiki/Fu%C3%9Fball-Regionalliga_S%C3%BCdwest_2026/27",
+        "fetched": "2026-10-25"
       }
     ]
   }
