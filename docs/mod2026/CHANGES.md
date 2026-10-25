@@ -200,3 +200,12 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   their padding and position, so columns stay aligned; the euro glyph is narrower than `DM` in
   every font. The money values themselves are unchanged. Without the flag every text is
   v1.0.0's.
+- **Pictures** (PRD R1d): no picture needed a correction. Every `PIC/*` the money screens
+  load was rendered from the v1.0.0 data with its palette and checked by eye: the loans
+  (`7`), stadium (`9`..`20`, `40`), value spinner (`21`), sponsor contract (`31`, `32`,
+  `46.CP`), squad (`6`, `37`), training (`1`, `5`, `28`, `37`, `43`), statistics (`36`) and
+  the office frame they share (`3`, `4`, `22.CP`, `23`..`26`, `39`), plus the newspaper and
+  special-day pictures. None has "DM" or another currency unit painted in: the contract
+  board's amount fields are empty and filled at run time, and the negotiation, transfer
+  market, finance and season-end screens load no screen-specific picture, only the shared
+  buttons (`37`) and value spinner (`21`). The generator copies these pictures unchanged.
