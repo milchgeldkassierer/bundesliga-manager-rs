@@ -19,3 +19,8 @@ fi
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+if git filter-repo --version >/dev/null 2>&1; then
+  bash tools/tests/prepare-public-test.sh
+else
+  echo "check: git filter-repo is not installed; skipping tools/tests/prepare-public-test.sh" >&2
+fi

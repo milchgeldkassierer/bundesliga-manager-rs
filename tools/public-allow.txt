@@ -1,0 +1,3 @@
+# Files of the mod that tools/prepare-public.sh lets into the public copy although their
+# extension is one of the original game's data files (.VGA .CP .PAL .MAN .DAT .VOC .CMF .EXE .T
+# .V). One exact path per line; anything else with such an extension fails the verification.

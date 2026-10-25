@@ -138,7 +138,7 @@ data. The editor writes into the data directory, so keep a backup of `MANA.DAT` 
 | `crates/bmp` | The executable: VGA/mouse library, host (SDL2 or scripted headless), all screens |
 | `docs/re/` | Reverse-engineering notes, function and memory maps, subsystem specifications |
 | `tests/visual/` | Scripted scenarios for the visual comparison with the original |
-| `tools/` | `check.sh` (fmt, clippy, tests), `visual-check.sh`, DOSBox capture and Ghidra helpers |
+| `tools/` | `check.sh` (fmt, clippy, tests), `visual-check.sh`, DOSBox capture and Ghidra helpers, `prepare-public.sh` ([public copy](docs/PUBLIC.md)) |
 
 ## Legal
 
