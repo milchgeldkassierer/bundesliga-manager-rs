@@ -253,10 +253,11 @@ fn run_main(
     load_main_pictures(host)?;
     let pics = start_menu::Pictures::load(host)?;
     // The 32x23 picture of icon code 0x23, cut from the icon sheet.
-    let icon_alt = host.blank_bitmap(0x20, 0x17, 0);
+    let (icon_w, icon_h) = vga::ICON_SIZE;
+    let icon_alt = host.blank_bitmap(icon_w, icon_h, 0);
     let icons = host.load_picture(vga::ICON_SHEET.into())?;
     host.g
-        .blit_bitmap(icons, 0xa5, 0x78, icon_alt, 0, 0, 0x20, 0x17);
+        .blit_bitmap(icons, 0xa5, 0x78, icon_alt, 0, 0, icon_w, icon_h);
     host.ui.icons = Some(icons);
     host.ui.icon_alt = Some(icon_alt);
     if let Err(q) = host.delay_ticks(150) {

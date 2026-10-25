@@ -5007,7 +5007,12 @@ mod tests {
             ]
         );
         assert_eq!(mod_balance, balance);
-        for ([original, _], bonus) in [PROMOTED_TO_SECOND, PROMOTED_TO_FIRST, TOP_SCORER] {
+        let restarted = (
+            [SEASON_END_FLAG_LINES[2].1, RESTARTED_IN_EUROS],
+            crate::cups::RESTART_BALANCE,
+        );
+        for ([original, _], bonus) in [PROMOTED_TO_SECOND, PROMOTED_TO_FIRST, TOP_SCORER, restarted]
+        {
             let digits: Vec<u8> = original
                 .iter()
                 .copied()

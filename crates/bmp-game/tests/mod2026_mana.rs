@@ -93,7 +93,13 @@ fn block_3_holds_the_two_point_pair() {
     for (slot, club) in clubs.iter().enumerate() {
         let table = &club["table_2025_26"];
         let [w, d, l] = ["wins", "draws", "losses"].map(|key| int(table, key));
-        assert_eq!(m.points[slot], [2 * w + d, 2 * l + d], "slot {slot}");
+        let per_win = bmp_game::league_layout::ORIGINAL.points_per_win;
+        assert_eq!(per_win, 2);
+        assert_eq!(
+            m.points[slot],
+            [per_win * w + d, per_win * l + d],
+            "slot {slot}"
+        );
         assert_eq!(
             m.goals[slot],
             [int(table, "goals_for"), int(table, "goals_against")],

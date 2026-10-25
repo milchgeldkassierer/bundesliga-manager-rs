@@ -465,9 +465,11 @@ fn write_club(mana: &mut ManaDat, slot: usize, club: &Value, squad: &Value) -> R
         int(table, "losses")?,
     ];
     mana.crest[slot] = byte(int(club, "crest")?, "crest")?;
+    // Block 3 stays a 2-point pair: the strength recomputation reads it with the original rule.
+    let per_win = i64::from(crate::league_layout::ORIGINAL.points_per_win);
     mana.points[slot] = [
-        byte(2 * wins + draws, "plus points")?,
-        byte(2 * losses + draws, "minus points")?,
+        byte(per_win * wins + draws, "plus points")?,
+        byte(per_win * losses + draws, "minus points")?,
     ];
     mana.goals[slot] = [
         byte(int(table, "goals_for")?, "goals_for")?,

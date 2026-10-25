@@ -48,6 +48,10 @@ use crate::rng::Rng;
 use crate::runtime::Runtime;
 use crate::state::{CLUB_COUNT, GERMAN_CLUBS, GameState, MANAGER_SLOTS};
 
+/// The balance a manager restarts with after relegation from the lowest tier
+/// (`season.rs` reports it as "Sie beginnen neu mit 500.000 DM.").
+pub const RESTART_BALANCE: i32 = 500_000;
+
 /// DS:07d6: clubs left after each cup round, i.e. the pairings played in round `idx >= 1`.
 pub const CUP_ROUND_PAIRINGS: [u8; 6] = [32, 16, 8, 4, 2, 1];
 /// [`crate::state::Manager::values_132`] stage of a manager whose club is not in the cup.
@@ -921,7 +925,7 @@ pub fn season_promotion_relegation(state: &mut GameState, rt: &Runtime, rng: &mu
                         manager.league = manager.league.wrapping_add(1);
                     } else {
                         manager.value_140 = 8;
-                        manager.balance = 500_000;
+                        manager.balance = RESTART_BALANCE;
                         state.team_swap_slots(down, up, true);
                     }
                 }
