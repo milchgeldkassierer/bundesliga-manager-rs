@@ -63,7 +63,7 @@ below. `hires/<crest>.png` is its 2x version for the 2x display layer, made from
 | 133 | SONNENH. GROßASPACH | https://upload.wikimedia.org/wikipedia/de/1/1d/SG_Sonnenhof.svg | 2026-10-24 |
 | 134 | FORTUNA KÖLN | https://upload.wikimedia.org/wikipedia/commons/d/d0/SC_Fortuna_Koeln_Logo_2013%E2%80%932019%2C_2026%E2%80%93.svg | 2026-10-24 |
 | 135 | WÜRZBURGER KICKERS | https://upload.wikimedia.org/wikipedia/commons/0/0c/W%C3%BCrzburger_Kickers_Logo.svg | 2026-10-24 |
-| 136 | TSV 1860 MÜNCHEN | https://upload.wikimedia.org/wikipedia/commons/4/48/TSV_1860_M%C3%BCnchen.svg | 2026-10-24 |
+| 136 | TSV 1860 MÜNCHEN | https://upload.wikimedia.org/wikipedia/de/b/bc/Wappen_TSV_1860_FA_2026.svg | 2026-10-25 |
 | 137 | 1.FC LOK LEIPZIG | https://upload.wikimedia.org/wikipedia/commons/b/b5/Logo_1._FC_Lokomotive_Leipzig.svg | 2026-10-25 |
 | 138 | CARL ZEISS JENA | https://upload.wikimedia.org/wikipedia/commons/e/e4/Logo_FC_Carl_Zeiss_Jena.svg | 2026-10-25 |
 | 139 | FSV ZWICKAU | https://upload.wikimedia.org/wikipedia/de/0/01/FSV_Zwickau_Logo.svg | 2026-10-25 |
@@ -71,3 +71,10 @@ below. `hires/<crest>.png` is its 2x version for the 2x display layer, made from
 | 141 | FC RW ERFURT | https://upload.wikimedia.org/wikipedia/commons/2/26/Logo_of_FC_Rot-Wei%C3%9F_Erfurt.svg | 2026-10-25 |
 | 142 | CHEMNITZER FC | https://upload.wikimedia.org/wikipedia/commons/c/c5/Chemnitzer_FC_Logo.svg | 2026-10-24 |
 | 143 | KICKERS OFFENBACH | https://upload.wikimedia.org/wikipedia/de/f/f9/Logo_Kickers_Offenbach.svg | 2026-10-25 |
+
+TSV 1860 München (136) plays the 2026/27 season under the historic crest of the club's football
+department ("FA" oval), not the lion: the new TSV München von 1860 Spielbetriebs-GmbH has used it
+since July 2026, and the lion logo returns only gradually from 2027
+(https://de.wikipedia.org/wiki/TSV_1860_M%C3%BCnchen, section "Entwicklung des Vereinswappens"
+and the 2026 history, fetched 2026-10-25; the club site https://www.tsv1860.de/, which redirects
+to https://1860muenchen.com/, shows the same oval crest, fetched 2026-10-25).
