@@ -18,7 +18,7 @@ below. `hires/<crest>.png` is its 2x version for the 2x display layer, made from
 | 88 | FC AUGSBURG | https://upload.wikimedia.org/wikipedia/de/b/b5/Logo_FC_Augsburg.svg | 2026-10-24 |
 | 89 | FSV MAINZ 05 | https://upload.wikimedia.org/wikipedia/commons/9/9e/Logo_Mainz_05.svg | 2026-10-24 |
 | 90 | 1.FC UNION BERLIN | https://upload.wikimedia.org/wikipedia/commons/4/44/1._FC_Union_Berlin_Logo.svg | 2026-10-24 |
-| 91 | MÖNCHENGLADBACH | https://upload.wikimedia.org/wikipedia/commons/8/81/Borussia_M%C3%B6nchengladbach_logo.svg | 2026-10-24 |
+| 91 | B. MÖNCHENGLADBACH | https://upload.wikimedia.org/wikipedia/commons/8/81/Borussia_M%C3%B6nchengladbach_logo.svg | 2026-10-24 |
 | 92 | HAMBURGER SV | https://upload.wikimedia.org/wikipedia/commons/f/f7/Hamburger_SV_logo.svg | 2026-10-24 |
 | 93 | 1.FC KÖLN | https://upload.wikimedia.org/wikipedia/commons/0/01/1._FC_Koeln_Logo_2014%E2%80%93.svg | 2026-10-24 |
 | 94 | SV WERDER BREMEN | https://upload.wikimedia.org/wikipedia/commons/b/be/SV-Werder-Bremen-Logo.svg | 2026-10-24 |
@@ -35,19 +35,19 @@ below. `hires/<crest>.png` is its 2x version for the 2x display layer, made from
 | 105 | 1.FC NÜRNBERG | https://upload.wikimedia.org/wikipedia/commons/f/fa/1._FC_N%C3%BCrnberg_logo.svg | 2026-10-24 |
 | 106 | VFL BOCHUM | https://upload.wikimedia.org/wikipedia/commons/7/72/VfL_Bochum_logo.svg | 2026-10-24 |
 | 107 | KARLSRUHER SC | https://upload.wikimedia.org/wikipedia/commons/c/c8/Karlsruher_SC_Logo_2.svg | 2026-10-24 |
-| 108 | DYNAMO DRESDEN | https://upload.wikimedia.org/wikipedia/commons/e/e1/Logo_SG_Dynamo_Dresden_neu.svg | 2026-10-24 |
+| 108 | SG DYNAMO DRESDEN | https://upload.wikimedia.org/wikipedia/commons/e/e1/Logo_SG_Dynamo_Dresden_neu.svg | 2026-10-24 |
 | 109 | HOLSTEIN KIEL | https://upload.wikimedia.org/wikipedia/commons/3/30/Holstein_Kiel_Logo.svg | 2026-10-24 |
 | 110 | ARMINIA BIELEFELD | https://upload.wikimedia.org/wikipedia/commons/f/fd/Arminia_Bielefeld_Logo_2021%E2%80%93.svg | 2026-10-24 |
 | 111 | 1.FC MAGDEBURG | https://upload.wikimedia.org/wikipedia/commons/8/84/1._FC_Magdeburg.svg | 2026-10-24 |
 | 112 | EINTR. BRAUNSCHWEIG | https://upload.wikimedia.org/wikipedia/de/4/45/Logo_Eintracht_Braunschweig.svg | 2026-10-24 |
 | 113 | GREUTHER FÜRTH | https://upload.wikimedia.org/wikipedia/commons/b/b1/SpVgg_Greuther_F%C3%BCrth_2017.svg | 2026-10-24 |
 | 114 | VFL OSNABRÜCK | https://upload.wikimedia.org/wikipedia/commons/4/4e/VfL_Osnabrueck_Logo_2021%E2%80%93.svg | 2026-10-24 |
-| 115 | ENERGIE COTTBUS | https://upload.wikimedia.org/wikipedia/commons/5/55/Logo_Energie_Cottbus.svg | 2026-10-24 |
+| 115 | FC ENERGIE COTTBUS | https://upload.wikimedia.org/wikipedia/commons/5/55/Logo_Energie_Cottbus.svg | 2026-10-24 |
 | 116 | FORTUNA DÜSSELDORF | https://upload.wikimedia.org/wikipedia/commons/9/94/Fortuna_D%C3%BCsseldorf.svg | 2026-10-24 |
 | 117 | PREUßEN MÜNSTER | https://upload.wikimedia.org/wikipedia/de/7/7e/SC_Preussen_Muenster_Logo_2018.svg | 2026-10-24 |
 | 118 | ROT-WEISS ESSEN | https://upload.wikimedia.org/wikipedia/de/8/8a/Logo_Rot-Weiss_Essen.svg | 2026-10-24 |
 | 119 | MSV DUISBURG | https://upload.wikimedia.org/wikipedia/commons/0/02/Msv_duisburg_%282017%29.svg | 2026-10-24 |
-| 120 | HANSA ROSTOCK | https://upload.wikimedia.org/wikipedia/commons/8/8f/F.C._Hansa_Rostock_Logo.svg | 2026-10-24 |
+| 120 | FC HANSA ROSTOCK | https://upload.wikimedia.org/wikipedia/commons/8/8f/F.C._Hansa_Rostock_Logo.svg | 2026-10-24 |
 | 121 | SC VERL | https://upload.wikimedia.org/wikipedia/commons/c/ce/SC_Verl_Logo.svg | 2026-10-24 |
 | 122 | ALEMANNIA AACHEN | https://upload.wikimedia.org/wikipedia/commons/9/94/Alemannia_Aachen_2010.svg | 2026-10-24 |
 | 123 | SV WEHEN WIESBADEN | https://upload.wikimedia.org/wikipedia/fr/3/3d/Logo_SV_Wehen_Wiesbaden.svg | 2026-10-25 |

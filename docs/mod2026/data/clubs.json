@@ -276,7 +276,7 @@
   },
   {
     "slot": 11,
-    "name": "MÖNCHENGLADBACH",
+    "name": "B. MÖNCHENGLADBACH",
     "league": "bundesliga",
     "table_league": "bundesliga",
     "table_2025_26": {
@@ -701,7 +701,7 @@
   },
   {
     "slot": 28,
-    "name": "DYNAMO DRESDEN",
+    "name": "SG DYNAMO DRESDEN",
     "league": "2-bundesliga",
     "table_league": "2-bundesliga",
     "table_2025_26": {
@@ -876,7 +876,7 @@
   },
   {
     "slot": 35,
-    "name": "ENERGIE COTTBUS",
+    "name": "FC ENERGIE COTTBUS",
     "league": "2-bundesliga",
     "table_league": "3-liga",
     "table_2025_26": {
@@ -1001,7 +1001,7 @@
   },
   {
     "slot": 40,
-    "name": "HANSA ROSTOCK",
+    "name": "FC HANSA ROSTOCK",
     "league": "3-liga",
     "table_league": "3-liga",
     "table_2025_26": {

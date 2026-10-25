@@ -241,7 +241,7 @@
     {"name": "BURKE", "position": "ST", "market_value_eur": 3000000, "birth_date": "1997-04-07"},
     {"name": "LJUBICIC", "position": "ST", "market_value_eur": 2000000, "birth_date": "2002-02-28"}
   ]},
-  {"slot": 11, "club": "MÖNCHENGLADBACH", "source": "https://www.transfermarkt.de/borussia-monchengladbach/kader/verein/18/saison_id/2026/plus/1", "fetched": "2026-10-24", "players": [
+  {"slot": 11, "club": "B. MÖNCHENGLADBACH", "source": "https://www.transfermarkt.de/borussia-monchengladbach/kader/verein/18/saison_id/2026/plus/1", "fetched": "2026-10-24", "players": [
     {"name": "NICOLAS", "position": "TW", "market_value_eur": 8000000, "birth_date": "1997-10-21"},
     {"name": "DIKS", "position": "AB", "market_value_eur": 5000000, "birth_date": "1996-10-06"},
     {"name": "ITAKURA", "position": "AB", "market_value_eur": 4000000, "birth_date": "1997-01-27"},
@@ -615,7 +615,7 @@
     {"name": "LAGHRISSI", "position": "ST", "market_value_eur": 800000, "birth_date": "2008-06-04"},
     {"name": "BROSCHINSKI", "position": "ST", "market_value_eur": 600000, "birth_date": "2000-09-23"}
   ]},
-  {"slot": 28, "club": "DYNAMO DRESDEN", "source": "https://www.transfermarkt.de/sg-dynamo-dresden/kader/verein/129/saison_id/2026/plus/1", "fetched": "2026-10-24", "players": [
+  {"slot": 28, "club": "SG DYNAMO DRESDEN", "source": "https://www.transfermarkt.de/sg-dynamo-dresden/kader/verein/129/saison_id/2026/plus/1", "fetched": "2026-10-24", "players": [
     {"name": "SCHREIBER", "position": "TW", "market_value_eur": 900000, "birth_date": "2002-04-24"},
     {"name": "BETHKE", "position": "TW", "market_value_eur": 500000, "birth_date": "2003-03-21"},
     {"name": "MÜLLER", "position": "AB", "market_value_eur": 2000000, "birth_date": "2006-02-14"},
@@ -769,7 +769,7 @@
     {"name": "MEIßNER", "position": "ST", "market_value_eur": 800000, "birth_date": "1999-10-08"},
     {"name": "RIESSELMANN", "position": "ST", "market_value_eur": 300000, "birth_date": "2005-07-05"}
   ]},
-  {"slot": 35, "club": "ENERGIE COTTBUS", "source": "https://www.transfermarkt.de/fc-energie-cottbus/kader/verein/25/saison_id/2026/plus/1", "fetched": "2026-10-24", "players": [
+  {"slot": 35, "club": "FC ENERGIE COTTBUS", "source": "https://www.transfermarkt.de/fc-energie-cottbus/kader/verein/25/saison_id/2026/plus/1", "fetched": "2026-10-24", "players": [
     {"name": "LOTKA", "position": "TW", "market_value_eur": 700000, "birth_date": "2001-05-25"},
     {"name": "ERLEIN", "position": "AB", "market_value_eur": 3000000, "birth_date": "2007-07-05"},
     {"name": "MANU", "position": "AB", "market_value_eur": 1000000, "birth_date": "2003-11-23"},
@@ -879,7 +879,7 @@
     {"name": "LOBINGER", "position": "ST", "market_value_eur": 600000, "birth_date": "1999-02-22"},
     {"name": "REMMERT", "position": "ST", "market_value_eur": 400000, "birth_date": "2005-07-09"}
   ]},
-  {"slot": 40, "club": "HANSA ROSTOCK", "source": "https://www.transfermarkt.de/fc-hansa-rostock/kader/verein/30/saison_id/2026/plus/1", "fetched": "2026-10-24", "players": [
+  {"slot": 40, "club": "FC HANSA ROSTOCK", "source": "https://www.transfermarkt.de/fc-hansa-rostock/kader/verein/30/saison_id/2026/plus/1", "fetched": "2026-10-24", "players": [
     {"name": "UNBEHAUN", "position": "TW", "market_value_eur": 350000, "birth_date": "2001-02-27"},
     {"name": "JANTUNEN", "position": "TW", "market_value_eur": 250000, "birth_date": "2005-01-31"},
     {"name": "GÜRLEYEN", "position": "AB", "market_value_eur": 400000, "birth_date": "1999-04-26"},

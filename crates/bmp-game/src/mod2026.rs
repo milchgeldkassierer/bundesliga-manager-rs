@@ -1350,7 +1350,7 @@ mod tests {
     fn mod_clubs_get_table_based_strengths() {
         let mut m = ManaDat::parse(&zeroed_mana()).unwrap();
         write_mod_clubs(&mut m).unwrap();
-        assert_eq!(m.clubs[40].name_bytes(), b"HANSA ROSTOCK");
+        assert_eq!(m.clubs[40].name_bytes(), "FC HANSA ROSTOCK".as_bytes());
         // Group averages: points 39, scored 63, conceded 55; the rank term is 20 - 5.
         assert_eq!(m.strength[40], [37, 37, 37]);
         // Slot 9 (FSV MAINZ 05, Bundesliga): base 70, size 18, rank 10, averages 38/58/50.

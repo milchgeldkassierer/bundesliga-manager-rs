@@ -25,9 +25,13 @@ The 64 German club slots for the 2026/27 season (PRD R1, R3), checked by
   20th after it was refused a 3. Liga licence for 2026/27; TSV Havelse therefore stayed up as
   16th. Würzburger Kickers were promoted as Regionalliga Bayern runners-up, because the champion
   1. FC Nürnberg II did not apply for a licence.
-- **Names:** upper case in the style of `MANA.DAT` (for example `1.FC KÖLN`, `MÖNCHENGLADBACH`,
-  `EINTR. BRAUNSCHWEIG`), at most 19 characters. Clubs that the original already has keep the
-  original's name (`CARL ZEISS JENA`, `FC RW ERFURT`, `HALLESCHER FC`, `CHEMNITZER FC`).
+- **Names:** upper case in the style of `MANA.DAT` (for example `1.FC KÖLN`,
+  `B. MÖNCHENGLADBACH`, `EINTR. BRAUNSCHWEIG`), at most 19 characters and in every game font no
+  wider than the widest original name (`EINTR. BRAUNSCHWEIG` 79 px in micro4, `EINTRACHT
+  FRANKFURT` 130 px in flow and 247 px in newbold). Clubs that the original already has keep the
+  original's name (`CARL ZEISS JENA`, `FC RW ERFURT`, `HALLESCHER FC`, `CHEMNITZER FC`), except
+  where the owner chose the fuller name (owner decision 2026-10-25: `SG DYNAMO DRESDEN`,
+  `FC HANSA ROSTOCK`, `FC ENERGIE COTTBUS`, `B. MÖNCHENGLADBACH`).
 - **Sources:** the German Wikipedia pages of the 2025/26 league (table) and of the club's 2026/27
   league (membership), fetched 2026-10-24 (2026-10-25 for the pool clubs added then). Aue and Ulm
   name their real 2026/27 Regionalliga as membership source.
