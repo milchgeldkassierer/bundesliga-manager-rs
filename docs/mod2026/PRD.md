@@ -144,9 +144,10 @@ Everything else plays like version 1.0.0.
   the Europa League, not the other way round.)
   Abbreviated forms, for example "POKAL DER LANDESM.", get matching short forms ("CHAMPIONS L.",
   "EUROPA L.", "CONFERENCE L.") that fit the same widths.
-  **Conference League** (owner decision 2026-10-25, #190): it is wider than the names it replaces in
-  every font, so its width is measured against the field or the screen at each place, not against the
-  original text. The full name is shown wherever it fits there, otherwise "CONFERENCE L.".
+  **Conference League and Europa League** (owner decisions 2026-10-25, #190, #256): they are wider
+  than the names they replace, so their width is measured against the field or the screen at each
+  place, not against the original text. The full name is shown wherever it fits there, otherwise
+  "CONFERENCE L." / "EUROPA L.". The Champions League stays no wider than the original.
 - **Format:** the competitions keep the original's format and qualification. Only the names
   change.
 - **Text widths:** every renamed text must fit its original field. Where it does not, a shorter
