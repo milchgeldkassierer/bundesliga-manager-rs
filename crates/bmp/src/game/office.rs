@@ -776,6 +776,16 @@ mod tests {
         assert_eq!(cells, bmp_game::mod2026::CAPTION_CELLS);
     }
 
+    /// The mod generator's cup caption cells are the cup submenu's buttons after the DFB-Pokal
+    /// one: the European Cup, the Cup Winners' Cup and the UEFA Cup.
+    #[test]
+    fn the_mod_cup_caption_cells_are_the_cup_submenus_european_cups() {
+        const CUPS: i16 = 4;
+        assert_eq!(SUB_COUNT[CUPS as usize], 4);
+        let cells = [1, 2, 3].map(|cnt| submenu_icon_code(CUPS, cnt));
+        assert_eq!(cells, bmp_game::mod2026::CUP_CELLS);
+    }
+
     #[test]
     fn the_info_panel_texts_unscramble_to_the_credits() {
         let plain = |t: &[u8]| string_xor_copy(t, INFO_PANEL_KEY);

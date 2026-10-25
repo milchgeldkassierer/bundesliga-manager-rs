@@ -33,6 +33,17 @@ the marker file `MOD2026.DAT`; without it the port behaves exactly like v1.0.0.
   buttons read "3. LIGA". Nothing of the original sheet is committed; a sheet whose captions
   are not laid out as in the original is refused before anything is written, a source without
   one gets none.
+- **Cup submenu captions** (`crates/bmp-game/src/mod2026.rs` `cup_captions`, PRD R1c): the
+  generator replaces the caption band (rows 12..21) of the cup submenu's European cup icons
+  (`PIC/3.VGA` codes 28/29/30, "LANDES MEISTER", "POKAL SIEGER", "UEFA-CUP") by two lines in
+  the 3 x 4 font of the original's two-line captions, in their colours and shadow, centred:
+  "CHAMP." / "LEAGUE", "CONF." / "LEAGUE" and "EUROPA" / "LEAGUE". "CHAMPIONS" and
+  "CONFERENCE" are 33 and 39 columns wide in this font and do not fit the 32-column button, so
+  they are cut like the original's "BUNDESL.". The letters of the original's captions are
+  committed as small masks, `C`, `F`, `H`, `U` and `.` are drawn new in the same style;
+  nothing of the original sheet is committed. The band starts in the background: the
+  single-line "UEFA-CUP" caption and the crests' bottom shadow pixels in row 12 give way. A sheet whose cup icons are not laid out as in the original (checked by redrawing
+  "SIEGER" from the masks) is refused before anything is written.
 - **Strength grouping** (`crates/bmp-game/src/strength.rs`, `strength::MOD2026`): the team
   editor's strength recomputation moved unchanged from `bmp` to `bmp-game`, with its league
   grouping as a parameter. The generator runs it with the groups 0..17 / 18..35 / 36..55 /

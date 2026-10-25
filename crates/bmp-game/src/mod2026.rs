@@ -49,7 +49,7 @@ pub fn is_active(data_dir: &Path) -> bool {
 /// Writes the mod data directory `out`: a copy of every file below `from` with the mod clubs
 /// written into `MANA.DAT` and every crest of [`CRESTS`] written as `PIC/<n>.VGA` (replacing
 /// the copied original picture; numbers without a PNG keep it), the icon sheet `PIC/3.VGA`
-/// with [`third_tier_captions`] (when `from` has one), then [`MARKER`].
+/// with [`third_tier_captions`] and [`cup_captions`] (when `from` has one), then [`MARKER`].
 ///
 /// Refuses, before anything is created or written, an `out` that is `from` or lies inside
 /// it, one that is or lies inside the owner's play directory `<repo>/BMP`, one that
@@ -257,8 +257,151 @@ fn third_tier_captions(sheet: &mut VgaImage) -> Result<(), String> {
     Ok(())
 }
 
-/// [`ICON_SHEET`] of `source` with [`third_tier_captions`] applied, as file bytes; `None` when
-/// `source` has none.
+/// The (`LANDES MEISTER`, `POKAL SIEGER`, `UEFA-CUP`) icon codes of the cup submenu's European
+/// cup buttons (pinned to the office's submenu by a test in `bmp`).
+pub const CUP_CELLS: [i16; 3] = [28, 29, 30];
+/// The two-line captions written over [`CUP_CELLS`]: `CHAMPIONS` does not fit the 32 columns
+/// in this font (33 without its shadow), so it is cut like the original's `BUNDESL.`.
+const CUP_CAPTIONS: [[&[u8]; 2]; 3] = [
+    [b"CHAMP.", b"LEAGUE"],
+    [b"CONF.", b"LEAGUE"],
+    [b"EUROPA", b"LEAGUE"],
+];
+/// The rows of a cell that hold a two-line caption: four glyph rows and the shadow row each.
+const CUP_CAPTION_ROWS: std::ops::Range<usize> = 12..22;
+/// The rows of one line of a two-line caption.
+const LINE_ROWS: usize = 5;
+/// The second line of `POKAL SIEGER` and its first column, redrawn to check the font.
+const SIEGER: (&[u8], usize) = (b"SIEGER", 6);
+/// The 4-row font of the two-line captions: `W` white, `a` dark and `b` light anti-alias, `.`
+/// background. Letters of the original's two-line captions are drawn as there; `C`, `F`, `H`,
+/// `U` and `.` are new in the same style.
+const SMALL_FONT: [(u8, [&[u8]; 4]); 16] = [
+    (b'.', [b".", b".", b".", b"W"]),
+    (b'A', [b"aWa", b"W.W", b"WWW", b"W.W"]),
+    (b'C', [b"aWW", b"W..", b"W..", b"aWW"]),
+    (b'E', [b"WWW", b"WWa", b"W..", b"WWW"]),
+    (b'F', [b"WWW", b"WWa", b"W..", b"W.."]),
+    (b'G', [b"aWW", b"W..", b"W.W", b"aWa"]),
+    (b'H', [b"W.W", b"WWW", b"W.W", b"W.W"]),
+    (b'I', [b"W", b"W", b"W", b"W"]),
+    (b'L', [b"W..", b"W..", b"W..", b"WWW"]),
+    (b'M', [b"WaW", b"WWW", b"W.W", b"W.W"]),
+    (b'N', [b"WaW", b"WWW", b"WWW", b"WaW"]),
+    (b'O', [b"aWa", b"W.W", b"W.W", b"aWa"]),
+    (b'P', [b"WWa", b"W.W", b"WWa", b"W.."]),
+    (b'R', [b"WWa", b"W.W", b"WWa", b"W.W"]),
+    (b'S', [b"bWW", b"Wa.", b".bW", b"WWb"]),
+    (b'U', [b"W.W", b"W.W", b"W.W", b"aWa"]),
+];
+
+/// The glyph of `c` in [`SMALL_FONT`].
+fn small_glyph(c: u8) -> &'static [&'static [u8]; 4] {
+    let i = SMALL_FONT
+        .binary_search_by_key(&c, |&(g, _)| g)
+        .unwrap_or_else(|_| panic!("no glyph for {}", char::from(c)));
+    &SMALL_FONT[i].1
+}
+
+/// The width of `text` in [`SMALL_FONT`], one column between glyphs, without the shadow.
+fn small_text_width(text: &[u8]) -> usize {
+    let glyphs: usize = text.iter().map(|&c| small_glyph(c)[0].len()).sum();
+    glyphs + text.len().saturating_sub(1)
+}
+
+/// One line of a two-line caption, `text` from column `x`, in the colours `[background, white,
+/// dark anti-alias, light anti-alias, shadow]`: every glyph pixel casts a shadow one pixel
+/// right and down, below the glyph pixels.
+fn caption_line(text: &[u8], x: usize, roles: [u8; 5]) -> [[u8; ICON_WIDTH]; LINE_ROWS] {
+    let [background, white, dark, light, shadow] = roles;
+    let mut line = [[background; ICON_WIDTH]; LINE_ROWS];
+    let mut pixels = Vec::new();
+    let mut left = x;
+    for &c in text {
+        let glyph = small_glyph(c);
+        for (y, row) in glyph.iter().enumerate() {
+            for (dx, &p) in row.iter().enumerate() {
+                if p != b'.' {
+                    pixels.push((left + dx, y, p));
+                }
+            }
+        }
+        left += glyph[0].len() + 1;
+    }
+    for &(x, y, _) in &pixels {
+        line[y + 1][x + 1] = shadow;
+    }
+    for &(x, y, p) in &pixels {
+        line[y][x] = match p {
+            b'W' => white,
+            b'a' => dark,
+            _ => light,
+        };
+    }
+    line
+}
+
+/// The caption band ([`CUP_CAPTION_ROWS`]) of two lines, each centred in the button.
+fn cup_caption(lines: [&[u8]; 2], roles: [u8; 5]) -> Vec<[u8; ICON_WIDTH]> {
+    lines
+        .iter()
+        .flat_map(|text| caption_line(text, (ICON_WIDTH - small_text_width(text)) / 2, roles))
+        .collect()
+}
+
+/// Makes the cup submenu's European cup buttons read `CHAMP. LEAGUE`, `CONF. LEAGUE` and
+/// `EUROPA LEAGUE` ([`CUP_CAPTIONS`]): replaces the caption band of each [`CUP_CELLS`] icon by
+/// two lines in the font of the original's two-line captions, in their own colours. Refuses,
+/// leaving `sheet` unchanged, a sheet whose cup buttons are not laid out as in the original
+/// (checked by redrawing `SIEGER` from [`SMALL_FONT`]).
+fn cup_captions(sheet: &mut VgaImage) -> Result<(), String> {
+    let (width, height) = (usize::from(sheet.width), usize::from(sheet.height));
+    let (left, top) = CUP_CELLS
+        .map(vga::icon_origin)
+        .iter()
+        .fold((0, 0), |(l, t), &(x, y)| (l.max(x), t.max(y)));
+    if width < index(left) + ICON_WIDTH || height < index(top) + CUP_CAPTION_ROWS.end {
+        return Err(format!(
+            "{width}x{height} is too small for the cup captions"
+        ));
+    }
+    let at = |code, x, y| icon_index(width, code, x, y);
+    let rows = |sheet: &VgaImage, code: i16, ys: std::ops::Range<usize>| -> Vec<u8> {
+        ys.flat_map(|y| (0..ICON_WIDTH).map(move |x| (x, y)))
+            .map(|(x, y)| sheet.pixels[at(code, x, y)])
+            .collect()
+    };
+    let art = 0..CUP_CAPTION_ROWS.start;
+    for code in CUP_CELLS {
+        if rows(sheet, code, art.clone()) != rows(sheet, CUP_CELLS[0], art.clone()) {
+            return Err(format!(
+                "the picture of icon {code} differs from icon {}",
+                CUP_CELLS[0]
+            ));
+        }
+    }
+    let (text, x) = SIEGER;
+    let line = CUP_CAPTION_ROWS.start + LINE_ROWS;
+    let roles = [(0, 0), (x + 1, 0), (x + 1, 1), (x, 0), (x + 3, 1)]
+        .map(|(dx, dy)| sheet.pixels[at(CUP_CELLS[1], dx, line + dy)]);
+    if (1..5).any(|i| roles[..i].contains(&roles[i])) {
+        return Err("the cup caption's colours are not five distinct ones".into());
+    }
+    if caption_line(text, x, roles).concat() != rows(sheet, CUP_CELLS[1], line..line + LINE_ROWS) {
+        return Err(format!("icon {} does not read POKAL SIEGER", CUP_CELLS[1]));
+    }
+    for (code, lines) in CUP_CELLS.into_iter().zip(CUP_CAPTIONS) {
+        for (dy, row) in cup_caption(lines, roles).iter().enumerate() {
+            for (x, &p) in row.iter().enumerate() {
+                sheet.pixels[at(code, x, CUP_CAPTION_ROWS.start + dy)] = p;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// [`ICON_SHEET`] of `source` with [`third_tier_captions`] and [`cup_captions`] applied, as file
+/// bytes; `None` when `source` has none.
 fn mod_icon_sheet(source: &Path) -> Result<Option<Vec<u8>>, String> {
     let path = source.join(vga::file_name(ICON_SHEET));
     let bytes = match fs::read(&path) {
@@ -268,6 +411,7 @@ fn mod_icon_sheet(source: &Path) -> Result<Option<Vec<u8>>, String> {
     };
     let mut sheet = vga::parse(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
     third_tier_captions(&mut sheet)
+        .and_then(|()| cup_captions(&mut sheet))
         .map_err(|e| format!("{}: not the original icon sheet: {e}", path.display()))?;
     Ok(Some(vga::encode(&sheet)))
 }
@@ -495,7 +639,208 @@ mod tests {
             }
         }
         *icon_pixel(&mut sheet, 14, 0, 0) = 5;
+        let (text, x) = SIEGER;
+        let line = caption_line(text, x, SYNTHETIC_CUP_ROLES);
+        for (dy, row) in line.iter().enumerate() {
+            for (dx, &c) in row.iter().enumerate() {
+                let y = CUP_CAPTION_ROWS.start + LINE_ROWS + dy;
+                *icon_pixel(&mut sheet, CUP_CELLS[1], dx, y) = c;
+            }
+        }
+        for code in CUP_CELLS {
+            *icon_pixel(&mut sheet, code, 4, 3) = 8;
+        }
+        *icon_pixel(&mut sheet, CUP_CELLS[2], 20, 18) = 9;
         sheet
+    }
+
+    /// The cup caption colours of [`synthetic_icon_sheet`]: background, white, dark and light
+    /// anti-alias, shadow.
+    const SYNTHETIC_CUP_ROLES: [u8; 5] = [1, 15, 7, 6, 0];
+
+    /// The indices of the caption bands of the [`CUP_CELLS`] in a sheet `width` pixels wide.
+    fn cup_bands(width: u16) -> Vec<usize> {
+        CUP_CELLS
+            .iter()
+            .flat_map(|&code| {
+                CUP_CAPTION_ROWS.flat_map(move |y| {
+                    (0..ICON_WIDTH).map(move |x| icon_index(usize::from(width), code, x, y))
+                })
+            })
+            .collect()
+    }
+
+    /// `patched` with the pixels at `indices` taken from `original`.
+    fn restored(patched: &VgaImage, original: &VgaImage, indices: &[usize]) -> VgaImage {
+        let mut sheet = patched.clone();
+        for &i in indices {
+            sheet.pixels[i] = original.pixels[i];
+        }
+        sheet
+    }
+
+    /// The text of one caption line (`rows`, four glyph rows), read glyph by glyph: ink is any
+    /// colour of `ink` (white, dark and light anti-alias), glyphs are the column runs with ink, each matched against
+    /// [`SMALL_FONT`].
+    fn read_caption_line(rows: &[&[u8]], ink: [u8; 3]) -> String {
+        let [white, dark, _] = ink;
+        let inked = |x: usize| rows.iter().any(|row| ink.contains(&row[x]));
+        let mut text = String::new();
+        let mut x = 0;
+        while x < ICON_WIDTH {
+            if !inked(x) {
+                x += 1;
+                continue;
+            }
+            let end = (x..ICON_WIDTH).find(|&e| !inked(e)).unwrap_or(ICON_WIDTH);
+            let mask: Vec<Vec<u8>> = rows
+                .iter()
+                .map(|row| {
+                    row[x..end]
+                        .iter()
+                        .map(|&p| match p {
+                            p if p == white => b'W',
+                            p if p == dark => b'a',
+                            p if ink.contains(&p) => b'b',
+                            _ => b'.',
+                        })
+                        .collect()
+                })
+                .collect();
+            let glyph = SMALL_FONT
+                .iter()
+                .find(|(_, g)| g.iter().zip(&mask).all(|(a, b)| *a == b.as_slice()))
+                .map_or('?', |&(c, _)| char::from(c));
+            text.push(glyph);
+            x = end;
+        }
+        text
+    }
+
+    /// Asserts that `patched` is `original` with only the caption bands of the [`CUP_CELLS`]
+    /// changed, each to two lines in the caption colours `roles` (background, white, dark and
+    /// light anti-alias, shadow) that read [`CUP_CAPTIONS`] and stay inside the button with
+    /// their shadows; returns the lines read.
+    fn assert_cup_captions(original: &VgaImage, patched: &VgaImage, roles: [u8; 5]) -> Vec<String> {
+        assert_eq!(
+            (patched.width, patched.height),
+            (original.width, original.height)
+        );
+        let bands = cup_bands(original.width);
+        for (i, (a, b)) in original.pixels.iter().zip(&patched.pixels).enumerate() {
+            assert!(
+                a == b || bands.contains(&i),
+                "pixel {i} outside the cup captions changed"
+            );
+        }
+        let [background, white, dark, light, _] = roles;
+        let mut read = Vec::new();
+        for code in CUP_CELLS {
+            let at = |x, y| icon_index(usize::from(original.width), code, x, y);
+            let band: Vec<Vec<u8>> = CUP_CAPTION_ROWS
+                .map(|y| (0..ICON_WIDTH).map(|x| patched.pixels[at(x, y)]).collect())
+                .collect();
+            assert!(
+                CUP_CAPTION_ROWS.clone().any(|y| (0..ICON_WIDTH)
+                    .any(|x| patched.pixels[at(x, y)] != original.pixels[at(x, y)])),
+                "icon {code} unchanged"
+            );
+            assert!(
+                band.iter().flatten().all(|p| roles.contains(p)),
+                "icon {code} uses a colour outside the caption's"
+            );
+            for row in &band {
+                assert_eq!(row[0], background, "icon {code} clipped on the left");
+                assert_eq!(
+                    row[ICON_WIDTH - 1],
+                    background,
+                    "icon {code} clipped on the right"
+                );
+            }
+            for line in band.chunks(LINE_ROWS) {
+                let glyph_rows: Vec<&[u8]> = line[..4].iter().map(Vec::as_slice).collect();
+                assert!(
+                    !line[4].iter().any(|p| [white, dark, light].contains(p)),
+                    "icon {code} draws glyphs into a shadow row"
+                );
+                read.push(read_caption_line(&glyph_rows, [white, dark, light]));
+            }
+        }
+        let expected: Vec<String> = CUP_CAPTIONS
+            .iter()
+            .flatten()
+            .map(|t| String::from_utf8(t.to_vec()).unwrap())
+            .collect();
+        assert_eq!(read, expected);
+        read
+    }
+
+    #[test]
+    fn small_font_is_sorted_and_four_rows_of_one_width() {
+        assert!(SMALL_FONT.windows(2).all(|w| w[0].0 < w[1].0));
+        for (c, glyph) in SMALL_FONT {
+            assert!(
+                glyph.iter().all(|row| row.len() == glyph[0].len()),
+                "{}",
+                char::from(c)
+            );
+        }
+    }
+
+    /// Every cup caption fits the button with its shadow and one background column on each
+    /// side; `CHAMPIONS` would not.
+    #[test]
+    fn cup_captions_fit_the_button() {
+        for text in CUP_CAPTIONS.iter().flatten() {
+            assert!(small_text_width(text) < ICON_WIDTH - 2, "{text:?}");
+        }
+        assert!(small_text_width(b"CHAMPIONS") >= ICON_WIDTH - 2);
+    }
+
+    #[test]
+    fn cup_captions_read_champions_conference_and_europa_league() {
+        let original = synthetic_icon_sheet();
+        let mut sheet = original.clone();
+        cup_captions(&mut sheet).unwrap();
+        assert_cup_captions(&original, &sheet, SYNTHETIC_CUP_ROLES);
+    }
+
+    #[test]
+    fn cup_captions_refuse_an_unexpected_sheet() {
+        let resized = |width: u16, height: u16| {
+            let mut sheet = synthetic_icon_sheet();
+            let mut pixels = Vec::new();
+            for y in 0..usize::from(height) {
+                let start = y * usize::from(sheet.width);
+                pixels.extend_from_slice(&sheet.pixels[start..start + usize::from(width)]);
+            }
+            (sheet.width, sheet.height, sheet.pixels) = (width, height, pixels);
+            sheet
+        };
+        let changed = |code: i16, x: usize, y: usize, c: u8| {
+            let mut sheet = synthetic_icon_sheet();
+            *icon_pixel(&mut sheet, code, x, y) = c;
+            sheet
+        };
+        let (_, x) = SIEGER;
+        for sheet in [
+            resized(197, 141),
+            changed(30, 4, 3, 2),
+            changed(29, x + 1, 17, 3),
+            changed(29, 20, 21, 3),
+            changed(29, x + 1, 18, 15),
+        ] {
+            let mut patched = sheet.clone();
+            assert!(cup_captions(&mut patched).is_err());
+            assert_eq!(patched, sheet);
+        }
+        // Icon 30's caption band ends at row 141.
+        cup_captions(&mut resized(197, 142)).unwrap();
+        assert!(
+            cup_captions(&mut resized(197, 141))
+                .unwrap_err()
+                .contains("too small")
+        );
     }
 
     /// Asserts that `patched` is `original` with only the captions of the three `AM-OBERL.`
@@ -636,7 +981,7 @@ mod tests {
     /// `PIC/1.PAL`, which the copy test keeps byte-identical); its header keeps the original
     /// width and height bytes, and only the packed length follows the new pixels.
     #[test]
-    fn build_writes_3_liga_captions_into_the_icon_sheet() {
+    fn build_writes_mod_captions_into_the_icon_sheet() {
         let Some(data) = bmp_formats::data_dir() else {
             return;
         };
@@ -657,7 +1002,25 @@ mod tests {
         }
         let original = vga::parse(&before).unwrap();
         let patched = vga::parse(&after).unwrap();
-        assert_captions_copied_from_2_liga(&original, &patched);
+        let without_cups = restored(&patched, &original, &cup_bands(original.width));
+        let digits = assert_captions_copied_from_2_liga(&original, &without_cups);
+        let third_tier: Vec<usize> = (0..original.pixels.len())
+            .filter(|&i| without_cups.pixels[i] != original.pixels[i])
+            .collect();
+        assert_eq!(digits.len(), 3);
+        // The cup captions in the colours of POKAL SIEGER's second line: background, white,
+        // dark and light anti-alias, shadow.
+        let (_, x) = SIEGER;
+        let at = |dx, dy| original.pixels[icon_index(usize::from(original.width), 29, dx, dy)];
+        let roles = [
+            at(0, 17),
+            at(x + 1, 17),
+            at(x + 1, 18),
+            at(x, 17),
+            at(x + 3, 18),
+        ];
+        let without_tables = restored(&patched, &original, &third_tier);
+        assert_cup_captions(&original, &without_tables, roles);
         fs::remove_dir_all(&dir).unwrap();
     }
 

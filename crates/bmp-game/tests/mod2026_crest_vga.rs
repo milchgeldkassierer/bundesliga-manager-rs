@@ -82,7 +82,7 @@ fn built_crests_decode_to_the_png_indices() {
         assert_eq!(image.pixels, pixels, "{name} pixels");
     }
     // Pictures without a crest PNG keep the copied original bytes, except the icon sheet
-    // 3.VGA with the 3. LIGA captions (checked in `mod2026`'s unit tests).
+    // 3.VGA with the 3. LIGA and European cup captions (checked in `mod2026`'s unit tests).
     for (name, bytes) in pictures(&data.join("PIC")) {
         let n: u8 = name.trim_end_matches(".VGA").parse().unwrap();
         if !crests.contains_key(&n) && n != vga::ICON_SHEET {
