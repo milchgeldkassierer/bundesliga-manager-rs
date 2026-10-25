@@ -50,7 +50,7 @@ below. `hires/<crest>.png` is its 2x version for the 2x display layer, made from
 | 120 | HANSA ROSTOCK | https://upload.wikimedia.org/wikipedia/commons/8/8f/F.C._Hansa_Rostock_Logo.svg | 2026-10-24 |
 | 121 | SC VERL | https://upload.wikimedia.org/wikipedia/commons/c/ce/SC_Verl_Logo.svg | 2026-10-24 |
 | 122 | ALEMANNIA AACHEN | https://upload.wikimedia.org/wikipedia/commons/9/94/Alemannia_Aachen_2010.svg | 2026-10-24 |
-| 123 | SV WEHEN WIESBADEN | https://upload.wikimedia.org/wikipedia/de/e/e0/SV_Wehen_Logo.png | 2026-10-24 |
+| 123 | SV WEHEN WIESBADEN | https://upload.wikimedia.org/wikipedia/fr/3/3d/Logo_SV_Wehen_Wiesbaden.svg | 2026-10-25 |
 | 124 | SV WALDHOF MANNHEIM | https://upload.wikimedia.org/wikipedia/commons/1/17/Svwaldhof.svg | 2026-10-24 |
 | 125 | VIKTORIA KÖLN | https://upload.wikimedia.org/wikipedia/commons/d/dc/FC_Viktoria_K%C3%B6ln_1904_Logo.svg | 2026-10-24 |
 | 126 | FC INGOLSTADT 04 | https://upload.wikimedia.org/wikipedia/de/5/55/FC-Ingolstadt_logo.svg | 2026-10-24 |
