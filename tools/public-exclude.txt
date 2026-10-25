@@ -2,5 +2,6 @@
 # One plain path per line (no glob: or regex: lines); a directory covers everything below it.
 # Images showing original game graphics.
 docs/screenshots/
+tests/mod2026/golden/
 # Raw research data (market values and the like).
 docs/mod2026/research/

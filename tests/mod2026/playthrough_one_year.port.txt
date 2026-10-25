@@ -1,0 +1,86 @@
+# Mod 2026 playthrough, run B (#194): a new one-year game 2026/27 on a mod data directory
+# (manager "ADI", the clicks of office_2026.port.txt plus "1-Jahres-Spiel" in the options, as
+# in tests/visual/season_end.fixture-jahr.txt; a one-year game keeps the manager's SV Werder
+# Bremen in the Bundesliga), the office of the Bundesliga club, match day 1 with its live
+# match (TSG Hoffenheim - SV Werder Bremen), the half-time and full-time results, the three
+# tables, the newspaper and the next office.
+# Checked by crates/bmp/tests/mod2026_playthrough.rs against tests/mod2026/golden/. Run it by
+# hand on a mod data directory built outside the repo:
+#   bmp mod2026 build --from <original data> --out /tmp/bmp-mod2026
+#   bmp --data /tmp/bmp-mod2026 run --script tests/mod2026/playthrough_one_year.port.txt \
+#       --shots /tmp/bmp-mod2026-shots --time 45817 --time2 45841
+# seed: 45817
+# seed2: 45841
+key space
+wait 500
+click 160 120
+wait 4000
+click 40 220
+wait 200
+type adi
+key enter
+wait 200
+click 40 120
+wait 300
+rclick 160 120
+wait 500
+click 192 160
+wait 300
+rclick 160 120
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 4000
+shot b01-office
+move 280 75
+wait 100
+click 280 75
+wait 70000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 120000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot b02-table-bundesliga
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot b03-newspaper
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot b04-office-week-2

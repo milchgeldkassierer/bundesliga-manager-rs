@@ -1,0 +1,187 @@
+# Mod 2026 playthrough, run A (#194): a new endless game 2026/27 on a mod data directory
+# (manager "ADI", the clicks of office_2026.port.txt; the original start rule puts the
+# manager's SV Werder Bremen into the 3. Liga), the office, match day 1 with the live match,
+# the half-time and full-time results of the three leagues, the Bundesliga, 2. Bundesliga and
+# 3. Liga tables, the newspaper and the next office. Then automatic play (a click on (1, 1))
+# through the season; the pointer on (0, 0) stops it in the office of 13 June 2027. From there
+# turn by turn: both relegation play-offs (first legs, then return legs: Bundesliga 16th
+# against the 2. Bundesliga's 3rd, 2. Bundesliga 16th against the 3. Liga's 3rd), the office
+# of the season end, the "Saisonende" report, the three European cup draw questions ("KEIN
+# GEDANKE") and the first office of 2027/28, where the game is saved as PLAYTHRU.MAN.
+# Checked by crates/bmp/tests/mod2026_playthrough.rs against tests/mod2026/golden/. Run it by
+# hand on a mod data directory built outside the repo:
+#   bmp mod2026 build --from <original data> --out /tmp/bmp-mod2026
+#   bmp --data /tmp/bmp-mod2026 run --script tests/mod2026/playthrough_endless.port.txt \
+#       --shots /tmp/bmp-mod2026-shots --time 45817 --time2 45841
+# The stop time of the automatic play depends on the port's timing and the season's random
+# draws: when either changes, check that the run still reaches the office of 13 June 2027 and
+# regenerate the goldens.
+# seed: 45817
+# seed2: 45841
+key space
+wait 500
+click 160 120
+wait 4000
+click 40 220
+wait 200
+type adi
+key enter
+wait 200
+click 40 120
+wait 300
+rclick 160 120
+wait 500
+rclick 160 120
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 4000
+shot a01-office
+# Match day 1: the live match runs to half-time, where the results of the Bundesliga,
+# 2. Bundesliga and 3. Liga wait for "WEITER" each, then to full time.
+move 280 75
+wait 100
+click 280 75
+wait 70000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 120000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot a02-table-bundesliga
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot a03-table-2-bundesliga
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot a04-table-3-liga
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot a05-newspaper
+move 293 213
+wait 100
+click 293 213
+wait 1000
+shot a06-office-week-2
+# Automatic play through the season, stopped in the office of 13 June 2027.
+move 1 1
+wait 100
+click 1 1
+wait 100
+move 160 120
+wait 1440000
+move 0 0
+wait 120000
+move 160 120
+wait 500
+shot a07-office-play-offs
+# The first legs of both play-offs, then the return legs.
+move 280 75
+wait 100
+click 280 75
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 1500
+move 293 213
+wait 100
+click 293 213
+wait 1500
+move 293 213
+wait 100
+click 293 213
+wait 1500
+move 293 213
+wait 100
+click 293 213
+wait 1500
+move 280 75
+wait 100
+click 280 75
+wait 1000
+move 293 213
+wait 100
+click 293 213
+wait 1500
+shot a08-play-off-1
+move 293 213
+wait 100
+click 293 213
+wait 1500
+move 293 213
+wait 100
+click 293 213
+wait 1500
+shot a09-play-off-2
+move 293 213
+wait 100
+click 293 213
+wait 1500
+shot a10-office-season-end
+move 280 75
+wait 100
+click 280 75
+wait 1000
+shot a11-season-end
+move 160 120
+wait 100
+click 160 120
+wait 2000
+move 160 120
+wait 100
+click 160 120
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 2000
+click 187 166
+wait 6000
+shot a12-office-2027
+move 291 173
+wait 100
+click 291 173
+wait 500
+move 107 174
+wait 100
+click 107 174
+wait 1000
+move 100 178
+wait 100
+click 100 178
+wait 250
+type playthru
+wait 250
+key enter
+wait 1000

@@ -57,7 +57,9 @@ run.
 
 Known gaps in the copy: the README of both branches embeds the screenshots of `docs/screenshots/`, and on
 `mod_2026` the tests `crates/bmp-game/tests/mod2026_clubs.rs` and `mod2026_squads.rs` include files of
-`docs/mod2026/research/`; in the copy those images are missing and those tests do not build.
+`docs/mod2026/research/`, and `crates/bmp/tests/mod2026_playthrough.rs` compares with the golden frames
+of `tests/mod2026/golden/` (port screenshots showing the game's artwork); in the copy those images are
+missing, the two research tests do not build and the playthrough test fails when `BMP_DATA` is set.
 
 ## Publishing (later)
 
