@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests tools/prepare-public.sh on a throwaway repository with made-up identities, screenshots
-# and research data planted in its history. Needs git filter-repo.
+# (kept) and research data (dropped) planted in its history. Needs git filter-repo.
 set -euo pipefail
 # Git exports GIT_DIR and the like to hooks, and the pre-push hook runs this test; left set, the
 # git calls below would rewrite that repository instead of the throwaway one.
@@ -85,9 +85,12 @@ identities=$(git -C "$out" log --all --format='%an <%ae>%n%cn <%ce>'; \
 grep -aq "Signed-off-by: $public_name <$public_email>" "$work/objects" \
   || fail "the Signed-off-by trailer was not mapped"
 paths=$(git -C "$out" rev-list --all --objects | cut -s -d' ' -f2-)
-if grep -qE '^docs/(screenshots|mod2026/research)' <<<"$paths"; then
+if grep -qE '^docs/mod2026/research' <<<"$paths"; then
   fail "an excluded path survived"
 fi
+grep -qx 'docs/screenshots/title.png' <<<"$paths" || fail "the screenshots were dropped"
+[ "$(git -C "$out" show mod_2026:docs/screenshots/title.png)" = "$(printf 'png\nmore')" ] \
+  || fail "the screenshot change on mod_2026 was lost"
 grep -qx 'mods/OWN.DAT' <<<"$paths" || fail "the allow-listed mod file was dropped"
 [ "$(git -C "$out" for-each-ref --format='%(refname)' | tr '\n' ' ')" = \
   "refs/heads/main refs/heads/mod_2026 refs/tags/v1.0.0 " ] || fail "unexpected refs in the copy"
@@ -129,7 +132,6 @@ if report=$(python3 "$src/tools/public-copy.py" verify "$src" "$HOME/.config/bmp
   fail "the verification passed the unfiltered source"
 fi
 for expected in \
-  'FINDING: excluded path in the history: docs/screenshots/title.png' \
   'FINDING: excluded path in the history: docs/mod2026/research/values.json' \
   'FINDING: original-data file in the history: mods/COPY.DAT' \
   'FINDING: original-data file in the history: mods/OLD.VGA' \

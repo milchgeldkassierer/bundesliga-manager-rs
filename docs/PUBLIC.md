@@ -25,9 +25,8 @@ tag into the new directory `<out-dir>` (which must not exist), and the copy gets
 the copy it then
 
 1. rewrites the whole history with git filter-repo:
-   - drops every path listed in `tools/public-exclude.txt` (screenshots of original game graphics,
-     raw research data; plain paths only, no `glob:` or `regex:` lines, because the verification
-     compares them literally);
+   - drops every path listed in `tools/public-exclude.txt` (raw research data; plain paths only,
+     no `glob:` or `regex:` lines, because the verification compares them literally);
    - maps every author, committer and tagger through the mailmap;
    - replaces every old name and e-mail of the mailmap with its public one in commit and tag
      messages (`Co-Authored-By`, `Signed-off-by` and free text) and in file contents, in any
@@ -55,11 +54,14 @@ list) and make a new copy. Warnings do not stop the script. Whenever the script 
 `<out-dir>` may hold an unfinished or unverified copy: never push it, delete it before the next
 run.
 
-Known gaps in the copy: the README of both branches embeds the screenshots of `docs/screenshots/`, and on
-`mod_2026` the tests `crates/bmp-game/tests/mod2026_clubs.rs` and `mod2026_squads.rs` include files of
-`docs/mod2026/research/`, and `crates/bmp/tests/mod2026_playthrough.rs` compares with the golden frames
-of `tests/mod2026/golden/` (port screenshots showing the game's artwork); in the copy those images are
-missing, the two research tests do not build and the playthrough test fails when `BMP_DATA` is set.
+The copy keeps the screenshots of `docs/screenshots/`, which the README of both branches embeds,
+and on `mod_2026` the golden frames of `tests/mod2026/golden/`, which
+`crates/bmp/tests/mod2026_playthrough.rs` compares with. Both are port renderings showing the
+original game's artwork; the owner decided on 2026-10-26 to publish them for illustration (#270).
+
+Known gap in the copy: on `mod_2026` the tests `crates/bmp-game/tests/mod2026_clubs.rs` and
+`mod2026_squads.rs` include files of `docs/mod2026/research/`; in the copy those files are missing
+and the two tests do not build.
 
 ## Publishing (later)
 
