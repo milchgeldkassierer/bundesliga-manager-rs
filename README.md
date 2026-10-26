@@ -1,5 +1,8 @@
 # Bundesliga Manager Professional (Rust Port)
 
+> **Disclaimer.** This project is not affiliated with Software 2000, the DFL, the DFB or
+> any football club. No original game data is included; you need your own copy of the game.
+
 A faithful port of the DOS classic **Bundesliga Manager Professional** (Software 2000, first
 released in 1991) to Linux, written in Rust. The port follows version 2.0 of the game (1992),
 which offers the 1992/93 season as a second start. It is not a remake "inspired by" the original: every screen, every rule
@@ -74,19 +77,117 @@ The game was also sold in English as *The Manager*, with the English leagues. Th
 contains the switches for that edition (English ordinal suffixes and number format). An English
 version of the port is planned once the German port is complete.
 
-## Building and running
+## Installation and running
 
-Requirements: a Rust toolchain (edition 2024, e.g. via [rustup](https://rustup.rs)), the SDL2
-development libraries (`sudo apt install libsdl2-dev` on Debian/Ubuntu) and a copy of the
-original game.
+The port is built and tested on Linux (x86-64). Other systems are untested.
+
+### Requirements
+
+- **A C toolchain, git, curl and the SDL2 development libraries.** One command per
+  distribution:
+
+  | Distribution | Command |
+  |---|---|
+  | Debian, Ubuntu, Linux Mint | `sudo apt install build-essential curl git libsdl2-dev` |
+  | Fedora | `sudo dnf install gcc curl git SDL2-devel` |
+  | Arch Linux | `sudo pacman -S --needed base-devel curl git sdl2` |
+
+  `pkg-config` is not needed: the program links against the system's `libSDL2` directly.
+- **Rust 1.88 or newer.** The code uses edition 2024 (Rust 1.85) and language and library
+  features stabilised in Rust 1.88. Install Rust with [rustup](https://rustup.rs) and load its
+  environment into the current shell:
+
+  ```sh
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  . "$HOME/.cargo/env"
+  ```
+
+  An existing installation is brought up to date with `rustup update`; `rustc --version`
+  shows the version.
+- **Your own copy of the DOS game** (see [The original game data](#the-original-game-data)).
+
+### Getting the source
+
+```sh
+git clone https://github.com/milchgeldkassierer/bundesliga-manager-rs.git
+cd bundesliga-manager-rs
+```
+
+The repository has two branches:
+
+| Branch | Content |
+|---|---|
+| `main` | The 1:1 port, version 1.0.0 (the default) |
+| `mod_2026` | Mod 2026: the same game with the clubs, squads and leagues of 2026 |
+
+For Mod 2026, switch to its branch with `git checkout mod_2026` before building; its README
+describes how to generate the mod data.
+
+### Building
 
 ```sh
 cargo build --release -p bmp
-./target/release/bmp --data /path/to/BMP run
 ```
 
-`--data` points to the directory that contains `BMMAIN.EXE`, `PIC/`, `SOUND/`, `TORE/` and
-`MANA.DAT`. Alternatively set the environment variable `BMP_DATA`.
+The first build downloads the dependencies from crates.io and takes a few minutes. The
+program ends up as `target/release/bmp`; it is self-contained apart from SDL2 and can be copied
+anywhere. `./target/release/bmp --help` lists every command and option.
+
+### The original game data
+
+The port expects the data of **version 2.0 (1992)** of Bundesliga Manager Professional,
+the version with the 1992/93 season as a second start, from your own copy of the game. The
+data directory is the game's installation directory and must contain:
+
+| File or folder | Content |
+|---|---|
+| `BMINTRO.EXE` | The logo intro (its animation and palette are read from it) |
+| `BMMAIN.EXE` | The game (its fonts and palettes are read from it) |
+| `MANA.DAT` | The club database |
+| `PIC/` | Pictures (`*.VGA`, `*.CP`, `1.PAL`) |
+| `SOUND/` | `BM2TITLE.CMF` (title music) and `DIGI.VOC` (crowd, whistle, goal) |
+| `TORE/` | The goal scenes |
+
+`TEAMED.EXE`, `BMLOADER.EXE`, `BMP.BAT`, the high-score files `HIGH.*` and the save games
+`*.MAN` may be there too; the port never runs the DOS programs.
+
+**File names are case-sensitive on Linux.** The port looks for the upper-case names of the
+DOS game (`BMMAIN.EXE`, `PIC/47.CP`). Only save games and high-score files are found in any
+case. If your copy came with lower-case names (`bmmain.exe`, `pic/`), rename everything to
+upper case once, inside the data directory:
+
+```sh
+find . -depth -mindepth 1 -execdir sh -c 'n=$(printf %s "$1" | tr a-z A-Z); [ "$1" = "$n" ] || mv "$1" "$n"' _ {} \;
+```
+
+**Work on a copy.** The game writes its save games and high scores into the data directory,
+and the team editor rewrites `MANA.DAT` and the crest pictures in `PIC/`. Copy the game to a
+directory of its own (files from a CD or another read-only source also need to be made
+writable):
+
+```sh
+cp -r /path/to/your/BMP ~/games/BMP
+chmod -R u+w ~/games/BMP
+```
+
+### Running
+
+```sh
+./target/release/bmp --data ~/games/BMP run
+```
+
+`--data` points to the data directory. Alternatively set the environment variable `BMP_DATA`
+once and leave `--data` out:
+
+```sh
+export BMP_DATA=~/games/BMP
+./target/release/bmp run
+```
+
+The game starts like `BMP.BAT` in DOS: the Software 2000 logo intro, then the title screen with
+the music, then the start menu, where you pick a club, enter your name and choose the start
+season, or load a saved game. The window shows the game's 320x240 screen at three times its
+size.
 
 | Option | Effect |
 |---|---|
@@ -96,14 +197,20 @@ cargo build --release -p bmp
 | `render-music <out.wav>` | Render the title music to a WAV file |
 
 The game is played with the mouse like the original: left click selects, right click confirms
-or leaves a screen. Any key skips the intro.
+or leaves a screen. Names are typed on the keyboard. Any key skips the intro. Closing the
+window ends the program.
+
+**Save games** are written into the data directory (or a subdirectory picked in the game's file
+dialog) as `<NAME>.MAN`, in the DOS game's format: saves of the DOS version load in the port and
+the other way round. At every month end the game also writes `AUTOSAVE.MAN`; the high scores
+are kept in the `HIGH.*` files.
 
 ### Team editor
 
 The team editor `TEAMED.EXE` is ported too:
 
 ```sh
-./target/release/bmp --data /path/to/BMP teamed
+./target/release/bmp --data ~/games/BMP teamed
 ```
 
 It edits `MANA.DAT` in the data directory like the original. You can change club names,
@@ -111,6 +218,20 @@ league placement, last season's table (rank, points, goals), player names, the c
 (paint them or import an IFF/ILBM picture) and the names and strengths of the foreign UEFA
 clubs. "PROGRAMM-ENDE" followed by "MACH MAL !" saves, and the next `bmp run` uses the edited
 data. The editor writes into the data directory, so keep a backup of `MANA.DAT` and `PIC/`.
+
+### Troubleshooting
+
+| Message or symptom | Cause and remedy |
+|---|---|
+| `rust-lld: error: unable to find library -lSDL2` (or `cannot find -lSDL2`) when building | The SDL2 development libraries are missing: install them with the command for your distribution under [Requirements](#requirements). |
+| ``error[E0658]: `let` expressions in this position are unstable`` or ``use of unstable library feature `slice_as_chunks` `` when building | Rust is older than 1.88: run `rustup update`. |
+| ``error: linker `cc` not found`` when building | No C toolchain: install `build-essential`, `gcc` or `base-devel` (see [Requirements](#requirements)). |
+| `no game data directory: pass --data <dir> or set BMP_DATA` | Neither `--data` nor `BMP_DATA` was given. |
+| `FONT-Error: I/O error: No such file or directory (os error 2)` | The data directory has no `BMMAIN.EXE`: `--data` points to the wrong directory, or the file names are lower case (see [The original game data](#the-original-game-data)). |
+| `.../MANA.DAT: No such file or directory (os error 2)` when a game starts | `MANA.DAT` is missing or lower case. |
+| The game shows `DISK-Error` and quits | A picture, sound or goal scene is missing: check `PIC/`, `SOUND/` and `TORE/`. The game writes the running game to `ERROR.MAN` first. |
+| `no audio output (...); sound runs silently` | SDL found no audio device; the game runs without sound. Check the system's sound output (PulseAudio or PipeWire), or start with `run --nosound`. |
+| `GRAFIK-Error: No available video device` | SDL could not open a window: start the game from a graphical session. |
 
 ## How it was made
 
