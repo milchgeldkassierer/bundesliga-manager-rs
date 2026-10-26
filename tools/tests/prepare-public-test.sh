@@ -43,7 +43,9 @@ git -C "$src" remote add origin https://example.invalid/never-used.git
 mkdir -p "$src/tools" "$src/docs/screenshots" "$src/docs/mod2026/research" "$src/mods"
 cp "$tools_dir/prepare-public.sh" "$tools_dir/public-copy.py" "$tools_dir/public-exclude.txt" "$src/tools/"
 echo 'mods/OWN.DAT' > "$src/tools/public-allow.txt"
-printf '# Test project\n\nSome text.\n' > "$src/README.md"
+disclaimer='> **Disclaimer.** This project is not affiliated with Software 2000, the DFL, the DFB or
+> any football club. No original game data is included; you need your own copy of the game.'
+printf '# Test project\n\n%s\n\nSome text.\n' "$disclaimer" > "$src/README.md"
 echo 'png' > "$src/docs/screenshots/title.png"
 # The second name is spelled out in the mailmap, with umlauts here, and the other way round.
 printf 'Maintained by JÖRG EXAMPLE <Joerg@Example.org>\nCredits: Paul Hübner-Schafer\n' > "$src/NOTES.txt"
@@ -56,7 +58,7 @@ Written with joerg example.
 
 Signed-off-by: $old_name <$old_email>
 Co-Authored-By: Helper <noreply@anthropic.com>" docs mods
-GIT_COMMITTER_NAME=$old_name GIT_COMMITTER_EMAIL=$old_email \
+GIT_AUTHOR_NAME=$old_name GIT_AUTHOR_EMAIL=$old_email GIT_COMMITTER_NAME=$old_name GIT_COMMITTER_EMAIL=$old_email \
   git -C "$src" tag -a v1.0.0 -m "Release by $old_name"
 git -C "$src" checkout --quiet -b mod_2026
 echo 'more' >> "$src/docs/screenshots/title.png"
@@ -96,12 +98,46 @@ grep -qx 'mods/OWN.DAT' <<<"$paths" || fail "the allow-listed mod file was dropp
   "refs/heads/main refs/heads/mod_2026 refs/tags/v1.0.0 " ] || fail "unexpected refs in the copy"
 [ -z "$(git -C "$out" remote)" ] || fail "the copy has a remote"
 for branch in main mod_2026; do
-  git -C "$out" show "$branch:README.md" | grep -q 'not affiliated with Software 2000' \
-    || fail "no disclaimer in the README of $branch"
+  [ "$(git -C "$out" rev-parse "$branch")" = "$(git -C "$src" rev-parse "$branch")" ] \
+    && fail "$branch was not rewritten"
+  [ "$(git -C "$out" rev-list --count "$branch")" = "$(git -C "$src" rev-list --count "$branch")" ] \
+    || fail "the copy added or dropped commits on $branch"
 done
 grep -q '0 findings' <<<"$report" || fail "no clean summary: $report"
 
 if "$src/tools/prepare-public.sh" "$out" >/dev/null 2>&1; then fail "an existing out-dir was accepted"; fi
+
+# Updates are plain fast-forward pushes: a second copy of the same source is identical, and a copy
+# after a new source commit extends the earlier one.
+tips() { git -C "$1" for-each-ref --format='%(refname) %(objectname)'; }
+"$src/tools/prepare-public.sh" "$work/again" >/dev/null 2>&1 || fail "the second copy failed"
+[ "$(tips "$work/again")" = "$(tips "$out")" ] || fail "two copies of the same source differ"
+echo 'later' > "$src/LATER.txt"
+commit_as "$old_name" "$old_email" 'A later change' LATER.txt
+git -C "$src" checkout --quiet mod_2026
+GIT_AUTHOR_NAME=$old_name GIT_AUTHOR_EMAIL=$old_email \
+  GIT_COMMITTER_NAME=$old_name GIT_COMMITTER_EMAIL=$old_email git -C "$src" merge --quiet --no-edit main
+git -C "$src" checkout --quiet main
+"$src/tools/prepare-public.sh" "$work/later" >/dev/null 2>&1 || fail "the copy after a new commit failed"
+for branch in main mod_2026; do
+  git -C "$work/later" fetch --quiet "$out" "$branch:refs/earlier/$branch"
+  [ "$(git -C "$work/later" rev-parse "refs/earlier/$branch")" != "$(git -C "$work/later" rev-parse "$branch")" ] \
+    || fail "$branch did not move after a new source commit"
+  git -C "$work/later" merge-base --is-ancestor "refs/earlier/$branch" "$branch" \
+    || fail "the earlier $branch tip is no ancestor of the later one"
+done
+
+# The disclaimer is checked, not added: a branch whose README lacks it fails the copy.
+git -C "$src" checkout --quiet mod_2026
+printf '# Test project\n\nSome text.\n' > "$src/README.md"
+commit_as "$public_name" "$public_email" 'Drop the disclaimer' README.md
+if report=$("$src/tools/prepare-public.sh" "$work/nodisclaimer" 2>&1); then
+  fail "a README without the disclaimer was accepted"
+fi
+grep -q 'README.md on mod_2026 lacks the disclaimer' <<<"$report" \
+  || fail "the missing disclaimer was not reported: $report"
+git -C "$src" reset --quiet --hard HEAD~1
+git -C "$src" checkout --quiet main
 
 git -C "$src" checkout --quiet mod_2026
 echo 'original' > "$src/mods/GAME.DAT"

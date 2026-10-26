@@ -6,8 +6,10 @@
 # The copy holds the branches main and mod_2026 and the tags, with the whole history rewritten
 # by git filter-repo: the paths of tools/public-exclude.txt are dropped, and every identity is
 # mapped through $HOME/.config/bmp-public-mailmap (authors, committers, taggers, and the same
-# names and e-mails in commit and tag messages and file contents). Both branches get a commit
-# with the README disclaimer. The copy is then verified; any finding exits non-zero.
+# names and e-mails in commit and tag messages and file contents). The rewrite adds no commit, so
+# copies of the same source are identical and a later copy extends an earlier one. The copy is
+# then verified: the README of each branch must carry the disclaimer, and any finding exits
+# non-zero.
 # This repository is only read: nothing here is written, fetched into or pushed, and the copy
 # has no remote.
 set -euo pipefail
@@ -42,9 +44,7 @@ done
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-public_identity=$(python3 "$tools_dir/public-copy.py" mapping "$mailmap" "$tmp/replacements")
-public_name=${public_identity%%$'\n'*}
-public_email=${public_identity#*$'\n'}
+python3 "$tools_dir/public-copy.py" mapping "$mailmap" "$tmp/replacements"
 
 echo "prepare-public: copying ${branches[*]} and the tags of $source_repo into $out"
 git init --quiet --initial-branch=main "$out"
@@ -61,25 +61,16 @@ git -C "$out" filter-repo --force --quiet \
   --replace-text "$tmp/replacements" \
   --replace-refs delete-no-add
 
+# The disclaimer lives in README.md on both branches (#271); the copy only checks that it is there.
 disclaimer='> **Disclaimer.** This project is not affiliated with Software 2000, the DFL, the DFB or
 > any football club. No original game data is included; you need your own copy of the game.'
-for branch in "${branches[@]}"; do
-  git -C "$out" checkout --quiet --force "$branch"
-  readme="$out/README.md"
-  if [ -f "$readme" ]; then
-    awk -v text="$disclaimer" '{ print } !done && /^# / { print ""; print text; done = 1 }
-      END { if (!done) { print ""; print text } }' "$readme" > "$tmp/README.md"
-    cat "$tmp/README.md" > "$readme"
-  else
-    printf '%s\n' "$disclaimer" > "$readme"
-  fi
-  git -C "$out" add README.md
-  GIT_AUTHOR_NAME=$public_name GIT_AUTHOR_EMAIL=$public_email \
-    GIT_COMMITTER_NAME=$public_name GIT_COMMITTER_EMAIL=$public_email \
-    git -C "$out" -c commit.gpgsign=false commit --quiet -m "Add the public-release disclaimer to the README"
-done
-git -C "$out" checkout --quiet main
+git -C "$out" checkout --quiet --force main
 
 echo "prepare-public: verifying $out"
+for branch in "${branches[@]}"; do
+  readme=$(git -C "$out" show "$branch:README.md" 2>/dev/null) || readme=
+  [[ $readme == *"$disclaimer"* ]] \
+    || die "README.md on $branch lacks the disclaimer; add it under the title in the source (docs/PUBLIC.md)"
+done
 python3 "$tools_dir/public-copy.py" verify "$out" "$mailmap" "$exclude_list" "$allow_list"
 echo "prepare-public: $out is ready (docs/PUBLIC.md describes the next steps)"

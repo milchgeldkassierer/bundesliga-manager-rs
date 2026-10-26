@@ -1,5 +1,8 @@
 # Bundesliga Manager Professional (Rust Port)
 
+> **Disclaimer.** This project is not affiliated with Software 2000, the DFL, the DFB or
+> any football club. No original game data is included; you need your own copy of the game.
+
 A faithful port of the DOS classic **Bundesliga Manager Professional** (Software 2000, first
 released in 1991) to Linux, written in Rust. The port follows version 2.0 of the game (1992),
 which offers the 1992/93 season as a second start. It is not a remake "inspired by" the original: every screen, every rule

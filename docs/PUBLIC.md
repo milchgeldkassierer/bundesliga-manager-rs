@@ -32,9 +32,11 @@ the copy it then
      messages (`Co-Authored-By`, `Signed-off-by` and free text) and in file contents, in any
      case, with or without accents and with each umlaut written either way (`ü` / `ue`), whichever
      way the mailmap writes it;
-2. commits the disclaimer (not affiliated with Software 2000, the DFL, the DFB or any club; no
-   original game data included; you need your own copy of the game) under the README's title on
-   both branches, as the mailmap's first public identity;
+2. checks that `README.md` on both branches carries the disclaimer under its title (not
+   affiliated with Software 2000, the DFL, the DFB or any football club; no original game data
+   included; you need your own copy of the game), word for word as in the script, and stops
+   otherwise. The disclaimer is part of the README in this repository; the script adds no
+   commit, so the copy stays deterministic (see "Updating the public repository");
 3. verifies every commit, tag and file of the copy (`tools/public-copy.py verify`) and exits
    non-zero on any **finding**:
    - a file with an extension of the original game data (`.VGA .CP .PAL .MAN .DAT .VOC .CMF
@@ -74,3 +76,19 @@ and the two tests do not build.
 Only the git history moves over. Issues, pull requests, releases, wiki pages and other GitHub
 settings of this repository stay here; recreate on the new repository what the public one needs
 (for example a release for the tag `v1.0.0`).
+
+## Updating the public repository
+
+The public repository forbids force pushes, so every update must be a plain fast-forward push.
+This works because the copy is deterministic: filter-repo keeps every author and committer date,
+and the script adds no commit of its own, so two copies of the same source have identical branch
+tips and tags, and a copy made after new commits extends the history published before.
+
+1. Make a fresh copy: `tools/prepare-public.sh <new-out-dir>` (it must end with `0 findings`).
+2. In the copy: `git remote add origin <url>`, then `git push origin main mod_2026 --tags`,
+   **without** `--force`.
+
+A rejected push (non-fast-forward, or a tag that already exists with another hash) means the
+rewritten history changed: typically the mailmap, `tools/public-exclude.txt` or the replacement
+rules were edited, or a published commit was rewritten here. Find out which change caused it
+before anything else; never force the push.

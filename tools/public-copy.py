@@ -6,8 +6,7 @@ Usage: tools/public-copy.py mapping <mailmap> <replacements>
 
 `mapping` writes to <replacements> the filter-repo --replace-message/--replace-text expressions
 that turn every case, accent and German transliteration variant of an old name or e-mail of the
-mailmap into its public one, and prints the public name and e-mail of the commits made in the
-copy, one per line. <replacements> must not leave a temporary directory.
+mailmap into its public one. <replacements> must not leave a temporary directory.
 
 `verify` checks every path of every commit of the copy against the path lists and every
 reachable object against the mailmap, prints warnings, findings and a summary, and exits 1 on
@@ -112,12 +111,10 @@ def read_mailmap(mailmap):
 
 
 def mapping(mailmap, replacements_file):
-    replacements, _, _, public = read_mailmap(mailmap)
+    replacements, _, _, _ = read_mailmap(mailmap)
     with open(replacements_file, 'w', encoding='utf-8') as f:
         f.writelines(f'regex:{variants_pattern(old)}==>{new.replace(chr(92), chr(92) * 2)}\n'
                      for old, new in replacements)
-    print(public[0])
-    print(public[1])
     return 0
 
 
